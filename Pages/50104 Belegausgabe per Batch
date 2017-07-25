@@ -1,0 +1,645 @@
+OBJECT Page 50104 Belegausgabe per Batch
+{
+  OBJECT-PROPERTIES
+  {
+    Date=11.07.17;
+    Time=08:59:48;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    InsertAllowed=No;
+    DeleteAllowed=No;
+    ModifyAllowed=No;
+    ShowFilter=No;
+    OnInit=BEGIN
+             AttachmentPath := 'F:\Daten NEU\Gemeinsame Ordner\Customer Service\EMailVersand\';
+             //Performance Tests - Umstellung auf lokalen Pfad tempor„r:
+             //AttachmentPath := 'D:\EMailVersand\';
+
+             IF TOPAS_API.NewFolder(AttachmentPath) = FALSE THEN
+               ERROR('Abbruch, Pfad nicht verfgbar: %1',AttachmentPath);
+
+             //Žnd_Best_PDF:=TRUE;
+             //Žnd_Best_Druck:=TRUE;
+             //Best_PDF:=TRUE;
+             //Best_Druck:=TRUE;
+             IF DATE2DWY(WORKDATE, 1) = 1 THEN BEGIN
+               // letzter Arbeitstag war Freitag
+               Tagesdatum := WORKDATE - 3;
+             END ELSE BEGIN
+               Tagesdatum := WORKDATE - 1;
+             END;
+           END;
+
+    ActionList=ACTIONS
+    {
+      { 1900000000;  ;ActionContainer;
+                      ActionContainerType=ActionItems }
+      { 1       ;1   ;ActionGroup;
+                      CaptionML=[DEU=Allgmein;
+                                 ENU=General] }
+      { 1140013 ;2   ;Action    ;
+                      Name=Ausfuehren;
+                      CaptionML=DEU=Ausfhren;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=ExecuteBatch;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 //Prft, ob mehrere Jobs gleichzeitig gestartet werden und verhindert dies ggf.
+                                 selected := 0;
+                                 IF ((Žnd_Best_PDF) OR (Žnd_Best_Druck) OR (AU_Best_PDF) OR (AU_Best_Druck)) THEN selected += 1;
+                                 IF (Rechnung_PDF) THEN selected += 1;
+                                 IF (Bestellung_PDF) THEN selected += 1;
+                                 IF (Servicevertr„ge_PDF) THEN selected += 1;
+
+                                 IF selected > 1 THEN ERROR(Text000);
+
+                                 Run_Batch;
+                               END;
+                                }
+    }
+  }
+  CONTROLS
+  {
+    { 1900000;0;Container ;
+                ContainerType=ContentArea }
+
+    { 1000000004;1;Group  ;
+                CaptionML=DEU=Hinweis;
+                GroupType=Group }
+
+    { 1000000003;2;Field  ;
+                CaptionML=DEU=Bitte immer den Ausfhren Button benutzen!;
+                Style=Unfavorable;
+                StyleExpr=TRUE }
+
+    { 1000000002;1;Group  ;
+                CaptionML=DEU=Eingabe;
+                GroupType=Group }
+
+    { 1000000007;2;Group  ;
+                GroupType=Group }
+
+    { 1140000;3;Field     ;
+                CaptionML=DEU=Datum;
+                SourceExpr=Tagesdatum }
+
+    { 1000000006;3;Field  ;
+                CaptionML=DEU=Zusatz:;
+                Style=Strong;
+                StyleExpr=TRUE }
+
+    { 1000000005;3;Field  ;
+                CaptionML=DEU=Belegnr.;
+                SourceExpr=belegnr }
+
+    { 1000000000;1;Group  ;
+                CaptionML=DEU=Auftragsbest„tigungen;
+                GroupType=Group }
+
+    { 1900001;2;Group     ;
+                GroupType=Group }
+
+    { 1140002;3;Field     ;
+                CaptionML=DEU=Auftragsbest„tigungen drucken;
+                SourceExpr=AU_Best_Druck }
+
+    { 1140003;3;Field     ;
+                CaptionML=DEU=Auftragsbest„tigungen als PDF erstellen;
+                SourceExpr=AU_Best_PDF }
+
+    { 1140004;3;Field     ;
+                CaptionML=DEU=Žnderungsauftragsbest„tigungen drucken;
+                SourceExpr=Žnd_Best_Druck }
+
+    { 1140005;3;Field     ;
+                CaptionML=DEU=Žnderungsauftragsbest„tigung als PDF erstellen;
+                SourceExpr=Žnd_Best_PDF }
+
+    { 1140011;3;Field     ;
+                CaptionML=DEU=interne AB-Kopie nicht drucken;
+                SourceExpr=interne_AB_nicht_drucken }
+
+    { 1000000001;1;Group  ;
+                CaptionML=DEU=Sonstiges;
+                GroupType=Group }
+
+    { 1900002;2;Group     ;
+                CaptionML=DEU=Sonstiges }
+
+    { 1140014;3;Field     ;
+                CaptionML=DEU=Rechnungen als PDF;
+                SourceExpr=Rechnung_PDF }
+
+    { 1140018;3;Field     ;
+                CaptionML=DEU=Bestellungen als PDF;
+                SourceExpr=Bestellung_PDF }
+
+    { 1140020;3;Field     ;
+                CaptionML=DEU=Servicevertr„gen als PDF;
+                SourceExpr=Servicevertr„ge_PDF }
+
+  }
+  CODE
+  {
+    VAR
+      "Printer selection"@1140015 : Record 78;
+      Customer@1140005 : Record 18;
+      sales_header@1140008 : Record 36;
+      sales_line@1140007 : Record 37;
+      rahmen@1140006 : Record 36;
+      sales_arch_header@1140023 : Record 5107;
+      inv_header@1140003 : Record 112;
+      purch_header@1140028 : Record 38;
+      Ship_Header@1000000008 : Record 110;
+      Wartungsvertrag@1000000007 : Record 50011;
+      Servicepositionen@1000000006 : Record 50024;
+      Tagesdatum@1140014 : Date;
+      Žnd_Best_PDF@1140013 : Boolean;
+      Žnd_Best_Druck@1140012 : Boolean;
+      AU_Best_PDF@1140011 : Boolean;
+      AU_Best_Druck@1140010 : Boolean;
+      interne_AB_nicht_drucken@1140009 : Boolean;
+      Rechnung_PDF@1140000 : Boolean;
+      Bestellung_PDF@1140024 : Boolean;
+      Servicevertr„ge_PDF@1140025 : Boolean;
+      TOPAS_API@1140002 : Codeunit 50001;
+      Bullzip_PDF@1140016 : Codeunit 50005;
+      AttachmentPath@1140001 : Text;
+      belege@1140017 : Text;
+      belegnr@1140004 : Code[20];
+      body@1140021 : Text;
+      subject@1140020 : Text;
+      chr@1140019 : Char;
+      email_addr@1140018 : Text;
+      Text000@1140026 : TextConst 'DEU=Sie k”nnen nicht mehrere Jobs gleichzeitig laufen lassen!';
+      selected@1140027 : Integer;
+      wartungsnr_save@1000000005 : ARRAY [5] OF Text;
+      vertrag_gedruckt@1000000004 : Boolean;
+      au_wartungsnr@1000000003 : ARRAY [5] OF Text;
+      i@1000000002 : Integer;
+      k@1000000001 : Integer;
+      t@1000000000 : Integer;
+
+    PROCEDURE Run_Batch@1140010();
+    BEGIN
+      //Auftragsbest„tigungen
+      IF AU_Best_Druck THEN BEGIN
+        sales_header.RESET;
+        sales_header.SETFILTER("Document Type",'%1',sales_header."Document Type"::Order);
+        sales_header.SETFILTER("Sell-to Customer No.",'<>%1','');
+        sales_header.SETFILTER("Order Date",'%1',Tagesdatum);
+        sales_header.SETFILTER("Location Code",'%1|%2','ZENT','KONSI');
+        sales_header.SETFILTER("AB via EMail",'%1',FALSE);
+        sales_header.SETFILTER("No.",belegnr);
+        IF sales_header.FINDFIRST THEN BEGIN
+          //  Druckt auf Papier nur mit Logo rechts oben
+          REPORT.RUNMODAL(50075,FALSE,FALSE,sales_header);
+        END;
+      END;
+
+
+      //AB-Žnderungsbest„tigungen
+      IF Žnd_Best_Druck THEN BEGIN
+        sales_header.RESET;
+        sales_header.SETFILTER("Document Type",'%1',sales_header."Document Type"::Order);
+        sales_header.SETFILTER("Sell-to Customer No.",'<>%1','');
+        sales_header.SETFILTER("Document Date",'%1',Tagesdatum);
+        sales_header.SETFILTER("Posting Date",'<>%1',Tagesdatum);
+        sales_header.SETFILTER("Location Code",'%1|%2','ZENT','KONSI');
+        sales_header.SETFILTER("AB via EMail",'%1',FALSE);
+        sales_header.SETFILTER("No.",belegnr);
+        IF sales_header.FINDFIRST THEN BEGIN
+          // Druckt auf Papier nur mit Logo rechts oben
+          REPORT.RUNMODAL(50098,FALSE,FALSE,sales_header);
+         END;
+      END;
+
+
+      //Auftragsbest„tigungen per PDF
+      IF AU_Best_PDF THEN BEGIN
+        // Druckt Seite 2 auf Papier
+        IF interne_AB_nicht_drucken = FALSE THEN BEGIN
+          sales_header.RESET;
+          sales_header.SETFILTER("Document Type",'%1',sales_header."Document Type"::Order);
+          sales_header.SETFILTER("Sell-to Customer No.",'<>%1','');
+          sales_header.SETFILTER("Order Date",'%1',Tagesdatum);
+          sales_header.SETFILTER("Location Code",'%1|%2','ZENT','KONSI');
+          sales_header.SETFILTER("AB via EMail",'%1',TRUE);
+          sales_header.SETFILTER("No.",belegnr);
+          IF sales_header.FINDFIRST THEN BEGIN
+            REPORT.RUNMODAL(50075,FALSE,FALSE,sales_header);
+          END;
+        END;
+
+        // Druck als PDF
+        sales_header.RESET;
+        sales_header.SETFILTER("Document Type",'%1',sales_header."Document Type"::Order);
+        sales_header.SETFILTER("Sell-to Customer No.",'<>%1','');
+        sales_header.SETFILTER("Order Date",'%1',Tagesdatum);
+        sales_header.SETFILTER("Location Code",'%1|%2','ZENT','KONSI');
+        sales_header.SETFILTER("AB via EMail",'%1',TRUE);
+        sales_header.SETFILTER("No.",belegnr);
+        IF sales_header.FINDFIRST THEN BEGIN
+
+          Bullzip_PDF.BullzipPDF_Order(sales_header,AttachmentPath,50075);
+
+          //14.11.14 ST - Rahmenauftrag hinzu, wenn im Rahmen kein Haken im Feld "keine Rahmen-AB via Email" gesetzt ist
+          REPEAT
+            sales_line.RESET;
+            sales_line.SETFILTER(Type,'%1',sales_line.Type :: Item);
+            sales_line.SETFILTER("Document No.",'%1',sales_header."No.");
+            sales_line.SETFILTER("Blanket Order No.",'<>%1','');
+            IF sales_line.FINDFIRST THEN
+              REPEAT
+                rahmen.RESET;
+                rahmen.SETFILTER("No.",'%1',sales_line."Blanket Order No.");
+                rahmen.SETFILTER("Virtuelle Systeme",'%1',FALSE);
+                IF (rahmen.FINDFIRST) AND (rahmen."Document Date" = sales_header."Document Date")
+                AND (rahmen."keine Rahmen-AB via Email" = FALSE) THEN
+                  IF STRPOS(belege,rahmen."No." + '.pdf') = 0 THEN BEGIN
+                    belege := belege + ',' + rahmen."No." + '.pdf';
+                    Bullzip_PDF.BullzipPDF_Order(rahmen,AttachmentPath,50115);
+                  END;
+              UNTIL sales_line.NEXT = 0;
+          UNTIL sales_header.NEXT = 0;
+
+        END;
+      END;
+
+
+      //Auftrag„nderungsbest„tigungen per PDF
+      IF Žnd_Best_PDF THEN BEGIN
+        // Druckt Seite 2 auf Papier
+        IF interne_AB_nicht_drucken = FALSE THEN BEGIN
+          sales_header.RESET;
+          sales_header.SETFILTER("Document Type",'%1',sales_header."Document Type"::Order);
+          sales_header.SETFILTER("Sell-to Customer No.",'<>%1','');
+          sales_header.SETFILTER("Document Date",'%1',Tagesdatum);
+          sales_header.SETFILTER("Posting Date",'<>%1',Tagesdatum);
+          sales_header.SETFILTER("Location Code",'%1|%2','ZENT','KONSI');
+          sales_header.SETFILTER("AB via EMail",'%1',TRUE);
+          sales_header.SETFILTER("No.",belegnr);
+          IF sales_header.FINDFIRST THEN BEGIN
+            REPORT.RUNMODAL(50098,FALSE,FALSE,sales_header);
+          END;
+        END;
+
+        // Druck als PDF
+        sales_header.RESET;
+        sales_header.SETFILTER("Document Type",'%1',sales_header."Document Type"::Order);
+        sales_header.SETFILTER("Sell-to Customer No.",'<>%1','');
+        sales_header.SETFILTER("Document Date",'%1',Tagesdatum);
+        sales_header.SETFILTER("Posting Date",'<>%1',Tagesdatum);
+        sales_header.SETFILTER("Location Code",'%1|%2','ZENT','KONSI');
+        sales_header.SETFILTER("AB via EMail",'%1',TRUE);
+        sales_header.SETFILTER("No.",belegnr);
+        IF sales_header.FINDFIRST THEN BEGIN
+
+          Bullzip_PDF.BullzipPDF_Order(sales_header,AttachmentPath,50098);
+
+          //14.11.14 ST - Rahmenauftrag hinzu, wenn im Rahmen kein Haken im Feld "keine Rahmen-AB via Email" gesetzt ist
+          REPEAT
+            sales_line.RESET;
+            sales_line.SETFILTER(Type,'%1',sales_line.Type :: Item);
+            sales_line.SETFILTER("Document No.",'%1',sales_header."No.");
+            sales_line.SETFILTER("Blanket Order No.",'<>%1','');
+            IF sales_line.FINDFIRST THEN
+              REPEAT
+                rahmen.RESET;
+                rahmen.SETFILTER("No.",'%1',sales_line."Blanket Order No.");
+                rahmen.SETFILTER("Virtuelle Systeme",'%1',FALSE);
+                IF (rahmen.FINDFIRST) AND (rahmen."Document Date" = sales_header."Document Date")
+                AND (rahmen."keine Rahmen-AB via Email" = FALSE) THEN
+                  IF STRPOS(belege,rahmen."No." + '.pdf') = 0 THEN BEGIN
+                    belege := belege + ',' + rahmen."No." + '.pdf';
+                    Bullzip_PDF.BullzipPDF_Order(rahmen,AttachmentPath,50115);
+                  END;
+              UNTIL sales_line.NEXT = 0;
+          UNTIL sales_header.NEXT = 0;
+
+        END;
+      END;
+
+
+
+
+
+      // Rechnungen per PDF
+      IF Rechnung_PDF THEN BEGIN
+        inv_header.RESET;
+        inv_header.SETFILTER("Posting Date",'%1',Tagesdatum);
+        inv_header.SETFILTER("Location Code",'<>%1','MUST');
+        inv_header.SETFILTER("No.",belegnr);
+        IF inv_header.FINDFIRST THEN BEGIN
+          Bullzip_PDF.BullzipPDF_Invoice(inv_header,AttachmentPath,50076);
+        END;
+      END;
+
+
+      //Bestellungen per PDF
+      IF Bestellung_PDF THEN BEGIN
+        purch_header.RESET;
+        purch_header.SETFILTER("Document Type",'%1',purch_header."Document Type"::Order);
+        purch_header.SETFILTER("Location Code",'<>%1','MUST');
+        purch_header.SETFILTER("Order Date",'%1',Tagesdatum);
+        purch_header.SETFILTER("No.",belegnr);
+        //purch_header.SETFILTER("AB via EMail",'%1',TRUE);
+        IF purch_header.FINDFIRST THEN BEGIN
+          Bullzip_PDF.BullzipPDF_PurchaseOrder(purch_header,AttachmentPath,50019);
+        END;
+      END;
+
+
+      //Servicevertr„ge per PDF
+      IF Servicevertr„ge_PDF THEN BEGIN
+        Ship_Header.RESET;
+        Ship_Header.SETFILTER("Posting Date",'%1',Tagesdatum);
+        IF Ship_Header.FINDFIRST THEN
+          Bullzip_PDF.BullzipPDF_ServiceContract(Ship_Header,AttachmentPath,50178);
+      END;
+
+
+
+
+
+      //COMMIT;
+
+      chr := 10;
+
+      //*******************************************************************************************************
+      // Mail Job fr Auftragsbest„tigungen
+      //*******************************************************************************************************
+
+      IF AU_Best_PDF THEN BEGIN
+        sales_header.RESET;
+        sales_header.SETFILTER("Document Type",'%1',sales_header."Document Type"::Order);
+        sales_header.SETFILTER("Sell-to Customer No.",'<>%1','');
+        sales_header.SETFILTER("Order Date",'%1',Tagesdatum);
+        sales_header.SETFILTER("Location Code",'%1|%2','ZENT','KONSI');
+        sales_header.SETFILTER("AB via EMail",'%1',TRUE);
+        sales_header.SETFILTER("No.",belegnr);
+        IF sales_header.FINDFIRST THEN BEGIN
+          //IF CONFIRM('Auftragsbest„tigung: Wurden alle PDFs vollst„ndig abgelegt?',TRUE) THEN BEGIN
+            chr := 10;
+            REPEAT
+              IF sales_header."Language Code" <> 'ENU' THEN BEGIN
+                body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
+                        'vielen Dank fr Ihre Bestellung. Anbei finden Sie Ihre Auftragsbest„tigung.';
+                subject := 'Auftragsbest„tigung: ';
+              END ELSE BEGIN
+                body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
+                        'thank you for your order. Attached you will find your order confirmation.';
+                subject := 'Order confirmation: ';
+              END;
+
+              belege := sales_header."No." + '.pdf';
+
+              //14.11.14 ST - Rahmenauftrag hinzu, wenn im Rahmen kein Haken im Feld "keine Rahmen-AB via Email" gesetzt ist
+              sales_line.RESET;
+              sales_line.SETFILTER(Type,'%1',sales_line.Type :: Item);
+              sales_line.SETFILTER("Document No.",'%1',sales_header."No.");
+              sales_line.SETFILTER("Blanket Order No.",'<>%1','');
+              IF sales_line.FINDFIRST THEN
+                REPEAT
+                  rahmen.RESET;
+                  rahmen.SETFILTER("No.",'%1',sales_line."Blanket Order No.");
+                  rahmen.SETFILTER("Virtuelle Systeme",'%1',FALSE);
+                  IF (rahmen.FINDFIRST) AND (rahmen."Document Date" = sales_header."Document Date")
+                  AND (rahmen."keine Rahmen-AB via Email" = FALSE) THEN
+                    IF STRPOS(belege,rahmen."No." + '.pdf') = 0 THEN
+                      belege := belege + ',' + rahmen."No." + '.pdf';
+                UNTIL sales_line.NEXT = 0;
+
+              TOPAS_API.NewMail(sales_header."AB EMail-Adresse",'','',subject+
+              sales_header."External Document No.",body,AttachmentPath,belege);
+            UNTIL sales_header.NEXT = 0;
+          //END;
+        END;
+      END;
+
+
+      // Mail Job fr AB-Žnderungsbest„tigungen
+      IF Žnd_Best_PDF THEN BEGIN
+        sales_header.RESET;
+        sales_header.SETFILTER("Document Type",'%1',sales_header."Document Type"::Order);
+        sales_header.SETFILTER("Sell-to Customer No.",'<>%1','');
+        sales_header.SETFILTER("Document Date",'%1',Tagesdatum);
+        sales_header.SETFILTER("Posting Date",'<>%1',Tagesdatum);
+        sales_header.SETFILTER("Location Code",'%1|%2','ZENT','KONSI');
+        sales_header.SETFILTER("AB via EMail",'%1',TRUE);
+        sales_header.SETFILTER("No.",belegnr);
+        IF sales_header.FINDFIRST THEN BEGIN
+          //IF CONFIRM('Žnderungs-ABs: Wurden alle PDFs vollst„ndig abgelegt?',TRUE) THEN BEGIN
+            chr := 10;
+            REPEAT
+              IF sales_header."Language Code" <> 'ENU' THEN BEGIN
+                body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
+                        'anbei erhalten Sie die ge„nderte Auftragsbest„tigung.';
+                subject := 'Žnderungs-Auftragsbest„tigung: ';
+              END ELSE BEGIN
+                body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
+                        'attached you will find a change order confirmation.';
+                subject := 'Change order confirmation: ';
+              END;
+
+              belege := sales_header."No." + '.pdf';
+
+              //14.11.14 ST - Rahmenauftrag hinzu, wenn im Rahmen kein Haken im Feld "keine Rahmen-AB via Email" gesetzt ist
+              sales_line.RESET;
+              sales_line.SETFILTER(Type,'%1',sales_line.Type :: Item);
+              sales_line.SETFILTER("Document No.",'%1',sales_header."No.");
+              sales_line.SETFILTER("Blanket Order No.",'<>%1','');
+              IF sales_line.FINDFIRST THEN
+                REPEAT
+                  rahmen.RESET;
+                  rahmen.SETFILTER("No.",'%1',sales_line."Blanket Order No.");
+                  rahmen.SETFILTER("Virtuelle Systeme",'%1',FALSE);
+                  IF (rahmen.FINDFIRST) AND (rahmen."Document Date" = sales_header."Document Date")
+                  AND (rahmen."keine Rahmen-AB via Email" = FALSE) THEN
+                    IF STRPOS(belege,rahmen."No." + '.pdf') = 0 THEN
+                      belege := belege + ',' + rahmen."No." + '.pdf';
+                UNTIL sales_line.NEXT = 0;
+
+              TOPAS_API.NewMail(sales_header."AB EMail-Adresse",'','',subject+
+              sales_header."External Document No.",body,AttachmentPath,belege);
+            UNTIL sales_header.NEXT = 0;
+          //END;
+        END;
+      END;
+
+
+      // Mail-Job fr Rechnungen
+      IF Rechnung_PDF THEN BEGIN
+        inv_header.RESET;
+        inv_header.SETFILTER("Posting Date",'%1',Tagesdatum);
+        inv_header.SETFILTER("Location Code",'<>%1','MUST');
+        inv_header.SETFILTER("No.",belegnr);
+        IF inv_header.FINDFIRST THEN BEGIN
+          REPEAT
+
+            body := '';
+            email_addr := '';
+            Customer.GET(inv_header."Bill-to Customer No.");
+            IF Customer."Rech via EMail" = TRUE THEN  BEGIN
+
+              IF inv_header."Language Code" <> 'ENU' THEN BEGIN
+                body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
+                        'anbei erhalten Sie Ihre Rechnung.' + FORMAT(chr);
+                subject := 'Rechnung zu Ihrer Bestellung: ' + inv_header."External Document No.";
+              END ELSE BEGIN
+                body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
+                        'attached you will find your invoice.' + FORMAT(chr);
+                subject := 'Invoice for your order: ' + inv_header."External Document No.";
+              END;
+
+              Ship_Header.RESET;
+              Ship_Header.SETFILTER("Order No.",'%1',inv_header."Order No.");
+              Ship_Header.SETFILTER("Posting Date",'%1',Tagesdatum);
+              IF Ship_Header.FINDLAST THEN BEGIN
+                IF inv_header."Language Code" <> 'ENU' THEN
+                  body += 'Das Paket wurde mit ' + Ship_Header."Shipping Agent Code" + ': ' +
+                   Ship_Header."Package Tracking No." + ' verschickt.'
+              ELSE
+                body += 'The packet was sent via ' + Ship_Header."Shipping Agent Code" + ': ' +
+                 Ship_Header."Package Tracking No.";
+              END;
+
+              //Email-Adresse wird ausfindig gemacht, wird keine gefunden, wird dennoch eine E-Mail generiert
+              sales_header.RESET;
+              sales_header.SETFILTER("No.",'%1',inv_header."Order No.");
+              IF sales_header.FINDFIRST THEN
+                email_addr := sales_header."Rech EMail-Adresse";
+              IF email_addr = '' THEN BEGIN
+                sales_arch_header.RESET;
+                sales_arch_header.SETFILTER("No.",'%1',inv_header."Order No.");
+                IF sales_arch_header.FINDFIRST THEN
+                  email_addr := sales_arch_header."Rech EMail-Adresse";
+                IF email_addr = '' THEN
+                  email_addr := Customer."Rech EMail-Adresse";
+              END;
+
+              TOPAS_API.NewMail(email_addr,'','',subject,body,AttachmentPath,inv_header."No." + '.pdf');
+            END;
+          UNTIL inv_header.NEXT = 0;
+        END;
+      END;
+
+
+      // Mail-Job fr Bestellungen
+      IF Bestellung_PDF THEN BEGIN
+        purch_header.RESET;
+        purch_header.SETFILTER("Document Type",'%1',purch_header."Document Type"::Order);
+        purch_header.SETFILTER("Location Code",'<>%1','MUST');
+        purch_header.SETFILTER("Order Date",'%1',Tagesdatum);
+        purch_header.SETFILTER("No.",belegnr);
+        IF purch_header.FINDFIRST THEN BEGIN
+          REPEAT
+            body := '';
+            IF purch_header."Language Code" <> 'ENU' THEN BEGIN
+              body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
+                      'anbei erhalten Sie unsere Bestellung.' + FORMAT(chr);
+              subject := 'Bestellung: ';
+            END ELSE BEGIN
+              body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
+                      'attached you will find our purchase order.' + FORMAT(chr);
+              subject := 'Purchase Order: ';
+            END;
+            TOPAS_API.NewMail('','','',subject + purch_header."No.",body,AttachmentPath,purch_header."No." + '.pdf');
+          UNTIL purch_header.NEXT = 0
+        END;
+      END;
+
+
+      // Mail-Job fr Servicevertr„ge
+      wartungsnr_save[1] := '';
+      wartungsnr_save[2] := '';
+      wartungsnr_save[3] := '';
+      wartungsnr_save[4] := '';
+      wartungsnr_save[5] := '';
+      t := 1;
+      IF Servicevertr„ge_PDF = TRUE THEN BEGIN
+        Ship_Header.RESET;
+        Ship_Header.SETFILTER("Posting Date",'%1',Tagesdatum);
+        IF Ship_Header.FINDFIRST THEN
+          REPEAT
+            vertrag_gedruckt := FALSE;
+            au_wartungsnr[1] := '';
+            au_wartungsnr[2] := '';
+            au_wartungsnr[3] := '';
+            au_wartungsnr[4] := '';
+            au_wartungsnr[5] := '';
+            i := 1;
+            Customer.GET(Ship_Header."Sell-to Customer No.");
+            IF Customer."Service via EMail" = TRUE THEN BEGIN
+              Servicepositionen.RESET;
+              Servicepositionen.SETFILTER(Art,'%1',Servicepositionen.Art :: Service);
+              Servicepositionen.SETFILTER("Nr.",'%1',Ship_Header."No.");
+              Servicepositionen.SETFILTER(Inaktiv,'%1',FALSE);
+              IF Servicepositionen.FINDFIRST THEN BEGIN
+                REPEAT
+                  IF  (STRPOS(wartungsnr_save[1],Servicepositionen."Wartungsvertragsnr.") = 0)
+                  AND (STRPOS(wartungsnr_save[2],Servicepositionen."Wartungsvertragsnr.") = 0)
+                  AND (STRPOS(wartungsnr_save[3],Servicepositionen."Wartungsvertragsnr.") = 0)
+                  AND (STRPOS(wartungsnr_save[4],Servicepositionen."Wartungsvertragsnr.") = 0)
+                  AND (STRPOS(wartungsnr_save[5],Servicepositionen."Wartungsvertragsnr.") = 0) THEN
+                    vertrag_gedruckt := FALSE;
+                  IF vertrag_gedruckt = FALSE THEN BEGIN
+                    Wartungsvertrag.RESET;
+                    Wartungsvertrag.SETFILTER("Wartungsvertragsnr.",Servicepositionen."Wartungsvertragsnr.");
+                    Wartungsvertrag.SETFILTER(Status,'<>%1&<>%2',Wartungsvertrag.Status :: ACTS,
+                                              Wartungsvertrag.Status :: "Champs Partner");
+                    IF Wartungsvertrag.FINDFIRST THEN BEGIN
+                      vertrag_gedruckt := TRUE;
+                      IF STRLEN(wartungsnr_save[t] + Servicepositionen."Wartungsvertragsnr.") > 1024 THEN
+                        t += 1;
+                      wartungsnr_save[t] := wartungsnr_save[t] + Servicepositionen."Wartungsvertragsnr.";
+
+                      IF STRLEN(au_wartungsnr[i] + ',' + Wartungsvertrag."Wartungsvertragsnr."+'.pdf')  > 1024 THEN
+                        i += 1;
+                      IF au_wartungsnr[i] = '' THEN
+                        au_wartungsnr[i] := Wartungsvertrag."Wartungsvertragsnr."+'.pdf'
+                      ELSE
+                        au_wartungsnr[i] := au_wartungsnr[i] + ',' + Wartungsvertrag."Wartungsvertragsnr."+'.pdf';
+                    END;
+                  END;
+                UNTIL Servicepositionen.NEXT = 0;
+
+                FOR k := 1 TO i DO BEGIN
+                  IF au_wartungsnr[k] <> '' THEN BEGIN
+                    body := '';
+                    IF Ship_Header."Language Code" <> 'ENU' THEN BEGIN
+                      IF STRPOS(au_wartungsnr[k],',') = 0 THEN
+                        body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
+                              'anbei erhalten Sie Ihren Servicevertrag.' + FORMAT(chr)
+                      ELSE
+                        body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
+                              'anbei erhalten Sie Ihre Servicevertr„ge.' + FORMAT(chr);
+                      subject := 'Ihre Referenz: ';
+                    END ELSE BEGIN
+                      IF STRPOS(au_wartungsnr[k],',') = 0 THEN
+                        body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
+                                'attached you will find your service contract.' + FORMAT(chr)
+                      ELSE
+                        body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
+                                'attached you will find your service contracts.' + FORMAT(chr);
+                      subject := 'Your reference: ';
+                    END;
+                    TOPAS_API.NewMail(Ship_Header."Service EMail-Adresse",'','',subject+
+                    Ship_Header."External Document No.",body,AttachmentPath,au_wartungsnr[k]);
+                  END;
+                END;
+              END;
+            END;
+          UNTIL Ship_Header.NEXT = 0;
+      END;
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
