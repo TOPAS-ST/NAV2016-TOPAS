@@ -1,0 +1,2178 @@
+OBJECT Codeunit 50001 TOPAS API
+{
+  OBJECT-PROPERTIES
+  {
+    Date=07.08.17;
+    Time=18:00:54;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    OnRun=BEGIN
+          END;
+
+  }
+  CODE
+  {
+    VAR
+      Text003@1000000002 : TextConst 'DEU=Textdateien (*.txt)|*.txt|Alle Dateien (*.*)|*.*;ENU=Text Files (*.txt)|*.txt|All Files (*.*)|*.*';
+      Text004@1000000001 : TextConst 'DEU=Microsoft Excel-Dateien (*.xl*)|*.xl*|Alle Dateien (*.*)|*.*;ENU=Microsoft Excel Files (*.xl*)|*.xl*|All Files (*.*)|*.*';
+      Text005@1000000000 : TextConst 'DEU=Word-Dokumente (*.doc)|*.doc|Alle Dateien (*.*)|*.*;ENU=Word Documents (*.doc)|*.doc|All Files (*.*)|*.*';
+      Text100@1140000 : TextConst 'DEU=M”chten Sie den Teilnehmer %1 jetzt anrufen?!';
+      DefaultPrinter@1140003 : Text[200];
+      Window@1140002 : Dialog;
+      WindowIsOpen@1140001 : Boolean;
+      Text101@1140007 : TextConst 'DEU=Der Ordner %1 existiert nicht. Stellen Sie bitte auch sicher, dass das Ziellaufwerk verfgbar ist.';
+      Text102@1140008 : TextConst 'DEU=Telefonie Applikation NavigateUC PhoneHelper.exe konnte nicht gefunden werden!';
+      Text200@1000000005 : TextConst 'DEU=Fehler in der Syntax der Quelldatei.\Spalte: %1';
+      "Link_Field1+Field3"@1140010 : TextConst 'DEU="navision://client/run?servername=w2k3-sql2005-na%26database=DynamicsNav%26company=TOPAS%26target=Form%20%1%26view=SORTING(Field1,Field3)%26position=Field1=0(%2),Field3=0(%3)%26servertype=MSSQL"';
+      Link_Field1@1140013 : TextConst 'DEU="navision://client/run?servername=w2k3-sql2005-na%26database=DynamicsNav%26company=TOPAS%26target=Form%20%1%26view=SORTING(Field1)%26position=Field1=0(%2)%26servertype=MSSQL"';
+      Link_Field3@1140009 : TextConst 'DEU="navision://client/run?servername=w2k3-sql2005-na%26database=DynamicsNav%26company=TOPAS%26target=Form%20%1%26view=SORTING(Field3)%26position=Field3=0(%2)%26servertype=MSSQL"';
+      Link_Field7@1140011 : TextConst 'DEU="navision://client/run?servername=w2k3-sql2005-na%26database=DynamicsNav%26company=TOPAS%26target=Form%20%1%26view=SORTING(Field1,Field2,Field4)%20WHERE(Field7=1(%2))%26servertype=MSSQL"';
+      wshFile@1000000004 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{0D43FE01-F093-11CF-8940-00A0C9054228}:'Windows Script Host Object Model'.FileSystemObject";
+      wshFileText@1000000003 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{0BB02EC0-EF49-11CF-8940-00A0C9054228}:'Windows Script Host Object Model'.TextStream";
+      Spalte_Artikelnr_Prot@1000000006 : TextConst 'DEU=A';
+      Spalte_Fehler_Prot@1000000007 : TextConst 'DEU=D';
+
+    PROCEDURE OpenMail@1140001(MessageID@1140000 : Text[60]);
+    VAR
+      testScr@1140008 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{761C9540-BAFD-11CE-B6F9-00608C84E1C4}:'GroupWare type library'.Application";
+      Scr@1140006 : Automation "{0E59F1D2-1FBE-11D0-8FF2-00A0D10038BC} 1.0:{0E59F1D5-1FBE-11D0-8FF2-00A0D10038BC}:'Microsoft Script Control 1.0'.ScriptControl";
+      txtExecQuery@1140007 : Text[250];
+      gw@1140005 : Automation "{025B5FE0-7049-11CF-A6B0-00608C85AA11} 1.0:{514D4088-5AED-11CF-A6B0-00608C85AA11}:'Groupwise Client Library'.GWCommander";
+      staticEnvID@1140004 : Text[60];
+      getString@1140003 : Text[120];
+      sResult@1140002 : Text[120];
+      run@1140001 : Boolean;
+    BEGIN
+      //”ffnet eine Mail anhand der MessageID
+      IF ISCLEAR(gw) THEN
+        CREATE(gw, FALSE, TRUE);
+
+      staticEnvID := MessageID;
+      getString := 'ItemOpen("' + staticEnvID + '")';
+      run := gw.Execute(getString,sResult);
+      IF sResult <> '' THEN MESSAGE('Unable to open message in GroupWise...%1',sResult);
+      run := gw.Execute('FocusSet(10)',sResult);
+
+      IF NOT ISCLEAR(gw) THEN
+        CLEAR(gw);
+    END;
+
+    PROCEDURE NewMail@1140002(to_addr@1140001 : Text;cc_addr@1140002 : Text;bk_addr@1140010 : Text;subject@1140000 : Text;body@1140011 : Text;AttachmentPath@1140012 : Text;AttachmentFile@1140015 : Text);
+    VAR
+      gw@1140005 : Automation "{025B5FE0-7049-11CF-A6B0-00608C85AA11} 1.0:{514D4088-5AED-11CF-A6B0-00608C85AA11}:'Groupwise Client Library'.GWCommander";
+      objMessage@1140007 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{C89C2F61-04AF-11CF-B049-00805F88E602}:'GroupWare type library'.Message";
+      getString@1140004 : Text;
+      sResult@1140003 : Text;
+      ParamStr@1140009 : Text;
+      Fontname@1140008 : Text;
+      temp_attachmentFile@1140016 : Text;
+      send_attachmentFile@1140017 : Text;
+      run@1140006 : Boolean;
+      chr@1140013 : Char;
+      i@1140014 : Integer;
+    BEGIN
+      //Generiert eine neue Mail
+      IF ISCLEAR(gw) THEN
+        CREATE(gw, FALSE, TRUE);
+
+      getString := 'NewMail()';
+      chr := 10;
+      run := gw.Execute(getString,sResult);
+      //run := gw.Execute('SwitchToHTMLView()',sResult);
+      IF sResult <> '' THEN MESSAGE('Unable to open a new message in GroupWise...%1',sResult);
+      run := gw.Execute('ItemSetText("X00";0;"'+to_addr+'")',sResult);
+      run := gw.Execute('ItemSetText("X00";2;"'+cc_addr+'")',sResult);
+      run := gw.Execute('ItemSetText("X00";3;"'+bk_addr+'")',sResult);
+      run := gw.Execute('ItemSetText("X00";9;"'+subject+'")',sResult);
+
+      run := gw.Execute('ItemSetText("X00";10;"'+body+'")',sResult);
+      IF AttachmentFile <> '' THEN
+        BEGIN
+          temp_attachmentFile := AttachmentFile;
+          FOR i:= 1 TO STRLEN(DELCHR(AttachmentFile,'=',DELCHR(AttachmentFile,'=',',')))+1 DO
+            BEGIN
+              IF STRPOS(temp_attachmentFile,',') <> 0 THEN
+                send_attachmentFile := DELCHR(COPYSTR(temp_attachmentFile,1,STRPOS(temp_attachmentFile,',')),'=',',')
+              ELSE
+                send_attachmentFile := COPYSTR(temp_attachmentFile,1);
+              run := gw.Execute('AttachmentAdd("' + AttachmentPath + send_attachmentFile + '")',sResult);
+              temp_attachmentFile := COPYSTR(temp_attachmentFile,STRPOS(temp_attachmentFile,',')+1);
+            END;
+        END;
+      //  Set the focus to the body text field
+      run := gw.Execute('FocusSet(10)', sResult);
+      // Select all the text in the body text field
+      run := gw.Execute('PosTextTop()', sResult);
+      run := gw.Execute('SelectToEndText()', sResult);
+      //   change the font size
+      Fontname := 'Segoe UI';
+      run := gw.Execute('FontSet("' + Fontname + '";-16;400)', sResult);
+      run := gw.Execute('FontBold(0)',sResult);
+      //run := gw.Execute('FontSize(0)',sResult);
+      run := gw.Execute('PosToEndOfText()', sResult);
+
+      SLEEP(500);
+
+      IF NOT ISCLEAR(gw) THEN
+        CLEAR(gw);
+    END;
+
+    PROCEDURE NewMailAddMoreBody@1140006(to_addr@1140001 : Text;cc_addr@1140002 : Text;bk_addr@1140010 : Text;subject@1140000 : Text;body@1140011 : Text;AttachmentPath@1140012 : Text;AttachmentFile@1140015 : Text;new@1140014 : Boolean;close@1140016 : Boolean);
+    VAR
+      gw@1140017 : Automation "{025B5FE0-7049-11CF-A6B0-00608C85AA11} 1.0:{514D4088-5AED-11CF-A6B0-00608C85AA11}:'Groupwise Client Library'.GWCommander";
+      objMessage@1140007 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{C89C2F61-04AF-11CF-B049-00805F88E602}:'GroupWare type library'.Message";
+      getString@1140004 : Text;
+      sResult@1140003 : Text;
+      ParamStr@1140009 : Text;
+      Fontname@1140008 : Text;
+      run@1140006 : Boolean;
+      chr@1140013 : Char;
+      bodynew@1140005 : Text;
+    BEGIN
+      //Generiert eine neue Mail
+      IF ISCLEAR(gw) THEN
+        CREATE(gw, FALSE, TRUE);
+
+      IF new THEN
+        BEGIN
+
+          getString := 'NewMail()';
+          chr := 10;
+          run := gw.Execute(getString,sResult);
+          IF sResult <> '' THEN MESSAGE('Unable to open a new message in GroupWise...%1',sResult);
+          run := gw.Execute('ItemSetText("X00";0;"'+to_addr+'")',sResult);
+          run := gw.Execute('ItemSetText("X00";2;"'+cc_addr+'")',sResult);
+          run := gw.Execute('ItemSetText("X00";3;"'+bk_addr+'")',sResult);
+          run := gw.Execute('ItemSetText("X00";9;"'+subject+'")',sResult);
+
+          run := gw.Execute('ItemSetText("X00";10;"'+body+'";1)',sResult);
+          IF AttachmentFile <> '' THEN
+            run := gw.Execute('AttachmentAdd("' + AttachmentPath + AttachmentFile + '")',sResult);
+          //  Set the focus to the body text field
+          run := gw.Execute('FocusSet(10)', sResult);
+          // Select all the text in the body text field
+          run := gw.Execute('PosTextTop()', sResult);
+          run := gw.Execute('SelectToEndText()', sResult);
+          //   change the font size
+          Fontname := 'Segoe UI';
+          run := gw.Execute('FontSet("' + Fontname + '";-14;400)', sResult);
+          run := gw.Execute('FontBold(0)',sResult);
+          run := gw.Execute('PosTextTop()', sResult);
+        END
+      ELSE
+        BEGIN
+          run := gw.Execute('ItemSetText("X00";10;"'+body+'";1)',sResult);
+          run := gw.Execute('PosToEndOfText()', sResult);
+
+          //  Set the focus to the body text field
+          run := gw.Execute('FocusSet(10)', sResult);
+          // Select all the text in the body text field
+          run := gw.Execute('PosTextTop()', sResult);
+          run := gw.Execute('SelectToEndText()', sResult);
+          //   change the font size
+          Fontname := 'Segoe UI';
+          run := gw.Execute('FontSet("' + Fontname + '";-14;400)', sResult);
+          run := gw.Execute('FontBold(0)',sResult);
+          run := gw.Execute('PosToEndOfText()', sResult);
+
+        END;
+
+      SLEEP(500);
+
+      //IF close THEN
+      IF NOT ISCLEAR(gw) THEN
+        CLEAR(gw);
+    END;
+
+    PROCEDURE NewGWCalEntryWithWSHScript@1140014(gwAccID@1140008 : Text[30];password@1140002 : Text[30];Entry@1140012 : Code[10];DateFrom@1140009 : Date;DateTo@1140010 : Date;Text@1140011 : Text[1024];Tage@1140004 : Integer);
+    VAR
+      WSHScript@1140000 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{72C24DD5-D70A-438B-8A42-98424B88AFB8}:'Windows Script Host Object Model'.WshShell";
+      Files@1140005 : File;
+      filename@1140006 : Text[1024];
+      shellname@1140007 : Text[1024];
+      new_dateFrom@1140001 : Date;
+      calender@1140003 : Text[60];
+      i@1140013 : Integer;
+    BEGIN
+      MESSAGE('Noch in Entwicklung fr NAV 2016. Bitte wenden Sie sich an Ihren Systemadministrator.');
+
+      //GroupWise Version Beginn
+      {
+      IF (gwAccID = '') OR (Entry = '') OR (DateFrom = 0D) THEN
+        ERROR('Kalender Eintrag wird abgebrochen, da ein šbergabewert leer ist.');
+
+      // <> also ungleich geht nicht, da z.B. auch 0,5 Tage gebucht werden mssen
+      IF Tage > CalcWorkdays(DateFrom,DateTo) THEN
+        ERROR('Die Anzahl der Urlaubstage stimmt nicht mit dem Zeitraum berein!');
+
+      IF ISCLEAR(WSHScript) THEN
+        CREATE(WSHScript, FALSE, TRUE);
+
+      Files.TEXTMODE := TRUE;
+      filename := 'R:\Scripte\GroupWise\GWCalEntry.vbs';
+
+      Files.CREATE(filename);
+
+      Files.WRITE('Set gwSession = CreateObject("NovellGroupWareSession")');
+      Files.WRITE('Set gwAccount = gwSession.multilogin("'+gwAccID+'","","'+password+'",1)');
+
+      IF gwAccID = 'Urlaub' THEN
+        //calender := 'urlaub Kalender'
+        calender := ''
+      ELSE
+        calender := '';
+
+      FOR i:=0 TO (DateTo-DateFrom) DO
+        BEGIN
+          new_dateFrom := CALCDATE(FORMAT(i)+'T',DateFrom);
+          IF (DATE2DWY(new_dateFrom,1) <> 6) AND (DATE2DWY(new_dateFrom,1) <> 7) THEN
+            BEGIN
+              //Files.WRITE('Set gwAppt = gwAccount.Calendar.Messages.Add("GW.MESSAGE.APPOINTMENT",3)'); //Als Entwurf
+              Files.WRITE('Set gwAppt = gwAccount.workfolder.Messages.Add("GW.MESSAGE.APPOINTMENT")');   //Als Message
+              Files.WRITE('gwAppt.Subject = "'+ Entry + '"');
+              Files.WRITE('gwappt.StartDate = "' + FORMAT(new_dateFrom) + ' 00:00"');
+              //Files.WRITE('gwappt.BodyText = ""');
+              Files.WRITE('gwAppt.OnCalendar = "TRUE"');
+              Files.WRITE('gwAppt.Place = "'+calender+'"');
+              Files.WRITE('gwAppt.Recipients.AddByDisplayName(gwAccount.Owner.DisplayName)');
+              Files.WRITE('gwAppt.Send');
+              //Files.Write('Set gwAppt = nothing');
+            END;
+        END;
+
+      Files.CLOSE;
+
+      WSHScript.Exec('C:\WINDOWS\system32\wscript.exe ' + filename);
+      }
+      //GroupWise Version Ende
+
+      //CDO Version Beginn
+      {
+      IF (gwAccID = '') OR (Entry = '') OR (DateFrom = 0D) THEN
+        ERROR('Kalender Eintrag wird abgebrochen, da ein šbergabewert leer ist.');
+
+      // <> also ungleich geht nicht, da z.B. auch 0,5 Tage gebucht werden mssen
+      IF Tage > CalcWorkdays(DateFrom,DateTo) THEN
+        ERROR('Die Anzahl der Urlaubstage stimmt nicht mit dem Zeitraum berein!');
+
+      IF ISCLEAR(WSHScript) THEN
+        CREATE(WSHScript, FALSE, TRUE);
+
+      filename := 'R:\Scripte\GroupWise\GWCalEntry.vbs';
+
+      CREATE(wshFile,FALSE,TRUE);
+      wshFileText := wshFile.CreateTextFile(filename);
+
+      IF gwAccID = 'Urlaub' THEN
+        //calender := 'urlaub Kalender'
+        calender := ''
+      ELSE
+        calender := '';
+
+      FOR i := 0 TO (DateTo-DateFrom) DO
+        BEGIN
+          new_dateFrom := CALCDATE(FORMAT(i)+'T',DateFrom);
+          IF (DATE2DWY(new_dateFrom,1) <> 6) AND (DATE2DWY(new_dateFrom,1) <> 7) THEN
+            BEGIN
+              wshFileText.WriteLine('Set objAppt = CreateObject("CDO.Message")');
+              wshFileText.WriteLine('objAppt.Subject = "'+ Entry + '"');
+              //wshFileText.WriteLine('objAppt.StartTime = "' + FORMAT(new_dateFrom) + ' 00:00:00"');
+              //wshFileText.WriteLine('objAppt.EndTime = "' + FORMAT(new_dateFrom) + ' 00:00:00"');
+
+              wshFileText.WriteLine('objAppt.TextBody = "' +
+              'BEGIN:VCALENDAR' +
+              'SUMMARY: ST'+
+              'VERSION:2.0' +
+              'PRODID:-//Novell Inc//Groupwise 12.0.4' +
+              'METHOD:PUBLISH' +
+              'X-WR-CALNAME:Kalender' +
+              'BEGIN:VEVENT' +
+              'X-MICROSOFT-CDO-INTENDEDSTATUS:FREE' +
+              'X-GWITEM-TYPE:APPOINTMENT' +
+              'TRANSP:OPAQUE'+
+              'X-GWALLDAYEVENT:TRUE' +
+              'DESCRIPTION:\n' +
+              'DTSTART;VALUE=DATE:20170503' +
+              'DTEND;VALUE=DATE:20170503' +
+              'PRIORITY:5' +
+              'X-GWTASK-PRIORITY:5' +
+              'CLASS:PUBLIC' +
+              'X-GWCLASS:NORMAL' +
+              'END:VEVENT' +
+              'END:VCALENDAR"');
+              //wshFileText.WriteLine('objAppt.OnCalendar = "TRUE"');
+              //wshFileText.WriteLine('objAppt.DataSource.SaveToContainer = "'+calender+'"');
+
+              wshFileText.WriteLine('objAppt.From = "Administrativ@topas.de"');
+              wshFileText.WriteLine('objAppt.To = "' + gwAccID + '@topas.de"');
+              //wshFileText.WriteLine('objAppt.AddAttachment "' + 'R:\Scripte\GroupWise\cal.ics' + '"');
+
+              wshFileText.WriteLine('objAppt.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/sendusing") = 2');
+              wshFileText.WriteLine('objAppt.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/smtpserver") = "oes-gw"');
+              wshFileText.WriteLine('objAppt.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/smtpserverport") = 25');
+              wshFileText.WriteLine('objAppt.Configuration.Fields.Update');
+              wshFileText.WriteLine('objAppt.Send');
+            END;
+        END;
+
+      wshFileText.Close;
+      CLEAR(wshFileText);
+
+      WSHScript.Exec('C:\WINDOWS\system32\wscript.exe ' + filename);
+      }
+      //CDO Version Ende
+    END;
+
+    PROCEDURE NewHolidayApptointment@1000000045(from_addr@1000000003 : Text;to_addr@1140001 : Text;cc_addr@1140002 : Text;bk_addr@1140010 : Text;subject@1140000 : Text[250];body@1140011 : Text[1024];datefrom@1000000000 : Date;dateto@1000000001 : Date;days@1000000002 : Integer;AttachmentPath@1140012 : Text[250];AttachmentFile@1140015 : Text[120]);
+    VAR
+      gw@1140005 : Automation "{025B5FE0-7049-11CF-A6B0-00608C85AA11} 1.0:{514D4088-5AED-11CF-A6B0-00608C85AA11}:'Groupwise Client Library'.GWCommander";
+      objMessage@1140007 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{C89C2F61-04AF-11CF-B049-00805F88E602}:'GroupWare type library'.Message";
+      getString@1140004 : Text[120];
+      sResult@1140003 : Text[120];
+      ParamStr@1140009 : Text[50];
+      Fontname@1140008 : Text[30];
+      temp_attachmentFile@1140016 : Text[120];
+      send_attachmentFile@1140017 : Text[120];
+      run@1140006 : Boolean;
+      chr@1140013 : Char;
+      i@1140014 : Integer;
+    BEGIN
+      //Generiert einen neuen Termin
+
+      IF (to_addr = '') OR (subject = '') OR (datefrom = 0D) THEN
+        ERROR('Kalender Eintrag wird abgebrochen, da ein šbergabewert leer ist.');
+
+      // <> also ungleich geht nicht, da z.B. auch 0,5 Tage gebucht werden mssen
+      IF days > CalcWorkdays(datefrom,dateto) THEN
+        ERROR('Die Anzahl der Urlaubstage stimmt nicht mit dem Zeitraum berein!');
+
+      IF ISCLEAR(gw) THEN
+        CREATE(gw, FALSE, TRUE);
+
+      getString := 'NewAppointment()';
+      chr := 10;
+      run := gw.Execute(getString,sResult);
+      //run := gw.Execute('SwitchToHTMLView()',sResult);
+      IF sResult <> '' THEN MESSAGE('Unable to open a new message in GroupWise...%1',sResult);
+      //run := gw.Execute('ItemSetText("X00";1;"' + from_addr + '")',sResult);
+      run := gw.Execute('ItemSetText("X00";0;"' + to_addr + '")',sResult);
+      run := gw.Execute('ItemSetText("X00";2;"' + cc_addr + '")',sResult);
+      run := gw.Execute('ItemSetText("X00";3;"' + bk_addr + '")',sResult);
+      run := gw.Execute('ItemSetText("X00";9;"' + subject + '")',sResult);
+      run := gw.Execute('Proxy("' + from_addr + '")',sResult);
+      run := gw.Execute('TextSetFrom("' + from_addr + '";False)',sResult);
+      //run := gw.Execute('ItemSetAllDayEvent(1)',sResult); //ganzt„giges Ereignis
+      //run := gw.Execute('ItemSetDate("X00";6;10;2017;00;00;6;10;2017;00;00)',sResult); //Example for Start- and Endtime
+      run := gw.Execute('ItemSetDate("X00";' + FORMAT(DATE2DMY(datefrom,1)) + ';' + FORMAT(DATE2DMY(datefrom,2)) + ';' + FORMAT(DATE2DMY(datefrom,3)) + ';00;00;' +
+                        FORMAT(DATE2DMY(dateto,1)) + ';' + FORMAT(DATE2DMY(dateto,2)) + ';' + FORMAT(DATE2DMY(dateto,3)) + ';00;00)', sResult);
+      //run := gw.Execute('TimeSetStartTimeMode()',sResult); //zeigt den Startzeit Dialog an
+      run := gw.Execute('ItemSetText("X00";10;"' + body + '")',sResult);
+
+      IF AttachmentFile <> '' THEN BEGIN
+        temp_attachmentFile := AttachmentFile;
+        FOR i := 1 TO STRLEN(DELCHR(AttachmentFile,'=',DELCHR(AttachmentFile,'=',','))) + 1 DO BEGIN
+          IF STRPOS(temp_attachmentFile,',') <> 0 THEN
+            send_attachmentFile := DELCHR(COPYSTR(temp_attachmentFile,1,STRPOS(temp_attachmentFile,',')),'=',',')
+          ELSE
+            send_attachmentFile := COPYSTR(temp_attachmentFile,1);
+          run := gw.Execute('AttachmentAdd("' + AttachmentPath + send_attachmentFile + '")',sResult);
+          temp_attachmentFile := COPYSTR(temp_attachmentFile,STRPOS(temp_attachmentFile,',')+1);
+        END;
+      END;
+      //  Set the focus to the body text field
+      run := gw.Execute('FocusSet(10)', sResult);
+      // Select all the text in the body text field
+      run := gw.Execute('PosTextTop()', sResult);
+      run := gw.Execute('SelectToEndText()', sResult);
+      //   change the font size
+      Fontname := 'Segoe UI';
+      run := gw.Execute('FontSet("' + Fontname + '";-16;400)', sResult);
+      run := gw.Execute('FontBold(0)',sResult);
+      //run := gw.Execute('FontSize(0)',sResult);
+      run := gw.Execute('PosToEndOfText()', sResult);
+
+      SLEEP(500);
+
+      IF NOT ISCLEAR(gw) THEN
+        CLEAR(gw);
+    END;
+
+    PROCEDURE CalcDays@1140027(StartDate@1140001 : Date;EndDate@1140002 : Date) : Integer;
+    VAR
+      days@1140000 : Integer;
+      v_startdate@1140003 : Date;
+    BEGIN
+      IF (StartDate = 0D) OR (EndDate = 0D) OR (StartDate >= EndDate) THEN
+        EXIT(0);
+
+      EXIT(EndDate - StartDate);
+    END;
+
+    PROCEDURE CalcWorkdays@1140018(StartDate@1140001 : Date;EndDate@1140002 : Date) : Integer;
+    VAR
+      werktage@1140000 : Integer;
+      v_startdate@1140003 : Date;
+    BEGIN
+      v_startdate := StartDate;
+      REPEAT
+        CASE DATE2DWY(v_startdate,1) OF
+          0..5 : werktage += 1;
+        END;
+        v_startdate := CALCDATE('+1T',v_startdate);
+      UNTIL v_startdate > EndDate;
+
+      EXIT(werktage);
+    END;
+
+    PROCEDURE CalcNextWorkday@1140024(Step@1140003 : Integer;StartDate@1140001 : Date) : Date;
+    VAR
+      DateRec@1140002 : Record 2000000007;
+      workdate@1140000 : Date;
+    BEGIN
+      WITH DateRec DO BEGIN
+        SETRANGE("Period Type","Period Type" :: Date);
+        SETRANGE("Period No.",1,5);
+        "Period Start" := StartDate;
+        FIND('=<');
+        NEXT(Step);
+        EXIT("Period Start");
+      END;
+    END;
+
+    PROCEDURE SearchMailsAndOpen@1140000(gwAccID@1140012 : Text[30];password@1140011 : Text[30];search@1140003 : Text[80]) : Boolean;
+    VAR
+      gwApplication@1140002 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{761C954A-BAFD-11CE-B6F9-00608C84E1C4}:'GroupWare type library'.Application2";
+      gwAccount@1140001 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{A293EB42-9C30-11CF-8C91-00805F6C4BEF}:'GroupWare type library'.Account";
+      gwmessages@1140000 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{C89C2F63-04AF-11CF-B049-00805F88E602}:'GroupWare type library'.MessageList";
+      themessage@1140006 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{C89C2F61-04AF-11CF-B049-00805F88E602}:'GroupWare type library'.Message";
+      messagelist@1140010 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{C89C2F63-04AF-11CF-B049-00805F88E602}:'GroupWare type library'.MessageList";
+      gwFolder@1140004 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{C89C2D5D-04AF-11CF-B049-00805F88E602}:'GroupWare type library'.Folder2";
+      searchstring@1140005 : Text[250];
+      subject_array@1140008 : ARRAY [10] OF Text[250];
+      personalpswd@1140009 : Text[30];
+      i@1140007 : Integer;
+    BEGIN
+      IF ISCLEAR(gwApplication) THEN
+        CREATE(gwApplication, FALSE, TRUE);
+
+      gwAccount := gwApplication.Login('','','',1);
+      //gwAccount := gwApplication.MultiLogin(gwAccID,'',password,1);
+
+      gwFolder:=gwAccount.MailBox;
+      searchstring := '(Subject contains "'+search+'")';
+
+      //gwmessages:=gwFolder.FindMessages(searchstring);
+      //Findet alle Message Typen und sucht auch mit mehreren String, funktioniert wie die normale GroupWise Suche
+      gwmessages := gwAccount.AllMessages.Find(searchstring);
+      IF gwmessages.Count > 0 THEN
+        BEGIN
+          IF gwmessages.Count = 1 THEN
+            BEGIN
+              themessage := gwmessages.Item(1);
+              OpenMail(themessage.MessageID);
+            END;
+          IF gwmessages.Count >= 2 THEN
+            BEGIN
+              IF CONFIRM('Die Suche ergab mehr als 2 Treffer (%1). Sollen die ersten beiden Treffern angezeigt werden?',
+              TRUE,gwmessages.Count) THEN
+                BEGIN
+                  FOR i := 1 TO 2 DO BEGIN
+                    themessage := gwmessages.Item(i);
+                    OpenMail(themessage.MessageID);
+                  END;
+                END;
+            END;
+        END
+      ELSE
+        MESSAGE('Es konnten keine Mails zu dieser Suchanfrage gefunden werden.');
+
+      IF NOT ISCLEAR(gwApplication) THEN
+        CLEAR(gwApplication);
+    END;
+
+    PROCEDURE SearchMailsAndCount@1140017(gwAccID@1140012 : Text[30];password@1140011 : Text[30];search@1140003 : Text[80];body@1140015 : Text[250]) : Boolean;
+    VAR
+      gwApplication@1140002 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{761C954A-BAFD-11CE-B6F9-00608C84E1C4}:'GroupWare type library'.Application2";
+      gwAccount@1140001 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{B918D5F9-84F8-4BD2-8A9A-232758CE6B8C}:'GroupWare type library'.Account9";
+      gwMessages@1140000 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{C89C2F63-04AF-11CF-B049-00805F88E602}:'GroupWare type library'.MessageList";
+      gwFolder@1140004 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{C89C2D5D-04AF-11CF-B049-00805F88E602}:'GroupWare type library'.Folder2";
+      searchstring@1140005 : Text[250];
+      mail_counter_mailbox@1140008 : Integer;
+      mail_counter_unsub@1140009 : Integer;
+      mail_counter_unread@1140010 : Integer;
+      mail_counter_all@1140006 : Integer;
+      mailbox_size@1140013 : Text[30];
+      i@1140007 : Integer;
+      WSHScript@1140019 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{72C24DD5-D70A-438B-8A42-98424B88AFB8}:'Windows Script Host Object Model'.WshShell";
+      Files@1140018 : File;
+      filename@1140017 : Text[1024];
+      shellname@1140016 : Text[1024];
+      calender@1140014 : Text[60];
+    BEGIN
+      IF ISCLEAR(gwApplication) THEN
+        CREATE(gwApplication, FALSE, TRUE);
+
+      //gwAccount := gwApplication.Login('','','',1);
+      gwAccount := gwApplication.MultiLogin(gwAccID,'',password,1);
+
+      gwFolder:=gwAccount.MailBox;
+      mailbox_size := gwAccount.AccountProperty(6);
+      //searchstring := '(BOX_TYPE = INCOMING) AND (Subject contains "'+search+'")';
+      searchstring := '(BOX_TYPE = INCOMING) AND (Subject contains "'+search+'")';
+
+      //gwmessages:=gwFolder.FindMessages(searchstring);
+      //Findet alle Message Typen und sucht auch mit mehreren String, funktioniert wie die normale GroupWise Suche
+      gwMessages := gwAccount.MailBox.FindMessages(searchstring);
+      mail_counter_unsub := gwMessages.Count;
+
+      searchstring := '(BOX_TYPE = INCOMING) AND (NOT READ)';
+      gwMessages := gwAccount.MailBox.FindMessages(searchstring);
+      mail_counter_unread := gwMessages.Count;
+
+      searchstring := '(BOX_TYPE = INCOMING)';
+      gwMessages := gwAccount.MailBox.FindMessages(searchstring);
+      mail_counter_mailbox := gwMessages.Count;
+
+      searchstring := '';
+      gwMessages := gwAccount.AllMessages.Find('(MAIL AND BOX_TYPE = INCOMING)');
+      mail_counter_all := gwMessages.Count;
+
+      //MESSAGE('Anzahl Suchstring %1: %2'+'\'+'Anzahl ungelesen: %3',search,message_counter_unsub,message_counter_unread);
+
+
+      //GroupWise Version Beginn
+      {
+      IF NOT ISCLEAR(gwApplication) THEN
+        CLEAR(gwApplication);
+
+      IF ISCLEAR(WSHScript) THEN
+        CREATE(WSHScript, FALSE, TRUE);
+
+      Files.TEXTMODE := TRUE;
+      filename := 'R:\Scripte\GroupWise\GWStastic.vbs';
+
+      Files.CREATE(filename);
+
+      Files.WRITE('Set gwSession = CreateObject("NovellGroupWareSession")');
+      Files.WRITE('Set gwAccount = gwSession.multilogin("'+gwAccID+'","","'+password+'",1)');
+
+      Files.WRITE('Set gwAppt = gwAccount.workfolder.Messages.Add("GW.MESSAGE.MAIL")');   //Als Message
+
+      Files.WRITE('gwAppt.Subject = "GroupWise Account Statistik: ' +FORMAT(gwAccID) + '"');
+      Files.WRITE('gwappt.BodyText = "'+
+                  'Mailbox Statistik fuer: ' + gwAccID + '" & chr(10) & chr(10) & "'+
+                  'Anzahl Mailbox: ' + FORMAT(mail_counter_mailbox) +  '" & chr(10) & "' +
+                  'Anzahl unsubscribe: ' + FORMAT(mail_counter_unsub) +  '" & chr(10) & "' +
+                  'Anazhl ungelesen: ' + FORMAT(mail_counter_unread) + '" & chr(10) & chr(10) & "'+
+                  'Anzahl empfangene Mails: ' + FORMAT(mail_counter_all) + '" & chr(10) & "' +
+                  'Mailbox Groesse: ' + mailbox_size + ' MB" & chr(10) & chr(10) & "'+
+                  '' + body + '"');
+      Files.WRITE('gwAppt.Recipients.Add("Administrativ@topas.de")');
+      //Files.WRITE('gwAppt.Attachments.Add("hier Pfad zur Datei + Dateinamen")');
+      Files.WRITE('gwAppt.Send');
+
+      Files.CLOSE;
+
+      WSHScript.Exec('C:\WINDOWS\system32\wscript.exe ' + filename);
+
+      SLEEP(500)
+      }
+      //GroupWise Version Ende
+
+      //CDO Version Beginn
+      IF ISCLEAR(WSHScript) THEN
+        CREATE(WSHScript, FALSE, TRUE);
+
+      filename := 'R:\Scripte\GroupWise\GWStastic.vbs';
+
+      CREATE(wshFile,FALSE,TRUE);
+      wshFileText := wshFile.CreateTextFile(filename);
+
+      wshFileText.WriteLine('Set objMessage = CreateObject("CDO.Message")');
+
+      wshFileText.WriteLine('objMessage.Subject = "GroupWise Account Statistik: ' + FORMAT(gwAccID) + '"');
+      wshFileText.WriteLine('objMessage.TextBody = '+
+                            'Mailbox Statistik fuer: ' + gwAccID + '" & chr(10) & chr(10) & "'+
+                            'Anzahl Mailbox: ' + FORMAT(mail_counter_mailbox) +  '" & chr(10) & "' +
+                            'Anzahl unsubscribe: ' + FORMAT(mail_counter_unsub) +  '" & chr(10) & "' +
+                            'Anazhl ungelesen: ' + FORMAT(mail_counter_unread) + '" & chr(10) & chr(10) & "'+
+                            'Anzahl empfangene Mails: ' + FORMAT(mail_counter_all) + '" & chr(10) & "' +
+                            'Mailbox Groesse: ' + mailbox_size + ' MB" & chr(10) & chr(10) & "'+
+                            '' + body + '"');
+      wshFileText.WriteLine('objMessage.From = "Administrativ@topas.de"');
+      wshFileText.WriteLine('objMessage.To = "Administrativ@topas.de"');
+      wshFileText.WriteLine('objMessage.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/sendusing") = 2');
+      wshFileText.WriteLine('objMessage.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/smtpserver") = "oes-gw"');
+      wshFileText.WriteLine('objMessage.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/smtpserverport") = 25');
+      wshFileText.WriteLine('objMessage.Configuration.Fields.Update');
+      wshFileText.WriteLine('objMessage.Send');
+
+      wshFileText.Close;
+      CLEAR(wshFileText);
+
+      WSHScript.Exec('C:\WINDOWS\system32\wscript.exe ' + filename);
+
+      SLEEP(500);
+
+      //CDO Version Ende
+    END;
+
+    PROCEDURE SendMailWithFile@1140012(gwAccID@1140012 : Text[30];password@1140011 : Text[30];to_addr@1140015 : Text;search@1140003 : Text[80];filter1@1140013 : Text[80];AttPath@1140023 : Text[250];expired@1140024 : Boolean) : Boolean;
+    VAR
+      WSHScript@1140019 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{72C24DD5-D70A-438B-8A42-98424B88AFB8}:'Windows Script Host Object Model'.WshShell";
+      Files@1140018 : File;
+      filename@1140017 : Text[1024];
+    BEGIN
+      //GroupWise Version Beginn
+      {
+      IF ISCLEAR(WSHScript) THEN
+        CREATE(WSHScript, FALSE, TRUE);
+
+      //Files.TEXTMODE := TRUE;
+      filename := 'R:\Scripte\GroupWise\GWStastic.vbs';
+      //Files.CREATE(filename);
+
+      CREATE(wshFile,FALSE,TRUE);
+      wshFileText := wshFile.CreateTextFile(filename);
+
+      wshFileText.WriteLine('Set gwSession = CreateObject("NovellGroupWareSession")');
+      wshFileText.WriteLine('Set gwAccount = gwSession.multilogin("'+gwAccID+'","","'+password+'",1)');
+
+      wshFileText.WriteLine('Set gwAppt = gwAccount.workfolder.Messages.Add("GW.MESSAGE.MAIL")');   //Als Message
+
+      IF expired = TRUE THEN BEGIN
+        wshFileText.WriteLine('gwAppt.Subject = "Monatsjob Navision - ausgelaufene Wartungsvertraege"');
+        wshFileText.WriteLine('gwappt.BodyText = '+
+        '"Automatisch von Navision generiert - anbei eine Uebersicht der ausgelaufenen Wartungsvertraege." & chr(10) & "'+
+        'Zeitraum: '+filter1+'"');
+      END ELSE BEGIN
+        wshFileText.WriteLine('gwAppt.Subject = "Monatsjob Navision - demnaechst auslaufende Wartungsvertraege"');
+        wshFileText.WriteLine('gwappt.BodyText = '+
+        '"Automatisch von Navision generiert - anbei eine Uebersicht der demnaechst auslaufenden Wartungsvertraege." & chr(10) & "'+
+        'Zeitraum: '+filter1+'"');
+      END;
+      wshFileText.WriteLine('gwAppt.Recipients.Add("'+to_addr1+'")');
+      IF to_addr2 <> '' THEN
+        wshFileText.WriteLine('gwAppt.Recipients.Add("'+to_addr2+'")');
+      IF to_addr3 <> '' THEN
+        wshFileText.WriteLine('gwAppt.Recipients.Add("'+to_addr3+'")');
+      IF to_addr4 <> '' THEN
+        wshFileText.WriteLine('gwAppt.Recipients.Add("'+to_addr4+'")');
+
+      wshFileText.WriteLine('gwAppt.Attachments.Add("'+AttPath+'")');
+      wshFileText.WriteLine('gwAppt.Send');
+
+      wshFileText.Close;
+      CLEAR(wshFileText);
+
+      WSHScript.Exec('C:\WINDOWS\system32\wscript.exe ' + filename);
+
+      SLEEP(1000);
+
+      MESSAGE('50094 Versand abgeschlossen');
+      }
+      //GroupWise Version Ende
+
+      //CDO Version Beginn
+      IF ISCLEAR(WSHScript) THEN
+        CREATE(WSHScript, FALSE, TRUE);
+
+      filename := 'R:\Scripte\GroupWise\GWStastic.vbs';
+
+      CREATE(wshFile,FALSE,TRUE);
+      wshFileText := wshFile.CreateTextFile(filename);
+
+      wshFileText.WriteLine('Set objMessage = CreateObject("CDO.Message")');
+
+      IF expired = TRUE THEN BEGIN
+        wshFileText.WriteLine('objMessage.Subject = "Monatsjob Navision - ausgelaufene Wartungsvertraege"');
+        wshFileText.WriteLine('objMessage.TextBody = '+
+        '"Automatisch von Navision generiert - anbei eine Uebersicht der ausgelaufenen Wartungsvertraege." & chr(10) & "'+
+        'Zeitraum: ' + filter1 + '"');
+      END ELSE BEGIN
+        wshFileText.WriteLine('objMessage.Subject = "Monatsjob Navision - demnaechst auslaufende Wartungsvertraege"');
+        wshFileText.WriteLine('objMessage.TextBody = '+
+        '"Automatisch von Navision generiert - anbei eine Uebersicht der demnaechst auslaufenden Wartungsvertraege." & chr(10) & "'+
+        'Zeitraum: ' + filter1 + '"');
+      END;
+      wshFileText.WriteLine('objMessage.From = "Administrativ@topas.de"');
+      wshFileText.WriteLine('objMessage.To = "' + to_addr + '"');
+      wshFileText.WriteLine('objMessage.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/sendusing") = 2');
+      wshFileText.WriteLine('objMessage.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/smtpserver") = "oes-gw"');
+      wshFileText.WriteLine('objMessage.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/smtpserverport") = 25');
+      wshFileText.WriteLine('objMessage.Configuration.Fields.Update');
+
+      wshFileText.WriteLine('objMessage.AddAttachment "' + AttPath + '"');
+
+      wshFileText.WriteLine('objMessage.Send');
+
+      wshFileText.Close;
+      CLEAR(wshFileText);
+
+      WSHScript.Exec('C:\WINDOWS\system32\wscript.exe ' + filename);
+
+      SLEEP(1000);
+
+      MESSAGE('50094 Versand abgeschlossen');
+
+      //CDO Version Ende
+    END;
+
+    PROCEDURE SendTypo3AccCheckMail@1140016(gwAccID@1140012 : Text[30];password@1140011 : Text[30];to_addr@1140015 : Text[120];search@1140003 : Text[80];date@1140013 : Text[80];AttPath@1140023 : Text[250]) : Boolean;
+    VAR
+      gwApplication@1140002 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{761C954A-BAFD-11CE-B6F9-00608C84E1C4}:'GroupWare type library'.Application2";
+      gwAccount@1140001 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{A293EB42-9C30-11CF-8C91-00805F6C4BEF}:'GroupWare type library'.Account";
+      gwMessages@1140000 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{C89C2F63-04AF-11CF-B049-00805F88E602}:'GroupWare type library'.MessageList";
+      themessage@1140006 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{C89C2F61-04AF-11CF-B049-00805F88E602}:'GroupWare type library'.Message";
+      gwFolder@1140004 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{C89C2D5D-04AF-11CF-B049-00805F88E602}:'GroupWare type library'.Folder2";
+      searchstring@1140005 : Text[250];
+      message_counter@1140008 : Integer;
+      message_counter_unsub@1140009 : Integer;
+      message_counter_unread@1140010 : Integer;
+      i@1140007 : Integer;
+      WSHScript@1140019 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{72C24DD5-D70A-438B-8A42-98424B88AFB8}:'Windows Script Host Object Model'.WshShell";
+      Files@1140018 : File;
+      filename@1140017 : Text[1024];
+      shellname@1140016 : Text[1024];
+      calender@1140014 : Text[60];
+    BEGIN
+      //GroupWise Version Beginn
+      {
+      IF ISCLEAR(WSHScript) THEN
+
+        CREATE(WSHScript, FALSE, TRUE);
+
+      Files.TEXTMODE := TRUE;
+      filename := 'R:\Scripte\GroupWise\GWStastic.vbs';
+
+      Files.CREATE(filename);
+
+      Files.WRITE('Set gwSession = CreateObject("NovellGroupWareSession")');
+      Files.WRITE('Set gwAccount = gwSession.multilogin("'+gwAccID+'","","'+password+'",1)');
+
+      Files.WRITE('Set gwAppt = gwAccount.workfolder.Messages.Add("GW.MESSAGE.MAIL")');   //Als Message
+      Files.WRITE('gwAppt.Subject = "Monatsjob Navision - Ueberpruefung Typo3 Accounts"');
+      Files.WRITE('gwappt.BodyText = '+
+      '"Automatischer Navision Job zum Abgleich der Typo3 User Accounts mit den Vertragsdaten aus Navision." & chr(10) & "'+
+      'Datum: '+filter1+'"');
+
+      Files.WRITE('gwAppt.Recipients.Add("'+to_addr1+'")');
+      IF to_addr2 <> '' THEN
+        Files.WRITE('gwAppt.Recipients.Add("'+to_addr2+'")');
+      IF to_addr3 <> '' THEN
+        Files.WRITE('gwAppt.Recipients.Add("'+to_addr3+'")');
+      IF to_addr4 <> '' THEN
+        Files.WRITE('gwAppt.Recipients.Add("'+to_addr4+'")');
+
+      Files.WRITE('gwAppt.Attachments.Add("'+AttPath+'")');
+      Files.WRITE('gwAppt.Send');
+
+      Files.CLOSE;
+
+      WSHScript.Exec('C:\WINDOWS\system32\wscript.exe ' + filename);
+
+      SLEEP(1000);
+
+      MESSAGE('50122 Versand abgeschlossen');
+      }
+      //GroupWise Version Ende
+
+      //CDO Version Beginn
+      IF ISCLEAR(WSHScript) THEN
+        CREATE(WSHScript, FALSE, TRUE);
+
+      filename := 'R:\Scripte\GroupWise\GWStastic.vbs';
+
+      CREATE(wshFile,FALSE,TRUE);
+      wshFileText := wshFile.CreateTextFile(filename);
+
+      wshFileText.WriteLine('Set objMessage = CreateObject("CDO.Message")');
+
+      wshFileText.WriteLine('objMessage.Subject = "Monatsjob Navision - šberprfung Typo3 Accounts"');
+      wshFileText.WriteLine('objMessage.TextBody = '+
+      '"Automatischer Navision Job zum Abgleich der Typo3 User Accounts mit den Vertragsdaten aus Navision." & chr(10) & "'+
+      'Datum: '+ date + '"');
+      wshFileText.WriteLine('objMessage.From = "Administrativ@topas.de"');
+      wshFileText.WriteLine('objMessage.To = "' + to_addr + '"');
+      wshFileText.WriteLine('objMessage.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/sendusing") = 2');
+      wshFileText.WriteLine('objMessage.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/smtpserver") = "oes-gw"');
+      wshFileText.WriteLine('objMessage.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/smtpserverport") = 25');
+      wshFileText.WriteLine('objMessage.Configuration.Fields.Update');
+
+      wshFileText.WriteLine('objMessage.AddAttachment "' + AttPath + '"');
+
+      wshFileText.WriteLine('objMessage.Send');
+
+      wshFileText.Close;
+      CLEAR(wshFileText);
+
+      WSHScript.Exec('C:\WINDOWS\system32\wscript.exe ' + filename);
+
+      SLEEP(1000);
+
+      MESSAGE('50122 Versand abgeschlossen');
+
+      //CDO Version Ende
+    END;
+
+    PROCEDURE SearchFolderBuildtoOrder@1140003(Path@1140001 : Text[250]);
+    VAR
+      Artikel@1140015 : Record 27;
+      File@1140000 : Record 2000000022;
+      SystemPos@1140016 : Record 50024;
+      Lieferschein@1140040 : Record 110;
+      SeriennrVerfolgung@1140041 : Record 32;
+      FileMgt@1000000000 : Codeunit 419;
+      WSH@1140049 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{0D43FE01-F093-11CF-8940-00A0C9054228}:'Windows Script Host Object Model'.FileSystemObject";
+      Quelle_Excel@1140037 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00024500-0000-0000-C000-000000000046}:Unknown Automation Server.Application";
+      Quelle_Book@1140036 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";
+      Quelle_Sheet@1140035 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020820-0000-0000-C000-000000000046}:Unknown Automation Server.Worksheet";
+      Quelle_j@1140034 : Text[7];
+      Protokoll_Excel@1140033 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00024500-0000-0000-C000-000000000046}:Unknown Automation Server.Application";
+      Protokoll_Book@1140032 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";
+      Protokoll_Sheet@1140031 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020820-0000-0000-C000-000000000046}:Unknown Automation Server.Worksheet";
+      Protokoll_j@1140030 : Text[7];
+      Anzahl@1140025 : Decimal;
+      Anzahl_text@1140024 : Text[50];
+      Board_ini@1140022 : Code[20];
+      temp_seriennr@1140017 : Text[50];
+      temp_artikelnr@1140021 : Text[50];
+      temp_fehler@1140026 : Text[80];
+      temp_Spalte_D@1140042 : Text[80];
+      Spalte_BoardIni@1140019 : Text[30];
+      Spalte_BoardIni_inhalt@1140020 : Text[30];
+      Spalte_Artikelnr@1140012 : Text[30];
+      Spalte_Seriennr@1140013 : Text[30];
+      Spalte@1140011 : ARRAY [10] OF Text[30];
+      k@1140009 : Integer;
+      t@1140054 : Integer;
+      i@1140008 : Integer;
+      selection@1140007 : Integer;
+      leere_zeilen@1140006 : Integer;
+      max_leere_zeilen@1140002 : Integer;
+      arbeitsblatt@1140005 : Integer;
+      Protokollpfaddatei@1140003 : Text[250];
+      excel_datens„tze@1140004 : Integer;
+      Max_Datens„tze@1140018 : TextConst 'DEU=3000';
+      fehler_in_syntax@1140010 : Boolean;
+      Protokoll_Ordner@1140014 : TextConst 'DEU=\NAV Protokoll';
+      Protokolldateiname@1140023 : TextConst 'DEU=\Protokoll_Import_Boardini_';
+      Inhalt_Spalte_F@1140027 : Text[250];
+      Letzte_Datei@1140029 : Text[250];
+      temp_Protokoll_j@1140038 : Text[7];
+      eintrag_fehlt@1140039 : Boolean;
+      suchstring@1140043 : Text[80];
+      nur_module@1140044 : Boolean;
+      schaeffler@1140053 : Boolean;
+      set@1140055 : Boolean;
+      system_in_excel_gefunden@1140045 : Boolean;
+      system_eingetragen@1140052 : Boolean;
+      excel_test_seriennr@1140046 : Code[20];
+      is_slave@1140047 : Boolean;
+      Jahrgang@1140048 : Integer;
+      anzahl_systeme_prot@1140050 : Integer;
+      anzahl_systeme_quelle@1140051 : Integer;
+      anzahl_systeme_set@1140056 : Integer;
+    BEGIN
+      CLEAR(Quelle_Excel);
+      CLEAR(Quelle_Sheet);
+      CLEAR(Quelle_Book);
+      CLEAR(Protokoll_Excel);
+
+      excel_datens„tze := 0;
+      //Jahrgang := 2015;
+      Jahrgang := DATE2DMY(TODAY,3);
+
+      Protokollpfaddatei := Path + Protokoll_Ordner + Protokolldateiname + FORMAT(Jahrgang)  + '.xlsx';
+
+      //********************************************************************************************
+      //                               Definiert die Protokolldatei
+      //********************************************************************************************
+
+      IF ISCLEAR(Protokoll_Excel) THEN
+        IF CREATE(Protokoll_Excel,FALSE, TRUE) THEN BEGIN END ELSE ERROR('Cannot start Excel Application.');
+
+      IF NOT FileMgt.ClientFileExists(Protokollpfaddatei) THEN BEGIN
+        Protokoll_Book := Protokoll_Excel.Workbooks.Add(-4167);                // legt neue datei in excel an
+        Protokoll_Sheet := Protokoll_Excel.ActiveSheet;                        // definiert aktives worksheet
+        Protokoll_j := '2';
+
+        Protokoll_Sheet.Range('A1').Value:= 'Artikelnr';                    // šberschriften der 2. Datei
+        Protokoll_Sheet.Range('A:A').ColumnWidth := 20;
+        Protokoll_Sheet.Range('B1').Value:= 'Seriennr.';
+        Protokoll_Sheet.Range('C1').Value:= 'Board ini';
+        Protokoll_Sheet.Range('D1').Value:= 'Fehler';
+        Protokoll_Sheet.Range('D:D').ColumnWidth := 25;
+        Protokoll_Sheet.Range('E1').Value:= 'Status';
+        Protokoll_Sheet.Range('F1').Value:= 'Dateiname';
+        Protokoll_Sheet.Range('F:F').ColumnWidth := 40;
+        Protokoll_Sheet.Range('G1').Value:= 'Bemerkung';
+        Protokoll_Book.SaveAs(Protokollpfaddatei,51);
+      END ELSE BEGIN
+        Protokoll_Book := Protokoll_Excel.Workbooks._Open(Protokollpfaddatei,0,FALSE);
+        Protokoll_Sheet := Protokoll_Book.Worksheets.Item(1);
+        //excel_datens„tze := Protokoll_Sheet.UsedRange.Rows.Count;
+        Protokoll_j := '1';
+
+        //Syntax wird berprft
+        Inhalt_Spalte_F := Protokoll_Sheet.Range('F1').Value;
+        IF STRPOS(Inhalt_Spalte_F,'Dateiname') = 0 THEN BEGIN
+          Protokoll_Book.Close;
+          CLEAR(Protokoll_Excel);
+          ERROR('Der Export in Zieltabelle %1 wurde abgebrochen aufgrund fehlerhafter Syntax (Spalte F1 = %2 / '+
+                'Richtig: Dateiname).',Protokollpfaddatei,Inhalt_Spalte_F);
+        END;
+
+        //Bestimmt die Einfge-Zeilennr., damit vorhandene Datens„tze nicht berschrieben werden
+        REPEAT
+          Protokoll_j := INCSTR(Protokoll_j);
+          Inhalt_Spalte_F := FORMAT(Protokoll_Sheet.Range('F' + Protokoll_j).Value);
+          IF Inhalt_Spalte_F <> ''  THEN
+            Letzte_Datei := FORMAT(Protokoll_Sheet.Range('F' + Protokoll_j).Value);
+        UNTIL (Inhalt_Spalte_F = '');// AND (leerzeilen > excel_datens„tze);
+        //MESSAGE(Protokoll_j);
+      END;
+
+      //Erstellt einen neuen Ordner fr den Build to Order Jahrgang, ansonsten kommt es zu einem Fehler ff.
+      IF ISCLEAR(WSH) THEN
+        CREATE(WSH, FALSE, TRUE);
+      IF NOT WSH.FolderExists(Path + FORMAT(Jahrgang)) THEN
+        WSH.CreateFolder(Path + FORMAT(Jahrgang));
+
+      File.SETRANGE(Path, Path + FORMAT(Jahrgang));
+      //File.SETRANGE(Name,'2017_06_23_Telekom_AU237220.xlsx');
+      File.SETRANGE("Is a file", TRUE);
+      //File.SETRANGE(Name,'*.xls');
+      IF File.FINDSET THEN BEGIN
+
+        REPEAT
+
+          //neu
+          temp_Protokoll_j := '1';
+          eintrag_fehlt := TRUE;
+          EVALUATE(i,Protokoll_j);
+          FOR k := 1 TO i DO BEGIN
+            IF (FORMAT(Protokoll_Sheet.Range('F' + temp_Protokoll_j).Value) = File.Name)
+            OR (STRPOS(File.Name,'~') <> 0) OR (STRPOS(File.Name,'.tmp') <> 0) OR (STRPOS(File.Name,'.zip') <> 0) THEN
+              eintrag_fehlt := FALSE;
+            temp_Protokoll_j := INCSTR(temp_Protokoll_j);
+          END;
+
+          //IF File.Name > Letzte_Datei THEN
+
+          //neu
+          IF eintrag_fehlt = TRUE THEN BEGIN
+
+            //********************************************************************************************
+            //                               Excel Datei Definitionen
+            // *******************************************************************************************
+
+            // Definiert die zu importierende Datei
+            IF ISCLEAR(Quelle_Excel) THEN
+              IF CREATE (Quelle_Excel,FALSE, TRUE) THEN BEGIN END ELSE ERROR('Cannot start Excel Application.');
+
+            //Fr Tests, wenn Ordner direkt angeben wird
+            //Quelle_Book := Quelle_Excel.Workbooks._Open(Path + File.Name,0,TRUE);
+            Quelle_Book := Quelle_Excel.Workbooks._Open(Path + FORMAT(Jahrgang) + '\' + File.Name,0,TRUE);
+
+            Quelle_j:='1';
+
+            //********************************************************************************************
+            //                                Import der Tabellenbl„tter
+            //********************************************************************************************
+
+            arbeitsblatt := 1;
+            Quelle_Sheet := Quelle_Book.Worksheets.Item(arbeitsblatt);
+
+            Spalte[1] := 'A';
+            Spalte[2] := 'B';
+            Spalte[3] := 'C';
+            Spalte[4] := 'D';
+            Spalte[5] := 'E';
+            Spalte[6] := 'F';
+            Spalte[7] := 'G';
+            Spalte[8] := 'H';
+            Spalte[9] := 'I';
+            Spalte[10] := 'J';
+
+            Spalte_Artikelnr := '';
+            Spalte_BoardIni := '';
+            Spalte_Seriennr := '';
+            Spalte_BoardIni_inhalt := '';
+            Quelle_j := '1';
+            leere_zeilen := 0;
+            max_leere_zeilen := 30;
+            fehler_in_syntax := FALSE;
+            nur_module := FALSE;
+            schaeffler := FALSE;
+            is_slave := FALSE;
+            set := FALSE;
+            anzahl_systeme_set := 0;
+
+            temp_artikelnr := '';
+            temp_seriennr := '';
+            temp_fehler := '';
+            Board_ini := '';
+
+            REPEAT
+
+              //*********************************************************************************************
+              //                                    Spalten bestimmen
+              //*********************************************************************************************
+
+              IF Spalte_Artikelnr = '' THEN BEGIN
+                FOR k := 1 TO 6 DO BEGIN
+                  IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)) <= 40 THEN BEGIN
+                    //Ausnahme, wenn nur Module in der Excelliste stehen, dann wird der Status auf OK gesetzt
+                    IF (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'nur_module') <> 0)
+                    OR (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'nur module') <> 0) THEN
+                      nur_module := TRUE;
+                    IF (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'schaeffler') <> 0)
+                    OR (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'schaeffler') <> 0) THEN
+                      schaeffler := TRUE;
+                    IF STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'slave') <> 0 THEN
+                      is_slave := TRUE;
+                    IF STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'set') <> 0 THEN
+                      set := TRUE;
+
+                    temp_artikelnr := FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value);
+                    //Sonderfall Mediant 2600
+                    Artikel.SETFILTER("No. 2",'%1',temp_artikelnr);
+                    //Sonderfall Schaeffler
+                    IF (NOT Artikel.FINDFIRST) AND (STRLEN(temp_artikelnr) <= 20) THEN BEGIN
+                      Artikel.RESET;
+                      Artikel.SETFILTER("No.",'%1',temp_artikelnr);
+                    END;
+                    IF (Artikel.FINDFIRST) AND (Artikel."No." <> '') THEN BEGIN
+                      //Damit die Spalte_Artikelnr nicht durch benachbarte Artikelnr. berschrieben wird
+                      IF Spalte_Artikelnr = '' THEN
+                        Spalte_Artikelnr := Spalte[k];
+                      //Kann sein, dass die Seriennr. nicht benachbart steht
+                      FOR i:= 1 TO 4 DO BEGIN
+                        IF (FORMAT(Quelle_Sheet.Range(Spalte[k + i] + Quelle_j).Value) <> '') AND
+                        (STRLEN(FORMAT(Quelle_Sheet.Range(Spalte[k + i] + Quelle_j).Value)) <= 20) THEN BEGIN
+                          excel_test_seriennr := FORMAT(Quelle_Sheet.Range(
+                          Spalte[k + i] + Quelle_j).Value);   //temp Hilfe
+                          SystemPos.RESET;
+                          SystemPos.SETFILTER(Art,'%1',SystemPos.Art::System);
+                          SystemPos.SETFILTER("Seriennr.",'%1',excel_test_seriennr);
+                          IF SystemPos.FINDFIRST THEN
+                            Spalte_Seriennr := Spalte[k + i];
+                        END;
+                      END;
+                      //Ansonsten nimm die benachbarte Spalte, damit die Spalte gefllt ist, Fehlermeldung wird dann sp„ter gesetzt
+                      IF Spalte_Seriennr = '' THEN
+                        IF (STRPOS(FORMAT(Quelle_Sheet.Range(Spalte[k + 1] + Quelle_j).Value),'GTPM') = 0) AND
+                        (STRPOS(FORMAT(Quelle_Sheet.Range(Spalte[k + 1] + Quelle_j).Value),'GGWU') = 0) THEN
+                          Spalte_Seriennr := Spalte[k + 1]
+                        ELSE
+                          Spalte_Seriennr := Spalte[k + 2];
+                    END;
+                  END;
+                END;
+              END;
+
+              IF Spalte_BoardIni = '' THEN BEGIN
+                FOR k := 1 TO 10 DO BEGIN
+                  IF (STRPOS((UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value))),'BOARD') <> 0) OR
+                  (STRPOS((UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value))),'BOARD:')  <> 0) THEN BEGIN
+                    Spalte_BoardIni := Spalte[k];
+                    Spalte_BoardIni_inhalt := Spalte[k+1];
+                  END;
+                END;
+              END;
+
+              IF (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range('A'+Quelle_j).Value)),'set') <> 0) THEN
+                anzahl_systeme_set := 0;
+
+              //*********************************************************************************************
+              //                                    Inhalt auslesen
+              //*********************************************************************************************
+
+              IF (Spalte_Artikelnr <> '') AND (Spalte_Seriennr <> '') THEN BEGIN
+
+                IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value)) <= 40 THEN BEGIN
+                  Artikel.SETFILTER("No. 2",'%1',FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value));
+                  //Sonderfall Schaeffler
+                  IF (NOT Artikel.FINDFIRST) AND (STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value)) <= 20) THEN BEGIN
+                    Artikel.RESET;
+                    Artikel.SETFILTER("No.",'%1',FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value));
+                  END;
+                  IF (Artikel.FINDFIRST) AND (Artikel."No." <> '') AND ((Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS')
+                  OR (Artikel.Serviceklassifizierung = 'SYSTEM FLAT')) THEN BEGIN
+                    IF set THEN
+                      anzahl_systeme_set += 1;
+                    temp_artikelnr := FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value);
+                    temp_seriennr := FORMAT(Quelle_Sheet.Range(Spalte_Seriennr+Quelle_j).Value);
+                    IF (FORMAT(Quelle_Sheet.Range(Spalte_Seriennr+Quelle_j).Value) <> temp_seriennr)
+                    AND (temp_artikelnr <> '') AND (temp_seriennr <> '') AND ((Board_ini = '') OR
+                    (STRPOS(Board_ini,'X') = 0)) THEN BEGIN
+                      Protokoll_Sheet.Range(Spalte_Artikelnr_Prot+Protokoll_j).Value := temp_artikelnr;
+                      Protokoll_Sheet.Range('B'+Protokoll_j).Value := temp_seriennr;
+                      Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := 'Board ini nicht gefunden';
+                      IF is_slave THEN BEGIN
+                        Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'OK';
+                        Protokoll_Sheet.Range('G'+Protokoll_j).Value := 'slave';
+                      END ELSE
+                        Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'Offen';
+                      Protokoll_Sheet.Range('F'+Protokoll_j).Value := File.Name;
+                      Protokoll_j := INCSTR(Protokoll_j);
+                    END;
+                    excel_test_seriennr := FORMAT(Quelle_Sheet.Range(Spalte_Seriennr + Quelle_j).Value);
+                    SystemPos.RESET;
+                    SystemPos.SETFILTER(Art,'%1',SystemPos.Art::System);
+                    SystemPos.SETFILTER("Seriennr.",'%1',excel_test_seriennr);
+                    IF NOT SystemPos.FINDFIRST THEN BEGIN
+                      //Schaut nach, ob dies ein SOR Beleg ist und setzt die Position auf OK, da SOR Auftr„ge keine
+                      //Systemvertr„ge werden
+                      SeriennrVerfolgung.SETRANGE("Entry Type",SeriennrVerfolgung."Entry Type"::Sale);
+                      //Sonderfall Mediant 2600
+                      //IF FORMAT(Protokoll_Sheet.Range('A'+Protokoll_j).Value) = 'M2600-11/100/Red/AC' THEN
+                      //  SeriennrVerfolgung.SETRANGE("Item No.",'M26-11/100/R/AC')
+                      //ELSE
+                      //  SeriennrVerfolgung.SETRANGE("Item No.",FORMAT(Protokoll_Sheet.Range('A'+Protokoll_j).Value));
+                      SeriennrVerfolgung.SETRANGE("Serial No.",FORMAT(Protokoll_Sheet.Range('B'+Protokoll_j).Value));
+                      SeriennrVerfolgung.SETRANGE("Item Tracking",SeriennrVerfolgung."Item Tracking"::"Serial No.");
+                      IF SeriennrVerfolgung.FINDLAST THEN BEGIN
+                        Lieferschein.SETRANGE("No.",SeriennrVerfolgung."Document No.");
+                        IF (Lieferschein.FINDFIRST) AND (STRPOS(Lieferschein."Payment Terms Code",'SOR') <> 0) THEN BEGIN
+                          Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'OK';
+                          Protokoll_Sheet.Range('G'+Protokoll_j).Value := 'SOR';
+                        END ELSE
+                          temp_fehler := 'Systempos. noch nicht vorhanden';
+                      END ELSE
+                        temp_fehler := 'Systempos. noch nicht vorhanden'
+                    END;
+                  END;
+                END;
+              END;
+
+              IF (Spalte_BoardIni <> '') THEN BEGIN
+                IF (STRPOS((UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte_BoardIni+Quelle_j).Value))),'BOARD') <> 0) OR
+                (STRPOS((UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte_BoardIni+Quelle_j).Value))),'BOARD:') <> 0) THEN BEGIN
+                  IF (Spalte_Artikelnr = '') OR (Spalte_Seriennr = '') THEN
+                    fehler_in_syntax := TRUE;
+
+                  Protokoll_Sheet.Range('A'+Protokoll_j).Value := temp_artikelnr;
+                  Protokoll_Sheet.Range('B'+Protokoll_j).Value := temp_seriennr;
+                  Protokoll_Sheet.Range('F'+Protokoll_j).Value := File.Name;
+                  EVALUATE(Board_ini,FORMAT(Quelle_Sheet.Range(Spalte_BoardIni_inhalt+Quelle_j).Value));
+                  Board_ini := DELCHR(Board_ini,'=','.');
+
+                  IF fehler_in_syntax = FALSE THEN BEGIN
+                    SystemPos.RESET;
+                    SystemPos.SETFILTER(Art,'%1',SystemPos.Art :: System);
+                    SystemPos.SETFILTER(Inaktiv,'%1',FALSE);
+                    //Sonderfall Mediant 2600
+                    IF temp_artikelnr = 'M2600-11/100/Red/AC' THEN temp_artikelnr := 'M26-11/100/R/AC';
+                    //SystemPos.SETFILTER(SystemPos."Artikelnr. 2",'%1',temp_artikelnr);
+                    SystemPos.SETFILTER("Seriennr.",'%1',temp_seriennr);
+                    IF (SystemPos.FINDLAST) AND (temp_seriennr <> '') THEN BEGIN
+                      IF (STRPOS(Board_ini,'X') = 0) THEN BEGIN
+                        IF SystemPos."Board ini" <> '' THEN
+                          Protokoll_Sheet.Range('G'+Protokoll_j).Value := 'Board ini bereits vorhanden';
+                        SystemPos."Board ini" := Board_ini;
+                        SystemPos.MODIFY;
+                        Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'OK';
+                        IF SystemPos.COUNT > 1 THEN
+                          Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'SN mehrmals vorhanden ' + FORMAT(SystemPos.COUNT);
+                      END ELSE BEGIN
+                        Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := 'Board ini unvollst„ndig';
+                        Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'Offen';
+                      END;
+                    END ELSE BEGIN
+                      //IF temp_fehler = '' THEN
+                      //  Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := 'Artikel lautet anders oder inaktiv';
+                      Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'Offen';
+                    END;
+
+                    IF Board_ini <> '' THEN
+                      Protokoll_Sheet.Range('C'+Protokoll_j).Value := Board_ini
+                    ELSE BEGIN
+                      temp_fehler := 'Board ini leer ' + temp_fehler;
+                      Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := temp_fehler;
+                    END;
+                    Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := temp_fehler;
+                    IF is_slave THEN BEGIN
+                      Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'OK';
+                      Protokoll_Sheet.Range('G'+Protokoll_j).Value := 'slave';
+                      is_slave := FALSE;
+                    END
+                  END ELSE BEGIN
+                    Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := 'Syntaxfehler in Datei';
+                    Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'Offen';
+                  END;
+                  Protokoll_j := INCSTR(Protokoll_j);
+                  temp_artikelnr := '';
+                  temp_seriennr := '';
+                  temp_fehler := '';
+                  //MESSAGE('Seriennr.: %1, Board ini: %2',temp_seriennr,Board_ini);
+                END ELSE BEGIN
+                  IF fehler_in_syntax = FALSE THEN BEGIN
+                    IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value)) <= 40 THEN BEGIN
+                      Artikel.SETFILTER("No. 2",'%1',FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value));
+                      //Sonderfall Schaeffler
+                      IF (NOT Artikel.FINDFIRST) AND
+                      (STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value)) <= 20) THEN BEGIN
+                        Artikel.RESET;
+                        Artikel.SETFILTER("No.",'%1',FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value));
+                      END;
+                      IF (Artikel.FINDFIRST) AND (Artikel."No." <> '') AND (Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS') THEN
+                        Board_ini := '';
+                    END;
+                  END;
+                END;
+              END;
+
+              //*********************************************************************************************
+              //                                       Abbruchbedingung
+              //*********************************************************************************************
+
+              // Wenn in der Quelldatei 30 Leere Zeilen hintereinander kommen, ist das Dateiende erreicht
+              IF (FORMAT(Quelle_Sheet.Range('A'+Quelle_j).Value) = '') AND
+              (FORMAT(Quelle_Sheet.Range('B'+Quelle_j).Value) = '') THEN       // erkennt das Ende   der Excel Datei
+                leere_zeilen += 1
+              ELSE
+                leere_zeilen := 0;
+
+              Quelle_j := INCSTR(Quelle_j);                                    // n„chste Zeile Importdatei
+
+              IF (anzahl_systeme_set > 1) AND (set) THEN BEGIN
+                Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := 'Set';
+                Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'OK';
+              END;
+
+              IF (leere_zeilen + 1 = max_leere_zeilen) AND ((Spalte_BoardIni = '')
+              OR ((temp_seriennr <> '') AND (temp_artikelnr <> '') AND (Board_ini = ''))) THEN BEGIN
+                Protokoll_Sheet.Range('A'+Protokoll_j).Value := temp_artikelnr;
+                Protokoll_Sheet.Range('B'+Protokoll_j).Value := temp_seriennr;
+                IF (nur_module) OR (schaeffler) THEN BEGIN
+                  IF nur_module THEN
+                    Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := 'Nur Module';
+                  IF schaeffler THEN
+                    Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := 'Schaeffler';
+                  Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'OK';
+                END ELSE BEGIN
+                  Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := 'Board ini nicht gefunden';
+                  IF (Spalte_BoardIni = '') AND (Artikel.Serviceklassifizierung = 'SYSTEM FLAT') THEN BEGIN
+                    Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'OK';
+                    Protokoll_Sheet.Range('G'+Protokoll_j).Value := 'ohne Board ini';
+                  END ELSE
+                    Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'Offen';
+                END;
+                Protokoll_Sheet.Range('F'+Protokoll_j).Value := File.Name;
+                Protokoll_j := INCSTR(Protokoll_j);
+              END;
+
+            UNTIL (Max_Datens„tze = Quelle_j) OR (leere_zeilen = max_leere_zeilen);  // Nach 30 Zeilen ohne Daten ist Schluss
+
+          //Quelle_Excel.Visible(TRUE);
+          Quelle_Book.Close;
+
+          //*********************************************************************************************
+          //                Automation Server clearen, Laufzeitfehler unterbinden
+          //*********************************************************************************************
+
+          END;
+        UNTIL File.NEXT = 0;
+
+        IF NOT ISCLEAR(Quelle_Excel) THEN
+          CLEAR(Quelle_Excel);
+
+        //*********************************************************************************************
+        //                Durchlauf Protokoll Datei, um Status offen zu korrigieren
+        //                  Z.B. wenn Seriennr. erst viel sp„ter ausgebucht werden
+        //*********************************************************************************************
+
+        temp_artikelnr := '';
+        temp_Protokoll_j := '1';
+        EVALUATE(i,Protokoll_j);
+        FOR t := 1 TO i DO BEGIN
+
+          IF FORMAT(Protokoll_Sheet.Range('F'+temp_Protokoll_j).Value) = Letzte_Datei THEN
+            anzahl_systeme_prot += 1
+          ELSE
+            anzahl_systeme_prot := 1;
+          Letzte_Datei := FORMAT(Protokoll_Sheet.Range('F'+temp_Protokoll_j).Value);
+
+          IF FORMAT(Protokoll_Sheet.Range('E'+temp_Protokoll_j).Value) = 'Offen' THEN BEGIN
+            temp_artikelnr := FORMAT(Protokoll_Sheet.Range('A'+temp_Protokoll_j).Value);
+            temp_seriennr  := FORMAT(Protokoll_Sheet.Range('B'+temp_Protokoll_j).Value);
+            EVALUATE(Board_ini,FORMAT(Protokoll_Sheet.Range('C'+temp_Protokoll_j).Value));
+            Board_ini := DELCHR(Board_ini,'=','.');
+
+            //Schaut nach, ob dies ein SOR Beleg ist und setzt die Position auf OK, da SOR Auftr„ge keine Systemvertr„ge werden
+            SeriennrVerfolgung.SETRANGE("Entry Type",SeriennrVerfolgung."Entry Type"::Sale);
+            //SeriennrVerfolgung.SETRANGE("Item No.",FORMAT(Protokoll_Sheet.Range('A'+temp_Protokoll_j).Value));
+            SeriennrVerfolgung.SETRANGE("Serial No.",FORMAT(Protokoll_Sheet.Range('B'+temp_Protokoll_j).Value));
+            SeriennrVerfolgung.SETRANGE("Item Tracking",SeriennrVerfolgung."Item Tracking"::"Serial No.");
+            IF SeriennrVerfolgung.FINDLAST THEN BEGIN
+              Lieferschein.SETRANGE("No.",SeriennrVerfolgung."Document No.");
+              IF (Lieferschein.FINDFIRST) AND (STRPOS(Lieferschein."Payment Terms Code",'SOR') <> 0) THEN BEGIN
+                Protokoll_Sheet.Range('E'+temp_Protokoll_j).Value := 'OK';
+                Protokoll_Sheet.Range('G'+temp_Protokoll_j).Value := 'SOR';
+              END;
+            END;
+
+            //Sonderfall Mediant 2600
+            IF temp_artikelnr = 'M2600-11/100/Red/AC' THEN temp_artikelnr := 'M26-11/100/R/AC';
+            SystemPos.RESET;
+            SystemPos.SETFILTER(Art,'%1',SystemPos.Art::System);
+            SystemPos.SETFILTER(Inaktiv,'%1',FALSE);
+            //SystemPos.SETFILTER("Artikelnr. 2",'%1',temp_artikelnr);
+            SystemPos.SETFILTER("Seriennr.",'%1', temp_seriennr);
+            IF (SystemPos.FINDLAST) AND (SystemPos."Seriennr." <> '') AND (STRLEN(temp_seriennr) > 3)
+            AND (Board_ini <> '') AND (STRPOS(Board_ini,'X') = 0) THEN BEGIN
+              //Tr„gt die bereits in der Protokoll-Datei vermerkte Board ini im System nach
+              IF SystemPos."Board ini" <> '' THEN
+                Protokoll_Sheet.Range('G'+temp_Protokoll_j).Value := 'Board ini bereits vorhanden';
+              SystemPos."Board ini" := Board_ini;
+              SystemPos.MODIFY;
+              Protokoll_Sheet.Range('E'+temp_Protokoll_j).Value := 'OK';
+              suchstring := 'Systempos. noch nicht vorhanden';
+              IF STRPOS(FORMAT(Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value),suchstring) <> 0 THEN BEGIN
+                Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value :=
+                trim_text(FORMAT(Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value),suchstring);
+              END;
+            END ELSE BEGIN
+
+              //Sucht die Build ini in der Quelldatei neu!!!!!!!!!!!!!!!!!!
+              //****************** In Entwicklung**************************
+
+              IF FileMgt.ClientFileExists(Path + FORMAT(Jahrgang) + '\' + FORMAT(Protokoll_Sheet.Range('F'+temp_Protokoll_j).Value)) THEN BEGIN
+                IF ISCLEAR(Quelle_Excel) THEN
+                  IF CREATE (Quelle_Excel,FALSE, TRUE) THEN BEGIN END ELSE ERROR('Cannot start Excel Application.');
+                Quelle_Book := Quelle_Excel.Workbooks._Open(Path + FORMAT(Jahrgang) + '\' + FORMAT(Protokoll_Sheet.Range('F'+temp_Protokoll_j).Value),0,TRUE);
+
+                Quelle_j := '1';
+
+                //********************************************************************************************
+                //                                Import der Tabellenbl„tter
+                //********************************************************************************************
+
+
+                arbeitsblatt := 1;
+                Quelle_Sheet := Quelle_Book.Worksheets.Item(arbeitsblatt);
+
+                Spalte[1] := 'A';
+                Spalte[2] := 'B';
+                Spalte[3] := 'C';
+                Spalte[4] := 'D';
+                Spalte[5] := 'E';
+                Spalte[6] := 'F';
+                Spalte[7] := 'G';
+                Spalte[8] := 'H';
+                Spalte[9] := 'I';
+                Spalte[10] := 'J';
+
+                Spalte_Artikelnr := '';
+                Spalte_BoardIni := '';
+                Spalte_Seriennr := '';
+                Spalte_BoardIni_inhalt := '';
+                Quelle_j := '1';
+                max_leere_zeilen := 30;
+                leere_zeilen := 0;
+                nur_module := FALSE;
+                schaeffler := FALSE;
+                set := FALSE;
+                system_in_excel_gefunden := FALSE;
+                system_eingetragen := FALSE;
+                Board_ini := '';
+                anzahl_systeme_set := 0;
+
+                REPEAT
+
+                  IF Spalte_Artikelnr = '' THEN BEGIN
+                    FOR k := 1 TO 6 DO BEGIN
+                      IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)) <= 40 THEN BEGIN
+                        //Ausnahme, wenn nur Module in der Excelliste stehen, dann wird der Status auf OK gesetzt
+                        IF (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'nur_module') <> 0)
+                        OR (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'nur module') <> 0) THEN
+                          nur_module := TRUE;
+                        //Ausnahme, wenn nur Module in der Excelliste stehen, dann wird der Status auf OK gesetzt
+                        IF (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'schaeffler') <> 0)
+                        OR (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'schaeffler') <> 0) THEN
+                          schaeffler := TRUE;
+                        IF (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'set') <> 0) THEN
+                          set := TRUE;
+
+                        temp_artikelnr := FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value);
+                        //Sonderfall Mediant 2600
+                        Artikel.SETFILTER("No. 2",'%1',temp_artikelnr);
+                        //Sonderfall Schaeffler
+                        IF (NOT Artikel.FINDFIRST) AND (STRLEN(temp_artikelnr) <= 20) THEN BEGIN
+                          Artikel.RESET;
+                          Artikel.SETFILTER("No.",'%1',temp_artikelnr);
+                        END;
+                        IF (Artikel.FINDFIRST) AND (Artikel."No." <> '') THEN BEGIN
+                          //Damit die Spalte_Artikelnr nicht durch benachbarte Artikelnr. berschrieben wird
+                          IF Spalte_Artikelnr = '' THEN
+                            Spalte_Artikelnr := Spalte[k];
+                          //Kann sein, dass die Seriennr. nicht benachbart steht
+                          FOR i:= 1 TO 4 DO BEGIN
+                            IF (FORMAT(Quelle_Sheet.Range(Spalte[k + i] + Quelle_j).Value) <> '') AND
+                            (STRLEN(FORMAT(Quelle_Sheet.Range(Spalte[k + i] + Quelle_j).Value)) <= 20) THEN BEGIN
+                              excel_test_seriennr := FORMAT(Quelle_Sheet.Range(
+                              Spalte[k + i] + Quelle_j).Value);   //temp Hilfe
+                              SystemPos.RESET;
+                              SystemPos.SETFILTER(Art,'%1',SystemPos.Art::System);
+                              SystemPos.SETFILTER("Seriennr.",'%1',excel_test_seriennr);
+                              IF SystemPos.FINDFIRST THEN
+                                Spalte_Seriennr := Spalte[k + i];
+                            END;
+                          END;
+                          //Ansonsten nimm die benachbarte Spalte, damit die Spalte gefllt ist,
+                          //Fehlermeldung wird dann sp„ter gesetzt
+                          IF Spalte_Seriennr = '' THEN
+                            IF (STRPOS(FORMAT(Quelle_Sheet.Range(Spalte[k+1]+Quelle_j).Value),'GTPM') = 0) AND
+                            (STRPOS(FORMAT(Quelle_Sheet.Range(Spalte[k+1]+Quelle_j).Value),'GGWU') = 0) THEN
+                              Spalte_Seriennr := Spalte[k + 1]
+                            ELSE
+                              Spalte_Seriennr := Spalte[k + 2];
+                        END;
+                      END;
+                    END;
+                  END;
+
+                  IF Spalte_BoardIni = '' THEN BEGIN
+                    FOR k := 1 TO 10 DO BEGIN
+                      IF (STRPOS((UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value))),'BOARD') <> 0) OR
+                      (STRPOS((UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value))),'BOARD:')  <> 0) THEN BEGIN
+                        Spalte_BoardIni := Spalte[k];
+                        Spalte_BoardIni_inhalt := Spalte[k + 1];
+                      END;
+                    END;
+                  END;
+
+                  IF (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range('A'+Quelle_j).Value)),'set') <> 0) THEN
+                    anzahl_systeme_set := 0;
+
+                  //*********************************************************************************************
+                  //                                    Inhalt auslesen
+                  //*********************************************************************************************
+
+                  //Wenn die Spalten Artikelnr und Seriennr bestimmt wurden, kann mit dem Auslesen begonnen werden
+                  IF (Spalte_Artikelnr <> '') AND (Spalte_Seriennr <> '') AND (Quelle_Book.Name =
+                  FORMAT(Protokoll_Sheet.Range('F'+temp_Protokoll_j).Value)) THEN BEGIN
+                    IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value)) <= 40 THEN BEGIN
+                      Artikel.SETFILTER("No. 2",'%1',FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value));
+                      //Sonderfall Schaeffler
+                      IF (NOT Artikel.FINDFIRST) AND (STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value)) <= 20) THEN BEGIN
+                        Artikel.RESET;
+                        Artikel.SETFILTER("No.",'%1',FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value));
+                      END;
+                      IF (Artikel.FINDFIRST) AND (Artikel."No." <> '') AND ((Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS')
+                      OR (Artikel.Serviceklassifizierung = 'SYSTEM FLAT')) THEN BEGIN
+                        anzahl_systeme_quelle += 1;
+                        IF set THEN
+                          anzahl_systeme_set += 1;
+                        temp_artikelnr := FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value);
+                        IF (set = FALSE) OR ((set) AND (anzahl_systeme_set = anzahl_systeme_prot)) THEN
+                          temp_seriennr := FORMAT(Quelle_Sheet.Range(Spalte_Seriennr+Quelle_j).Value);
+                        IF (anzahl_systeme_quelle = anzahl_systeme_prot) THEN BEGIN
+                          Protokoll_Sheet.Range('A'+temp_Protokoll_j).Value := temp_artikelnr;
+                          Protokoll_Sheet.Range('B'+temp_Protokoll_j).Value := temp_seriennr;
+                        END;
+                      END;
+                    END;
+
+                    IF  (Spalte_BoardIni <> '') THEN BEGIN
+                      IF ((STRPOS((UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte_BoardIni+Quelle_j).Value))),'BOARD') <> 0)
+                      OR (STRPOS((UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte_BoardIni+Quelle_j).Value))),'BOARD:') <> 0))
+                      AND ((anzahl_systeme_quelle = anzahl_systeme_prot)
+                      OR  ((set = TRUE) AND (anzahl_systeme_prot = 1))) THEN BEGIN
+
+                        EVALUATE(Board_ini,FORMAT(Quelle_Sheet.Range(Spalte_BoardIni_inhalt+Quelle_j).Value));
+                        Board_ini := DELCHR(Board_ini,'=','.');
+
+                        IF (Board_ini <> '') AND (STRPOS(Board_ini,'X') = 0) THEN BEGIN
+                          SystemPos.RESET;
+                          SystemPos.SETFILTER(Art,'%1',SystemPos.Art :: System);
+                          SystemPos.SETFILTER(Inaktiv,'%1',FALSE);
+                          //Sonderfall M2600
+                          //IF temp_artikelnr <> 'M2600' THEN
+                          //  SystemPos.SETFILTER(SystemPos."Artikelnr. 2",'%1',temp_artikelnr);
+                          SystemPos.SETFILTER("Seriennr.",'%1',temp_seriennr);
+                          IF (SystemPos.FINDLAST) AND (temp_seriennr <> '') THEN BEGIN
+                            IF SystemPos."Board ini" <> '' THEN
+                              Protokoll_Sheet.Range('G'+temp_Protokoll_j).Value := 'Board ini bereits vorhanden';
+                            SystemPos."Board ini" := Board_ini;
+                            SystemPos.MODIFY(TRUE);
+                            Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := ''; //setzt Fehler zurck
+                            Protokoll_Sheet.Range('E'+temp_Protokoll_j).Value := 'OK';
+                            system_eingetragen := TRUE;
+                            IF SystemPos.COUNT > 1 THEN
+                              Protokoll_Sheet.Range('J'+temp_Protokoll_j).Value := 'SN mehrmals vorhanden ' +
+                              FORMAT(SystemPos.COUNT);
+                          END ELSE
+                            Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := 'Systempos. noch nicht vorhanden';
+
+                          IF Board_ini <> '' THEN BEGIN
+                            Protokoll_Sheet.Range('C'+temp_Protokoll_j).Value := Board_ini;
+                            suchstring := 'Board ini leer';
+                            IF STRPOS(FORMAT(Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value),suchstring) <> 0 THEN BEGIN
+                              Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := trim_text(
+                              FORMAT(Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value),suchstring);
+                            END;
+                          END;
+                        END ELSE BEGIN
+                          Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := 'Board ini unvollst„ndig';
+                        END;
+
+                        temp_artikelnr := '';
+
+                        IF set THEN BEGIN
+                          IF (anzahl_systeme_prot >= anzahl_systeme_set) AND (anzahl_systeme_set > 1) THEN BEGIN
+                            temp_seriennr := '';
+                            Board_ini := '';
+                          END;
+                        END ELSE BEGIN
+                          temp_seriennr := '';
+                          Board_ini := '';
+                        END;
+                      END;
+
+                      IF (anzahl_systeme_set > 1) AND (anzahl_systeme_prot >= anzahl_systeme_set) AND (set) THEN BEGIN
+                        Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := 'Set';
+                        Protokoll_Sheet.Range('E'+temp_Protokoll_j).Value := 'OK';
+                      END;
+                    END;
+
+                    IF nur_module THEN BEGIN
+                      Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := 'Nur Module';
+                      Protokoll_Sheet.Range('E'+temp_Protokoll_j).Value := 'OK';
+                    END;
+
+                    IF schaeffler THEN BEGIN
+                      Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := 'Schaeffler';
+                      Protokoll_Sheet.Range('E'+temp_Protokoll_j).Value := 'OK';
+                    END;
+
+                    Protokoll_Sheet.Range('G'+temp_Protokoll_j).Font.Color := 0;
+
+                  END;
+
+                  //*********************************************************************************************
+                  //                                       Abbruchbedingung
+                  //*********************************************************************************************
+
+                  // Wenn in der Quelldatei 6 Leere Zeilen hintereinander kommen, ist das Dateiende erreicht
+                  IF (FORMAT(Quelle_Sheet.Range('A'+Quelle_j).Value) = '') AND
+                  (FORMAT(Quelle_Sheet.Range('B'+Quelle_j).Value) = '') THEN            // erkennt das Ende der Excel Datei
+                    leere_zeilen += 1
+                  ELSE
+                    leere_zeilen := 0;
+
+                  Quelle_j := INCSTR(Quelle_j);                                         // n„chste Zeile Importdatei
+
+                UNTIL (Max_Datens„tze = Quelle_j) OR (leere_zeilen = max_leere_zeilen)  // Nach 30 Zeilen ohne Daten ist Schluss
+                      OR (system_eingetragen);
+
+                Quelle_Book.Close;
+
+                IF Spalte_Artikelnr <> '' THEN BEGIN
+                  Artikel.SETFILTER("No. 2",'%1',FORMAT(Protokoll_Sheet.Range(Spalte_Artikelnr_Prot+temp_Protokoll_j).Value));
+                  //Sonderfall Schaeffler
+                  IF (NOT Artikel.FINDFIRST) AND (STRLEN(FORMAT(Protokoll_Sheet.Range(Spalte_Artikelnr_Prot+temp_Protokoll_j).Value)) <= 20) THEN BEGIN
+                    Artikel.RESET;
+                    Artikel.SETFILTER("No.",'%1',FORMAT(Protokoll_Sheet.Range(Spalte_Artikelnr_Prot+temp_Protokoll_j).Value));
+                  END;
+                  IF (Artikel.FINDFIRST) AND (Artikel."No." <> '') AND (Artikel.Serviceklassifizierung = 'SYSTEM FLAT') THEN BEGIN
+                    Protokoll_Sheet.Range('E'+temp_Protokoll_j).Value := 'OK';
+                    IF (Spalte_BoardIni = '') THEN
+                      Protokoll_Sheet.Range('G'+temp_Protokoll_j).Value := 'ohne Board ini';
+                    IF FORMAT(Protokoll_Sheet.Range('G'+temp_Protokoll_j).Value) = '' THEN
+                      Protokoll_Sheet.Range('G'+temp_Protokoll_j).Value := 'Systemtelefon';
+                  END;
+                END;
+              END ELSE BEGIN
+                Protokoll_Sheet.Range('G'+temp_Protokoll_j).Value := 'Datei nicht gefunden';
+                Protokoll_Sheet.Range('G'+temp_Protokoll_j).Font.Color := 255;
+              END;
+            END;
+          END;
+          anzahl_systeme_quelle := 0;
+          temp_Protokoll_j := INCSTR(temp_Protokoll_j);
+        END;
+
+        Protokoll_Book.Save;
+        //Protokoll_Excel.Visible(TRUE);
+        Protokoll_Book.Close;
+
+      END;
+    END;
+
+    PROCEDURE SearchFolderByFilename@1140005();
+    VAR
+      WSH@1140000 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{0D43FE01-F093-11CF-8940-00A0C9054228}:'Windows Script Host Object Model'.FileSystemObject";
+    BEGIN
+    END;
+
+    PROCEDURE DataLinkChecker@1140004();
+    VAR
+      DataLink@1140000 : Record 2000000068;
+      VerkTab@1140002 : Record 13;
+      Memokopf@1140008 : Record 50003;
+      InfoFileF@1140001 : File;
+      chr@1140003 : Char;
+      bodytext@1140004 : ARRAY [5] OF Text[1024];
+      k@1140005 : Integer;
+      fehler@1140006 : Boolean;
+      zusatztext@1140007 : ARRAY [2] OF Text[80];
+    BEGIN
+      InfoFileF.TEXTMODE := TRUE;
+      InfoFileF.CREATE('R:\Navision\Fehlerprotokolle\RecordLink Fehler.txt');
+
+      chr := 10;
+      //VerkTab.SETFILTER(Code,'%1','ST');
+      IF VerkTab.FINDFIRST THEN
+        BEGIN
+          REPEAT
+            bodytext[1] :=
+            '##### DIESE E-MAIL WURDE AUTOMATISCH AUS NAVISION ERZEUGT. #####' + FORMAT(chr) +
+            'Fr bessere Lesbarkeit empfiehlt es sich die Mail zu maximieren.' + FORMAT(chr) + FORMAT(chr) +
+            'Bitte korrigiere die inkorrekten Dateipfade oder l”sche ggf. den entsprechenden Datei-Link aus NAV.' + FORMAT(chr) +
+            'Tipp: Es kann sein, dass der Ordner bzw. die Datei umbenannt, verschoben oder gel”scht wurde.' + FORMAT(chr) +
+            'Generell: Bitte keine Pfade wie C:\ oder D:\ benutzen. Bitte immer die Netzlaufwerke wie z.B. F:\, R:\, I:\ ... '
+            + FORMAT(chr) + ' benutzen, damit ALLE auf die Dokumente zugreifen k”nnen.' + FORMAT(chr) +
+            'Hinweis: Zuerst steht immer der NAV Datensatz, darunter der Pfad zum Dokument, der so nicht mehr existiert.' + FORMAT(chr) +
+            'Dokumente, die wichtig erscheinen aber nicht aufgefunden werden konnten, bitte markieren und an mich' + FORMAT(chr) +
+            ' zurckschicken, ich versuche sie dann aufzufinden und zu korrigieren.' + FORMAT(chr) +
+            '##########################################################' +
+            FORMAT(chr) + FORMAT(chr);
+
+            bodytext[2] := FORMAT(chr) + '';
+            bodytext[3] := FORMAT(chr) + '';
+            bodytext[4] := FORMAT(chr) + '';
+            bodytext[5] := FORMAT(chr) + '';
+            fehler := FALSE;
+            k := 1;
+
+            DataLink.SETRANGE(DataLink."User ID",VerkTab.Code);
+            IF DataLink.FIND('-') THEN
+              REPEAT
+                IF NOT EXISTS(DataLink.URL1) AND (STRPOS(DataLink.URL1,'www.') = 0) THEN
+                  BEGIN
+                    fehler := TRUE;
+                    InfoFileF.WRITE(FORMAT(DataLink."Record ID") + ' Datei: ' + DataLink.URL1+ ' konnte nicht gefunden werden.');
+                    //ERROR('%1 konnte nicht gefunden werden.',DataLink.URL1);
+                    IF STRLEN(FORMAT(bodytext[k]) + FORMAT(DataLink."Record ID") + ' ' + zusatztext[1] + ' ,Datei: ' +
+                    FORMAT(chr) + '    [   ' + DataLink.URL1 + zusatztext[2] + '   ]' + FORMAT(chr)) > 1024 THEN
+                      k += 1;
+
+                    zusatztext[1] := '';
+                    zusatztext[2] := '';
+
+                    IF STRPOS(FORMAT(DataLink."Record ID"),'Memozeile:') = 1 THEN
+                      BEGIN
+                        Memokopf.SETFILTER("Memonr.",'%1',COPYSTR(FORMAT(DataLink."Record ID"),12,8));
+                        IF Memokopf.FINDFIRST THEN
+                          IF Memokopf."Mandantennr." <> '' THEN
+                            zusatztext[1] := 'Kontakt Memo ' + Memokopf."Mandantennr."
+                          ELSE
+                            IF Memokopf."Kampagnennr." <> '' THEN
+                              zusatztext[1] := 'Projekt Memo ' + Memokopf."Kampagnennr.";
+                      END;
+
+                    IF STRPOS(FORMAT(DataLink."Record ID"),'Memokopf:') = 1 THEN
+                      BEGIN
+                        Memokopf.SETFILTER("Memonr.",'%1',COPYSTR(FORMAT(DataLink."Record ID"),11,8));
+                        IF Memokopf.FINDFIRST THEN
+                          IF Memokopf."Mandantennr." <> '' THEN
+                            zusatztext[1] := 'Kontaktnr. '
+                          ELSE
+                            IF Memokopf."Kampagnennr." <> '' THEN
+                              zusatztext[1] := 'Projektnr. '
+                      END;
+
+                    IF  DataLink.URL1 = '' THEN
+                      zusatztext[2] := '*Der DATEIPFAD ist LEER, bitte Link L™SCHEN!!!';
+                    bodytext[k] := bodytext[k] + FORMAT(DataLink."Record ID") + ' ' + zusatztext[1] +
+                    '  - Datei: ' + FORMAT(chr) + '    [   ' + DataLink.URL1 + zusatztext[2] + '   ]' + FORMAT(chr);
+                    bodytext[k] := replace_text(bodytext[k],'Item','Artikelkarte');
+                    bodytext[k] := replace_text(bodytext[k],'Contact','Kontaktkarte');
+                    bodytext[k] := replace_text(bodytext[k],'Customer','Debitorkarte');
+                    bodytext[k] := replace_text(bodytext[k],'Comment Line','Bemerkungszeile');
+                    bodytext[k] := replace_text(bodytext[k],'Rlshp. Mgt. Comment Line','Bemerkungszeile');
+                    bodytext[k] := replace_text(bodytext[k],'Campaign','Projektkarte');
+                    bodytext[k] := replace_text(bodytext[k],'Sales Header','Auftragskarte');
+                    bodytext[k] := replace_text(bodytext[k],'Purchase Header','Bestellungen');
+                  END;
+              UNTIL DataLink.NEXT = 0;
+
+              IF fehler THEN  BEGIN
+                IF bodytext[1] <> '' THEN
+                  NewMailAddMoreBody(VerkTab."E-Mail",'','',
+                  'Die Pfade der Datei-Links im Navision (Broklammer Funktion) sind nicht mehr korrekt',bodytext[1],'','',TRUE,FALSE);
+                IF bodytext[2] <> '' THEN
+                  NewMailAddMoreBody('','','','',bodytext[2],'','',FALSE,FALSE);
+                IF bodytext[3] <> '' THEN
+                  NewMailAddMoreBody('','','','',bodytext[3],'','',FALSE,FALSE);
+              END;
+
+          UNTIL VerkTab.NEXT = 0;
+        END;
+
+      InfoFileF.CLOSE;
+    END;
+
+    PROCEDURE SalutationText@1140007(v_salutation@1140000 : Code[10];v_language@1140001 : Code[10];v_surname@1140002 : Text[30]) : Text[80];
+    VAR
+      SalutationFormula@1140003 : Record 5069;
+    BEGIN
+      SalutationFormula.SETFILTER("Salutation Code",v_salutation);
+      SalutationFormula.SETFILTER("Language Code",v_language);
+      SalutationFormula.SETFILTER("Salutation Type",'%1',SalutationFormula."Salutation Type" :: Formal);
+      IF SalutationFormula.FINDFIRST THEN
+        BEGIN
+          IF (v_salutation ='MANDANT') OR (v_salutation ='') THEN
+            EXIT(SalutationFormula.Salutation)
+          ELSE
+            EXIT(DELCHR(SalutationFormula.Salutation,'=','%1') + v_surname +',');
+        END;
+    END;
+
+    PROCEDURE CTICall@1140008("Mobile No."@1140001 : Text[30];Name@1140004 : Text[50];"Company Name"@1140003 : Text[50]);
+    VAR
+      timeout@1140005 : Integer;
+    BEGIN
+      {
+      //25.02.2014-ST CTI Anbindung Kontakt Karte H”rer etc.
+      timeout := 30;
+      IF CONFIRM(Text100,TRUE,Name) THEN
+        BEGIN
+          CREATE(CTI);
+          CTI.Open(TRUE,timeout);
+          CTI.Dial("Mobile No.",Name,"Company Name",FALSE,TRUE,timeout);
+          CLEAR(CTI);
+        END;
+      }
+    END;
+
+    PROCEDURE NavUCCall@1140020(Telnr@1140000 : Text[30];Name@1140002 : Text[50]);
+    VAR
+      WSHScript@1140001 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{72C24DD5-D70A-438B-8A42-98424B88AFB8}:'Windows Script Host Object Model'.WshShell";
+      program_path@1140003 : Text[250];
+    BEGIN
+      IF CONFIRM(Text100,TRUE,Name) THEN
+        BEGIN
+          CREATE(WSHScript, FALSE, TRUE);
+          program_path := WSHScript.RegRead('HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\PhoneHelper.exe\');
+          IF EXISTS(program_path) THEN
+            WSHScript.Exec(program_path + ' Dial(%2B'+ Telnr + ')')
+          ELSE
+            MESSAGE(Text102);
+          CLEAR(WSHScript);
+        END;
+    END;
+
+    PROCEDURE trim_text@1140011(all_text@1140000 : Text[1024];text_to_trim@1140001 : Text[120]) : Text[1024];
+    BEGIN
+      EXIT(COPYSTR(all_text,1,STRPOS(all_text,text_to_trim)-1) +
+      COPYSTR(all_text,STRPOS(all_text,text_to_trim) + STRLEN(text_to_trim)));
+    END;
+
+    PROCEDURE replace_text@1140051(all_text@1140000 : Text[1024];text_to_replace@1140001 : Text[120];text_replace_with@1140002 : Text[120]) : Text[1024];
+    BEGIN
+      IF STRPOS(all_text,text_to_replace) = 0  THEN EXIT(all_text);
+      EXIT(COPYSTR(all_text,1,STRPOS(all_text,text_to_replace)-1) + text_replace_with +
+      COPYSTR(all_text,STRPOS(all_text,text_to_replace) + STRLEN(text_to_replace)));
+    END;
+
+    PROCEDURE ConvertStrToNum@1140010(string@1140000 : Text[250]) : Integer;
+    VAR
+      num@1140001 : Integer;
+    BEGIN
+      EVALUATE(num,DELCHR(string,'=',DELCHR(string,'=','0123456789')));
+      EXIT(num);
+    END;
+
+    PROCEDURE OpenFolder@1140019(FolderPath@1140002 : Text[180]);
+    VAR
+      WSH@1140004 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{0D43FE01-F093-11CF-8940-00A0C9054228}:'Windows Script Host Object Model'.FileSystemObject";
+      WSHFolder@1140003 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{72C24DD5-D70A-438B-8A42-98424B88AFB8}:'Windows Script Host Object Model'.WshShell";
+      int@1140000 : Integer;
+      wait@1140001 : Boolean;
+    BEGIN
+      IF ISCLEAR(WSH) THEN
+        CREATE(WSH, FALSE, TRUE);
+
+      IF NOT WSH.FolderExists(FolderPath) THEN BEGIN
+        CLEAR(WSH);
+        ERROR(Text101,FolderPath);
+      END;
+
+      IF ISCLEAR(WSHFolder) THEN BEGIN
+        CREATE(WSHFolder, FALSE, TRUE);
+        int := 1;
+        wait := FALSE;
+        WSHFolder.Run('"'+FolderPath+'"',int,wait);
+        CLEAR(WSHFolder);
+      END;
+
+      CLEAR(WSH);
+    END;
+
+    PROCEDURE NewFolder@1140015(FolderPath@1140000 : Text[180]) : Boolean;
+    VAR
+      WSH@1140001 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{0D43FE01-F093-11CF-8940-00A0C9054228}:'Windows Script Host Object Model'.FileSystemObject";
+    BEGIN
+      //SHELL(STRSUBSTNO('%1 /c MkDir %2', ENVIRON('COMSPEC'),FolderPath));
+
+      IF FolderPath = '' THEN EXIT(FALSE);
+
+      IF ISCLEAR(WSH) THEN
+        CREATE(WSH, FALSE, TRUE);
+
+      IF NOT WSH.FolderExists(FolderPath) THEN BEGIN
+        //IF WSH.FolderExists(COPYSTR(FolderPath,1,STRPOS(FolderPath,'\'))) THEN BEGIN ???
+          WSH.CreateFolder(FolderPath);
+          CLEAR(WSH);
+          EXIT(TRUE);
+        //END;
+      END ELSE BEGIN
+        CLEAR(WSH);
+        EXIT(TRUE);
+      END;
+    END;
+
+    PROCEDURE CalculateTimeDiff@1140013(Type@1140000 : Code[10];Startdate@1140001 : Date;Enddate@1140002 : Date) : Integer;
+    VAR
+      diff@1140003 : Integer;
+    BEGIN
+      IF (Startdate = 0D) OR (Enddate = 0D) OR (Startdate >= Enddate) THEN
+        EXIT(0);
+
+      CASE Type OF
+      //Ermittelt die Monatsdifferenz
+      'M' :
+        BEGIN
+          diff :=  ABS((DATE2DMY(Enddate,3) - DATE2DMY(Startdate,3))*12 + DATE2DMY(Enddate,2)-
+          DATE2DMY(Startdate,2));
+          IF DATE2DMY(Enddate,1) > DATE2DMY(Startdate,1) THEN
+            diff += 1;
+          END;
+      END;
+
+      EXIT(diff);
+    END;
+
+    PROCEDURE GetDefaultPrinter@1140021() : Text[120];
+    VAR
+      WshShell@1140001 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{72C24DD5-D70A-438B-8A42-98424B88AFB8}:'Windows Script Host Object Model'.WshShell";
+      RegKey@1140000 : Text[250];
+      Drucker@1140002 : Text[120];
+    BEGIN
+      IF ISCLEAR(WshShell) THEN
+      CREATE(WshShell, FALSE, TRUE);
+
+      RegKey := 'HKEY_CURRENT_USER\Software\Microsoft\Windows NT\CurrentVersion\Windows\Device';
+
+      Drucker := WshShell.RegRead(RegKey);
+
+      CLEAR(WshShell);
+
+      EXIT(Drucker);
+    END;
+
+    PROCEDURE CreateExcelHyperlinkToNav@1140023(RecordTableName@1140000 : Text[50];RecordKeyId@1140001 : Integer;PageID@1140003 : Integer;DataValue@1140002 : Text[50]) : Text[1024];
+    VAR
+      Wartungsvertrag@1000000000 : Record 50011;
+      SalesHeader@1000000001 : Record 36;
+      SalesHeaderArchive@1000000009 : Record 5107;
+      Contact@1000000002 : Record 5050;
+      Customer@1000000003 : Record 18;
+      Item@1000000004 : Record 27;
+      Quotedaten@1000000005 : Record 50014;
+      Support@1000000006 : Record 50012;
+      SalesShipmentHeader@1000000007 : Record 110;
+      PurchaseHeader@1000000010 : Record 38;
+      PurchaseHeaderArchive@1000000011 : Record 5109;
+      ServiceleistLeihstellungen@1000000008 : Record 50024;
+    BEGIN
+      IF (RecordTableName = '') OR (RecordKeyId <= 0) THEN EXIT('');
+
+      CASE RecordTableName OF
+
+        'Wartungsvertrag' :
+          BEGIN
+            IF RecordKeyId = 1 THEN BEGIN
+              IF Wartungsvertrag.GET(DataValue) THEN
+                //NAV 2016
+                EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, Wartungsvertrag) + '";"' + DataValue + '")')
+              ELSE
+                //NAV 5.0
+                EXIT('=HYPERLINK("' + STRSUBSTNO(Link_Field1,PageID,DataValue) + '";"' + DataValue + '")');
+            END;
+          END;
+
+        'Sales Header' :
+          BEGIN
+            IF RecordKeyId = 1 THEN BEGIN
+              IF PageID = 41 THEN
+                IF SalesHeader.GET(SalesHeader."Document Type"::Quote,DataValue) THEN
+                  //NAV 2016
+                  EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, SalesHeader) + '";"' + DataValue + '")')
+                ELSE
+                  //NAV 5.0
+                  EXIT('=HYPERLINK("' + STRSUBSTNO("Link_Field1+Field3",PageID,0,DataValue) + '";"' + DataValue + '")');
+              IF PageID = 42 THEN
+                IF SalesHeader.GET(SalesHeader."Document Type"::Order,DataValue) THEN
+                  //NAV 2016
+                  EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, SalesHeader) + '";"' + DataValue + '")')
+                ELSE
+                  //NAV 5.0
+                  EXIT('=HYPERLINK("' + STRSUBSTNO("Link_Field1+Field3",PageID,1,DataValue) + '";"' + DataValue + '")');
+              IF PageID = 507 THEN
+                IF SalesHeader.GET(SalesHeader."Document Type"::"Blanket Order",DataValue) THEN
+                  //NAV 2016
+                  EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, SalesHeader) + '";"' + DataValue + '")')
+                ELSE
+                  //NAV 5.0
+                  EXIT('=HYPERLINK("' + STRSUBSTNO("Link_Field1+Field3",PageID,4,DataValue) + '";"' + DataValue + '")');
+            END;
+          END;
+
+         'Sales Header Archive' :
+          BEGIN
+            IF RecordKeyId = 1 THEN BEGIN
+              SalesHeaderArchive.RESET;
+              SalesHeaderArchive.SETRANGE("No.",DataValue);
+              IF SalesHeaderArchive.FINDFIRST THEN
+                //NAV 2016
+                EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, SalesHeaderArchive) + '";"' + DataValue + '")')
+              ELSE
+                //NAV 5.0
+                EXIT('=HYPERLINK("' + STRSUBSTNO(Link_Field1,PageID,DataValue) + '";"' + DataValue + '")');
+            END;
+          END;
+
+        'Contact' :
+          BEGIN
+            IF RecordKeyId = 1 THEN BEGIN
+              IF Contact.GET(DataValue) THEN
+                //NAV 2016
+                EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, Contact) + '";"' + DataValue + '")')
+              ELSE
+                //NAV 5.0
+                EXIT('=HYPERLINK("' + STRSUBSTNO(Link_Field1,PageID,DataValue) + '";"' + DataValue + '")');
+            END;
+          END;
+
+        'Customer' :
+          BEGIN
+            IF RecordKeyId = 1 THEN BEGIN
+              IF Customer.GET(DataValue) THEN
+                //NAV 2016
+                EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, Customer) + '";"' + DataValue + '")')
+              ELSE
+                //NAV 5.0
+                EXIT('=HYPERLINK("' + STRSUBSTNO(Link_Field1,PageID,DataValue) + '";"' + DataValue + '")');
+            END;
+          END;
+
+        'Item' :
+          BEGIN
+            IF RecordKeyId = 1 THEN BEGIN
+              Item.SETRANGE("No. 2",DataValue);
+              IF Item.FINDFIRST THEN
+                //NAV 2016
+                EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, Item) + '";"' + Item."No. 2" + '")')
+              ELSE BEGIN
+                IF Item.GET(DataValue) THEN
+                  //NAV 2016
+                  EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, Item) + '";"' + Item."No. 2" + '")')
+                ELSE
+                  //NAV 5.0
+                  EXIT('=HYPERLINK("' + STRSUBSTNO(Link_Field1,PageID,DataValue) + '";"' + Item."No. 2" + '")');
+              END;
+            END;
+          END;
+
+        'Quotedaten' :
+          BEGIN
+            IF RecordKeyId = 1 THEN BEGIN
+              IF Quotedaten.GET(DataValue) THEN
+                //NAV 2016
+                EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, Quotedaten) + '";"' + DataValue + '")')
+              ELSE
+                //NAV 5.0
+                EXIT('=HYPERLINK("' + STRSUBSTNO(Link_Field1,PageID,DataValue) + '";"' + DataValue + '")');
+            END;
+          END;
+
+        'Support' :
+          BEGIN
+            IF RecordKeyId = 1 THEN BEGIN
+              IF Support.GET(DataValue) THEN
+                //NAV 2016
+                EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, Support) + '";"' + DataValue + '")')
+              ELSE
+                //NAV 5.0
+                EXIT('=HYPERLINK("' + STRSUBSTNO(Link_Field1,PageID,DataValue) + '";"' + DataValue + '")');
+            END;
+          END;
+
+        'Sales Shipment Header' :
+          BEGIN
+            IF RecordKeyId = 1 THEN BEGIN
+              IF SalesShipmentHeader.GET(DataValue) THEN
+                //NAV 2016
+                EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, SalesShipmentHeader) + '";"' + DataValue + '")')
+              ELSE
+                //NAV 5.0
+                EXIT('=HYPERLINK("' + STRSUBSTNO(Link_Field3,PageID,DataValue) + '";"' + DataValue + '")');
+            END;
+          END;
+
+          'Purchase Header' :
+          BEGIN
+            IF RecordKeyId = 1 THEN BEGIN
+              IF PurchaseHeader.GET(PurchaseHeader."Document Type"::Order,DataValue) THEN
+                //NAV 2016
+                EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, PurchaseHeader) + '";"' + DataValue + '")')
+              ELSE
+                //NAV 5.0
+                EXIT('=HYPERLINK("' + STRSUBSTNO(Link_Field1,PageID,DataValue) + '";"' + DataValue + '")');
+            END;
+          END;
+
+          'Purchase Header Archive' :
+          BEGIN
+            IF RecordKeyId = 1 THEN BEGIN
+              PurchaseHeaderArchive.RESET;
+              PurchaseHeaderArchive.SETRANGE("No.",DataValue);
+              IF PurchaseHeaderArchive.FINDFIRST THEN
+                //NAV 2016
+                EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, PurchaseHeaderArchive) + '";"' + DataValue + '")')
+              ELSE
+                //NAV 5.0
+                EXIT('=HYPERLINK("' + STRSUBSTNO(Link_Field1,PageID,DataValue) + '";"' + DataValue + '")');
+            END;
+          END;
+
+        'Serviceleist. & Leihstellungen' :
+          BEGIN
+            IF RecordKeyId = 1 THEN BEGIN
+              ServiceleistLeihstellungen.RESET;
+              ServiceleistLeihstellungen.SETFILTER("Seriennr.",'%1',DataValue);
+              IF ServiceleistLeihstellungen.FINDFIRST THEN
+                //NAV 2016
+                EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, ServiceleistLeihstellungen,TRUE) + '";"' + DataValue + '")')
+              ELSE
+                //NAV 5.0
+                EXIT('=HYPERLINK("' + STRSUBSTNO(Link_Field7,PageID,DataValue) + '";"' + DataValue + '")');
+            END;
+          END;
+
+      END;
+
+      EXIT(DataValue);
+    END;
+
+    PROCEDURE RuntimeText_output@1140031(startdate@1140000 : Date;enddate@1140001 : Date) : Text[30];
+    VAR
+      days@1140002 : Integer;
+      text_year@1140003 : Text[30];
+      text_day@1140004 : Text[30];
+    BEGIN
+      IF (startdate = 0D) OR (enddate = 0D) THEN
+        EXIT('');
+      days := enddate - startdate + 1;
+
+      IF days DIV 365 = 1 THEN
+        text_year := FORMAT(days DIV 365) + ' Jahr '
+      ELSE
+        IF days DIV 365 > 1 THEN
+          text_year := FORMAT(days DIV 365) + ' Jahre ';
+
+      IF days MOD 365 = 1 THEN
+        text_day := FORMAT(days MOD 365) + ' Tag'
+      ELSE
+        IF days MOD 365 > 1 THEN
+          text_day := FORMAT(days MOD 365) + ' Tage';
+
+      EXIT(text_year + text_day);
+    END;
+
+    PROCEDURE OpenFile@1000000001(VAR field@1140002 : Text[180]);
+    VAR
+      WinApplct@1140000 : Automation "{50A7E9B0-70EF-11D1-B75A-00A0C90564FE} 1.0:{13709620-C279-11CE-A49E-444553540000}:'Microsoft Shell Controls And Automation'.Shell";
+      Filename@1140001 : Text[260];
+    BEGIN
+      CREATE(WinApplct,FALSE,TRUE);
+      CREATE(wshFile,FALSE,TRUE);
+      Filename := field;
+      IF NOT wshFile.FileExists(Filename) THEN BEGIN
+        CLEAR(WinApplct);
+        CLEAR(wshFile);
+        ERROR(Text200,Filename);
+      END;
+
+      WinApplct.Open(Filename);
+
+      CLEAR(WinApplct);
+      CLEAR(wshFile);
+    END;
+
+    PROCEDURE Save_FileDialog@1000000000() : Text[250];
+    VAR
+      FileMgt@1000000000 : Codeunit 419;
+      filename@1000000001 : Text;
+    BEGIN
+      filename := FileMgt.OpenFileDialog('Dokument ausw„hlen', '','');
+      IF filename <> '' THEN EXIT(filename);
+    END;
+
+    BEGIN
+    {
+      ================================================================================================================
+      SearchFolderBuildtoOrder
+      - 2014-04-02 ST Das System scannt bei Status Offen und Board ini gleich leer die Quelldatei erneut auf Board ini
+                      Erkennt Besonderheit bei Median 2600 - 1. Artikelschreibweise + 2. Master und Slave SN
+                      optimierte Abfragen (die Automation Error verhindert) und Einbindung der neuen Fkt. trim_text()
+
+      ================================================================================================================
+      trim_text()
+      - 2014-04-02 ST released as a new function to trim a text
+
+      ================================================================================================================
+      GetDefaultPrinter()
+      - 2015-07-01 ST relased as a new function to get the default system printer
+
+      ================================================================================================================
+      replace_text()
+      - 2016-02-25 ST relased as a new function to replace a string in a text
+
+      ================================================================================================================
+      CreateExcelHyperlinkToNav()
+      - 2016-02-25 ST dynamic Navision Link change for a specific table
+      - 2017-05-09 ST adjust to Navision 2016 new Server address and GETURL functionality
+
+      ================================================================================================================
+      CalcNextWorkday()
+      - 2016-07-28 ST calculate the next workday date from a given date
+
+      ================================================================================================================
+      RuntimeText_output()
+      - 2016-11-07 ST Gibt die Differenz zweier Datumswerte als Text mit Angabe in Jahre und Tage zurck
+
+      ================================================================================================================
+      NewHolidayAppointment()
+      - 2017-05-10 ST Neue Funktion zum Versenden eines Termins aus GroupWise heraus, Senden muss explizit best„tigt werden
+
+      ================================================================================================================
+      OpenFile()
+      - 2017-07-11 ST - Neue Funktion zum ™ffnen einer Datei
+
+      ================================================================================================================
+      Save_FileDialog()
+      - 2017-07-11 ST - Neue Funktion zum Abspeichern eines Dateipfades
+    }
+    END.
+  }
+}
+
