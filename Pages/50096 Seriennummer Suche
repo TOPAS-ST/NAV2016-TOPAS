@@ -2,8 +2,8 @@ OBJECT Page 50096 Seriennummer Suche
 {
   OBJECT-PROPERTIES
   {
-    Date=03.08.17;
-    Time=12:22:36;
+    Date=17.08.17;
+    Time=10:46:07;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -443,6 +443,7 @@ OBJECT Page 50096 Seriennummer Suche
       Wartung@1140013 : Record 50011;
       LizenzTab@1140011 : Record 50024;
       Berichtstabelle@1140038 : Record 50037;
+      Beleghistorie@1000000009 : Record 50008;
       nav_system@1140027 : Text[30];
       kundennr@1140023 : Code[20];
       kundenname@1140024 : Text[50];
@@ -510,7 +511,7 @@ OBJECT Page 50096 Seriennummer Suche
       Eingabe := UPPERCASE(Eingabe);
 
       //******************************************* Serial No. Suche *******************************************
-      IF STRLEN(Eingabe) <= 20 THEN BEGIN
+      IF STRLEN(Eingabe) <= 18 THEN BEGIN
         artikelverfolgung.RESET();
         //Eingabe 1:1 suchen
         IF postennr > 0 THEN
@@ -735,14 +736,14 @@ OBJECT Page 50096 Seriennummer Suche
       END;
 
 
-      //******************************** Wartungsvertrags Seriennr. Suche ********************************
+      //************************* Wartungsvertrags Seriennr. oder Board ini Suche *************************
       IF nichtgefunden = TRUE THEN BEGIN
         nichtgefunden := FALSE;
         LizenzTab.RESET();
         // Eingabe 1:1 suchen
         //LizenzTab.SETFILTER(Inaktiv,'%1',FALSE);
         LizenzTab.SETFILTER(Art,'%1|%2',LizenzTab.Art::Service,LizenzTab.Art::System);
-        LizenzTab.SETFILTER("Seriennr.",'%1','*' + Eingabe + '*');
+        LizenzTab.SETFILTER("Seriennr.",'%1',Eingabe);
         IF (LizenzTab.FINDLAST()) AND (Eingabe <> '') AND (Eingabe <> ' ') THEN BEGIN
           Nur_Wartung_ermitteln(LizenzTab);
         END ELSE BEGIN
@@ -792,13 +793,60 @@ OBJECT Page 50096 Seriennummer Suche
         END;
       END;
 
+      //****************************** Wartungsvertrags Product Key Suche *****************************
+      IF nichtgefunden = TRUE THEN BEGIN
+        nichtgefunden := FALSE;
+        LizenzTab.RESET();
+        // Eingabe 1:1 suchen
+        //LizenzTab.SETFILTER(Inaktiv,'%1',FALSE);
+        LizenzTab.SETFILTER(Art,'%1|%2',LizenzTab.Art::Service,LizenzTab.Art::System);
+        LizenzTab.SETFILTER("Product Key",'%1',Eingabe);
+        IF (LizenzTab.FINDLAST()) AND (Eingabe <> '') AND (Eingabe <> ' ') THEN BEGIN
+          Nur_Wartung_ermitteln(LizenzTab);
+          feldinfo_text := 'Product Key';
+        END ELSE BEGIN
+          // l”scht alle Buchstaben und Sonderzeichen aus der Sucheingabe
+          Eingabe_2 := DELCHR(Eingabe,'=',' ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.-_!();:"');
+          LizenzTab.RESET();
+          // Eingabe bereinigt suchen
+          //LizenzTab.SETFILTER(Inaktiv,'%1',FALSE);
+          LizenzTab.SETFILTER(Art,'%1|%2',LizenzTab.Art::Service,LizenzTab.Art::System);
+          LizenzTab.SETFILTER("Product Key",'%1','*' + Eingabe_2 + '*');
+          IF (LizenzTab.FINDLAST()) AND (Eingabe_2 <> '') AND (Eingabe_2 <> ' ') THEN BEGIN
+            Nur_Wartung_ermitteln(LizenzTab);
+            feldinfo_text := 'Product Key';
+          END ELSE BEGIN
+            a := 0;
+
+            // Zwischen die einzelnen Ziffern wird nach und nach ein Leerzeichen eingefgt
+            // 1.) 123456, 2.) 1 23456, 3. 12 3456, 4. 123 456 usw.
+            REPEAT
+              a += 1;
+              LizenzTab.RESET();
+              Eingabe_3 := COPYSTR(Eingabe_2,1,a) + ' ' + COPYSTR(Eingabe_2,a+1,STRLEN(Eingabe_2));
+
+              // Eingabe bereinigt suchen
+              //LizenzTab.SETFILTER(Inaktiv,'%1',FALSE);
+              LizenzTab.SETFILTER(Art,'%1|%2',LizenzTab.Art::Service,LizenzTab.Art::System);
+              LizenzTab.SETFILTER("Product Key",'%1','*' + Eingabe_3 + '*');
+              IF (LizenzTab.FINDLAST()) AND (Eingabe_3 <> '') AND (Eingabe_3 <> ' ') THEN BEGIN
+                Nur_Wartung_ermitteln(LizenzTab);
+                nichtgefunden := FALSE;
+                feldinfo_text := 'Product Key';
+              END;
+            UNTIL (LizenzTab.FINDLAST()) OR (a >= STRLEN(Eingabe_2)-1);
+          END;
+        END;
+      END;
+
+
       IF postennr <> 0 THEN
         btn_next_show := TRUE
       ELSE
         btn_next_show := FALSE;
 
-      IF ((seriennr <> Eingabe) AND (seriennr <> '') AND (Eingabe <> '') AND (board_ini = FALSE))
-      AND ((productkey <> Eingabe) AND (productkey <> '') AND (Eingabe <> '') AND (board_ini = FALSE)) THEN BEGIN
+      IF (((seriennr <> Eingabe) AND (seriennr <> '') AND  (productkey = '') AND (Eingabe <> '') AND (board_ini = FALSE)))
+      OR (((productkey <> Eingabe) AND (productkey <> '') AND (Eingabe <> '') AND (board_ini = FALSE))) THEN BEGIN
         hinweis_text := 'Achtung: Alternativ Ergebnis';
       END;
 
@@ -1164,6 +1212,16 @@ OBJECT Page 50096 Seriennummer Suche
         kundenname := Debitorname;
         vk_belegnr := "Urspr. Lieferscheinnr.";
         vk_datum := Belegdatum;
+        bet_nr := "Eingangs BET";
+        IF PurchRcptHeader.GET("BET-Nr.") THEN
+          ek_datum := PurchRcptHeader."Posting Date"
+        ELSE BEGIN
+          Beleghistorie.RESET;
+          Beleghistorie.SETRANGE(Belegart,Beleghistorie.Belegart::"Purchase Invoice");
+          Beleghistorie.SETRANGE("Auftragsnr.","BET-Nr.");
+          IF Beleghistorie.FINDFIRST THEN
+            ek_datum := Beleghistorie.Belegdatum;
+        END;
         vertragsnr := "Wartungsvertragsnr.";
         IF Wartung.GET(vertragsnr) THEN
           ablaufdatum := Wartung.Vertragsablaufdatum;
