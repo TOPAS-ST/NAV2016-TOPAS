@@ -1,0 +1,74 @@
+OBJECT Codeunit 50040 Report Log Management
+{
+  OBJECT-PROPERTIES
+  {
+    Date=18.08.17;
+    Time=13:50:19;
+    Modified=Yes;
+    Version List=RLM2.00;
+  }
+  PROPERTIES
+  {
+    SingleInstance=Yes;
+    OnRun=BEGIN
+          END;
+
+  }
+  CODE
+  {
+    VAR
+      tempReportLog@1113400000 : TEMPORARY Record 50040;
+      ReportLog@1113400001 : Record 50040;
+      Counter@1113400002 : Integer;
+      EntryNo@1113400003 : Integer;
+
+    PROCEDURE WriteTempReportLogUsage@1113400000(ReportId@1113400000 : Integer);
+    BEGIN
+      IF tempReportLog.FINDLAST THEN
+        Counter := tempReportLog."No." + 1
+      ELSE
+        Counter := 0;
+      tempReportLog."No." := Counter;
+      tempReportLog."User Name" := USERID;
+      tempReportLog."Report ID" := ReportId;
+      tempReportLog."Date Time" := CURRENTDATETIME;
+      tempReportLog.INSERT;
+    END;
+
+    PROCEDURE CommitReportLogUsage@1113400001();
+    BEGIN
+      tempReportLog.RESET;
+      IF tempReportLog.FINDSET THEN REPEAT
+        ReportLog."No." := 0;
+        ReportLog."User Name" := tempReportLog."User Name";
+        ReportLog."Report ID" := tempReportLog."Report ID";
+        ReportLog."Date Time" := tempReportLog."Date Time";
+        ReportLog.INSERT;
+      UNTIL tempReportLog.NEXT = 0;
+    END;
+
+    [EventSubscriber(Codeunit,1,OnAfterFindPrinter)]
+    PROCEDURE OnReportRun@120(ReportID@1000000000 : Integer;VAR PrinterName@1000000001 : Text[250]);
+    BEGIN
+      IF GUIALLOWED THEN BEGIN
+        WriteTempReportLogUsage(ReportID);
+      END;
+    END;
+
+    [EventSubscriber(Codeunit,1,OnBeforeCompanyClose)]
+    PROCEDURE OnBeforeCompanyClose@1000000001();
+    BEGIN
+      CommitReportLogUsage();
+    END;
+
+    BEGIN
+    {
+      RLM1.00 20131106 Report Log Management
+      RLM2.00 20170804 upgrade to NAV 2017 : moved code from CU 1 into new events
+                                             "OnReportRun()", "OnBeforeCompanyClose()"
+                                             OnReportRun is now triggered by "OnAfterFindPrinter"
+    }
+    END.
+  }
+}
+
