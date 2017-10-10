@@ -1,0 +1,1585 @@
+OBJECT Report 50085 TOPAS Auftragsbestand
+{
+  OBJECT-PROPERTIES
+  {
+    Date=15.05.17;
+    Time=13:22:04;
+    Modified=Yes;
+    Version List=FORNAV2.0.0.1189/1189;
+  }
+  PROPERTIES
+  {
+    OnInitReport=BEGIN
+                   ReportForNav:= ReportForNav.Report(CurrReport.OBJECTID,CurrReport.LANGUAGE,SERIALNUMBER,USERID,COMPANYNAME);ReportForNav.Init;
+                 END;
+
+    OnPreReport=BEGIN
+                  //*******************************************************************************************************
+                  //                    Sicherheitsabfrage ob Temp Tabelle auch Berichtstabelle ist
+                  //*******************************************************************************************************
+                  IF Berichtstabelle.TABLECAPTION <> 'Berichtstabelle' THEN
+                    ERROR('Eine Sicherheitssperre verhindert die Ausfhrung dieses Berichtes.'+
+                          'Stellen Sie sicher, dass die TABLECAPTION der Berichtstabelle auch auf Berichtstabelle lautet.');
+                  Berichtstabelle.RESET;
+                  IF Berichtstabelle.ISEMPTY = FALSE THEN
+                    BEGIN
+                      REPEAT
+                        Berichtstabelle.RESET;
+                        IF Berichtstabelle.ISEMPTY = FALSE THEN
+                          BEGIN
+                            SLEEP(500);
+                            counter += 1;
+                          END;
+                        IF counter MOD 30 = 0 THEN
+                          BEGIN
+                            Berichtstabelle.FINDFIRST;
+                            IF CONFIRM('Die Berichtstabelle ist seit %1 durch Anwender %2 gesperrt. Wollen Sie die Anwendung abbrechen?',
+                            TRUE,Berichtstabelle.Uhrzeit,Berichtstabelle.User,counter,TRUE) THEN
+                              ERROR('');
+                          END;
+                      UNTIL Berichtstabelle.ISEMPTY = TRUE;
+                    END;
+                  //*******************************************************************************************************
+                  //                                 Akt. Auftr„ge werden durchsucht
+                  //*******************************************************************************************************
+                  SalesHeader.RESET;
+                  IF (Startdatum<>0D) AND (Enddatum=0D) THEN
+                    SalesHeader.SETFILTER(SalesHeader."Order Date",'>=%1',Startdatum);
+                  IF (Startdatum<>0D) AND (Enddatum<>0D) THEN
+                    SalesHeader.SETFILTER(SalesHeader."Order Date",'>=%1&<=%2',Startdatum,Enddatum);
+                  IF (Startdatum=0D) AND (Enddatum<>0D) THEN
+                    SalesHeader.SETFILTER(SalesHeader."Order Date",'<=%1',Enddatum);
+                  SalesHeader.SETFILTER("Betreuer Innendienst",betreuer);
+                  SalesHeader.SETFILTER("Salesperson Code",verk„ufer);
+                  SalesHeader.SETFILTER(Teams,teams);
+                  SalesHeader.SETFILTER("Territory Code",gebietscode);
+                  SalesHeader.SETFILTER(SalesHeader."Document Type",'%1',SalesHeader."Document Type" :: Order);
+                  IF SalesHeader.FIND('-') THEN
+                    REPEAT
+                      belegzeilen_vorhanden := FALSE;
+                      SalesLine.RESET;
+                      SalesLine.SETFILTER(SalesLine."Document No.",SalesHeader."No.");
+                      SalesLine.SETFILTER(SalesLine.Type,'%1',SalesLine.Type :: Item);
+                      SalesLine.SETFILTER(SalesLine."Outstanding Quantity",'>%1',0);
+                      SalesLine.SETFILTER(SalesLine."Manufacturer Code",hersteller);
+                      IF (zugesagtes_startdatum <> 0D) AND (zugesagtes_enddatum = 0D) THEN
+                        SalesLine.SETFILTER(SalesLine."Promised Delivery Date",'>=%1',zugesagtes_startdatum);
+                      IF (zugesagtes_startdatum <> 0D) AND (zugesagtes_enddatum <> 0D) THEN
+                        SalesLine.SETFILTER(SalesLine."Promised Delivery Date",'>=%1&<=%2',zugesagtes_startdatum,zugesagtes_enddatum);
+                      IF (zugesagtes_startdatum = 0D) AND (zugesagtes_enddatum <> 0D) THEN
+                        SalesLine.SETFILTER(SalesLine."Promised Delivery Date",'<=%1',zugesagtes_enddatum);
+                      IF SalesLine.FINDFIRST THEN
+                        BEGIN
+                          belegzeilen_vorhanden := TRUE;
+                          Berichtstabelle_temp.RESET;
+                          Berichtstabelle_temp.SETFILTER(Tabelle,'%1','DEBITOR');
+                          Berichtstabelle_temp.SETFILTER(Index,'%1',SalesHeader."Sell-to Customer No.");
+                          IF NOT Berichtstabelle_temp.FINDFIRST THEN
+                            BEGIN
+                              //*******************************************************************************************************
+                              //                                     Debitor Daten schreiben
+                              //*******************************************************************************************************
+                              Berichtstabelle.INIT;
+                                Berichtstabelle.Tabelle := 'DEBITOR';
+                                Berichtstabelle.Index := SalesHeader."Sell-to Customer No.";
+                                Berichtstabelle."Feld 10" := SalesHeader."Sell-to Customer Name";
+                                Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                                Berichtstabelle.User := USERID;
+                              Berichtstabelle.INSERT;
+                            END;
+                          REPEAT
+                            //*******************************************************************************************************
+                            //                                      Auftragszeilen schreiben
+                            //*******************************************************************************************************
+                            Berichtstabelle.INIT;
+                              Berichtstabelle.Tabelle := 'BELEGZEILE';
+                              Berichtstabelle.Index := SalesLine."Document No.";
+                              Berichtstabelle.Datum := SalesLine."Promised Delivery Date";
+                              Berichtstabelle."Belegnr." := SalesLine."Document No.";
+                              Berichtstabelle."Zeilennr." := SalesLine."Line No.";
+                              Berichtstabelle."Feld 3" := SalesLine."Artikelnr. 2";
+                              Berichtstabelle."Feld 4" := SalesLine."Outstanding Quantity";
+                              Berichtstabelle."Feld 5" := SalesLine."Unit Price";
+                              IF Quotedaten.GET(SalesLine."Quotenr.") THEN
+                                Berichtstabelle."Feld 6" := Quotedaten."Quotenr. Hersteller";
+                              IF SalesHeader."Currency Code" = '' THEN
+                                Berichtstabelle."Feld 7" := '°'
+                              ELSE
+                                Berichtstabelle."Feld 7" := SalesHeader."Currency Code";
+                              Berichtstabelle."Feld 10" := FORMAT(SalesLine."Outstanding Quantity" * SalesLine."Unit Price");
+                              Berichtstabelle."Feld 11" := FORMAT(SalesLine."Requested Delivery Date");
+                              Berichtstabelle."Feld 12" := FORMAT(ROUND(SalesLine."Profit %",0.01));
+                              Berichtstabelle."Feld 13" := FORMAT(ROUND(SalesLine."Unit Cost (LCY)",0.01));
+                                Berichtstabelle."Feld 14" := FORMAT(SalesLine.Quantity);
+                              Berichtstabelle."Feld 15" := FORMAT(RckstandMenge);
+                              Berichtstabelle."Feld 16" := FORMAT(SalesHeader."Currency Factor");
+                              Berichtstabelle."Feld 18" := SalesLine."Shipment Date";
+                              Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                              Berichtstabelle.User := USERID;
+                            Berichtstabelle.INSERT;
+                          UNTIL SalesLine.NEXT = 0;
+                        END;
+                      //*******************************************************************************************************
+                      //     Nachtr„glich alle anderen Daten schreiben, wenn auch wirklich Auftragszeilen vorhanden sind
+                      //*******************************************************************************************************
+                      IF belegzeilen_vorhanden THEN
+                        BEGIN
+                          //Auftragskopf
+                          Berichtstabelle.INIT;
+                            Berichtstabelle.Tabelle := 'BELEGKOPF';
+                            Berichtstabelle.Index := SalesHeader."No.";
+                            Berichtstabelle.Datum := SalesHeader."Order Date";
+                            Berichtstabelle."Belegnr." := SalesHeader."No.";
+                            Berichtstabelle."Feld 2" := SalesHeader."Sell-to Customer No.";
+                            SalesHeader.CALCFIELDS(Amount);
+                            Berichtstabelle."Feld 4" := SalesHeader.Amount;
+                            Berichtstabelle."Feld 6" := SalesHeader."Betreuer Innendienst";
+                            Berichtstabelle."Feld 7" := SalesHeader."Salesperson Code";
+                            Berichtstabelle."Feld 8" := SalesHeader.Teams;
+                            Berichtstabelle."Feld 9" := SalesHeader."Territory Code";
+                            IF SalesHeader."Currency Code" <> '' THEN
+                              Berichtstabelle."Feld 12" := SalesHeader."Currency Code"
+                            ELSE
+                              Berichtstabelle."Feld 12" := '°';
+                            Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                            Berichtstabelle.User := USERID;
+                          Berichtstabelle.INSERT;
+                        END;
+                    UNTIL SalesHeader.NEXT = 0;
+                  IF (zugesagtes_startdatum = 0D) AND (zugesagtes_enddatum = 0D) THEN
+                    BEGIN
+                      //*******************************************************************************************************
+                      //                                 Archivierte Auftr„ge werden durchsucht
+                      //*******************************************************************************************************
+                      IF ohne_archiv = TRUE THEN
+                        EXIT;
+                      ArchSalesHeader.RESET;
+                      IF (Startdatum<>0D) AND (Enddatum=0D) THEN
+                        ArchSalesHeader.SETFILTER(ArchSalesHeader."Order Date",'>=%1',Startdatum);
+                      IF (Startdatum<>0D) AND (Enddatum<>0D) THEN
+                        ArchSalesHeader.SETFILTER(ArchSalesHeader."Order Date",'>=%1&<=%2',Startdatum,Enddatum);
+                      IF (Startdatum=0D) AND (Enddatum<>0D) THEN
+                        ArchSalesHeader.SETFILTER(ArchSalesHeader."Order Date",'<=%1',Enddatum);
+                      ArchSalesHeader.SETFILTER("Betreuer Innendienst",betreuer);
+                      ArchSalesHeader.SETFILTER("Salesperson Code",verk„ufer);
+                      ArchSalesHeader.SETFILTER(Teams,teams);
+                      ArchSalesHeader.SETFILTER("Territory Code",gebietscode);
+                      ArchSalesHeader.SETFILTER(ArchSalesHeader."Document Type",'%1',ArchSalesHeader."Document Type" :: Order);
+                      IF ArchSalesHeader.FIND('-') THEN
+                        REPEAT
+                          arch_belegzeilen_vorhanden := FALSE;
+                          ArchSalesLine.RESET;
+                          ArchSalesLine.SETFILTER(ArchSalesLine."Document No.",ArchSalesHeader."No.");
+                          ArchSalesLine.SETFILTER(ArchSalesLine.Type,'%1',ArchSalesLine.Type :: Item);
+                          //ArchSalesLine.SETFILTER(ArchSalesLine."Outstanding Quantity",'>%1',0);
+                          ArchSalesLine.SETFILTER(ArchSalesLine."Manufacturer Code",hersteller);
+                          ArchSalesLine.SETFILTER("Version No.",'%1',ArchSalesHeader."Version No.");
+                          IF ArchSalesLine.FINDFIRST THEN
+                            BEGIN
+                              arch_belegzeilen_vorhanden := TRUE;
+                              Berichtstabelle_temp.RESET;
+                              Berichtstabelle_temp.SETFILTER(Tabelle,'%1','ARCH_DEBITOR');
+                              Berichtstabelle_temp.SETFILTER(Index,'%1',ArchSalesHeader."Sell-to Customer No.");
+                              IF NOT Berichtstabelle_temp.FINDFIRST THEN
+                                BEGIN
+                                  //*******************************************************************************************************
+                                  //                                     Debitor Daten schreiben
+                                  //*******************************************************************************************************
+                                  Berichtstabelle.INIT;
+                                    Berichtstabelle.Tabelle := 'ARCH_DEBITOR';
+                                    Berichtstabelle.Index := ArchSalesHeader."Sell-to Customer No.";
+                                    Berichtstabelle."Feld 10" := ArchSalesHeader."Sell-to Customer Name";
+                                    Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                                    Berichtstabelle.User := USERID;
+                                  Berichtstabelle.INSERT;
+                                END;
+                              REPEAT
+                                //*******************************************************************************************************
+                                //                                 Archivierte Auftragszeilen schreiben
+                                //*******************************************************************************************************
+                                Berichtstabelle.INIT;
+                                  Berichtstabelle.Tabelle := 'ARCH_BELEGZEILE';
+                                  Berichtstabelle.Index := ArchSalesLine."Document No.";
+                                  Berichtstabelle.Datum := ArchSalesLine."Promised Delivery Date";
+                                  Berichtstabelle."Belegnr." := ArchSalesLine."Document No.";
+                                  Berichtstabelle."Zeilennr." := ArchSalesLine."Line No.";
+                                  Berichtstabelle."Feld 3" := ArchSalesLine."Artikelnr. 2";
+                                  Berichtstabelle."Feld 4" := ArchSalesLine.Quantity;
+                                  Berichtstabelle."Feld 5" := ArchSalesLine."Unit Price";
+                                  IF Quotedaten.GET(ArchSalesLine."Quotenr.") THEN
+                                    Berichtstabelle."Feld 6" := Quotedaten."Quotenr. Hersteller";
+                                  IF ArchSalesHeader."Currency Code" = '' THEN
+                                    Berichtstabelle."Feld 7" := '°'
+                                  ELSE
+                                    Berichtstabelle."Feld 7" := ArchSalesHeader."Currency Code";
+                                  Berichtstabelle."Feld 10" := FORMAT(ArchSalesLine."Outstanding Quantity" * ArchSalesLine."Unit Price");
+                                  Berichtstabelle."Feld 11" := FORMAT(ArchSalesLine."Requested Delivery Date");
+                                  Berichtstabelle."Feld 12" := FORMAT(ROUND(ArchSalesLine."Profit %",0.01));
+                                  Berichtstabelle."Feld 13" := FORMAT(ROUND(ArchSalesLine."Unit Cost (LCY)",0.01));
+                                  Berichtstabelle."Feld 16" := FORMAT(ArchSalesHeader."Currency Factor");
+                                  Berichtstabelle."Feld 18" := ArchSalesLine."Shipment Date";
+                                  Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                                  Berichtstabelle.User := USERID;
+                                Berichtstabelle.INSERT;
+                              UNTIL ArchSalesLine.NEXT = 0;
+                            END;
+                          //*******************************************************************************************************
+                          //     Nachtr„glich alle anderen Daten schreiben, wenn auch wirklich Auftragszeilen vorhanden sind
+                          //*******************************************************************************************************
+                          IF arch_belegzeilen_vorhanden THEN
+                            BEGIN
+                              //Auftragskopf
+                              Berichtstabelle.INIT;
+                                Berichtstabelle.Tabelle := 'ARCH_BELEGKOPF';
+                                Berichtstabelle.Index := ArchSalesHeader."No.";
+                                Berichtstabelle.Datum := ArchSalesHeader."Order Date";
+                                Berichtstabelle."Belegnr." := ArchSalesHeader."No.";
+                                Berichtstabelle."Feld 2" := ArchSalesHeader."Sell-to Customer No.";
+                                ArchSalesHeader.CALCFIELDS(Amount);
+                                Berichtstabelle."Feld 4" := ArchSalesHeader.Amount;
+                                Berichtstabelle."Feld 6" := ArchSalesHeader."Betreuer Innendienst";
+                                Berichtstabelle."Feld 7" := ArchSalesHeader."Salesperson Code";
+                                Berichtstabelle."Feld 8" := ArchSalesHeader.Teams;
+                                Berichtstabelle."Feld 9" := ArchSalesHeader."Territory Code";
+                                IF ArchSalesHeader."Currency Code" <> '' THEN
+                                  Berichtstabelle."Feld 12" := ArchSalesHeader."Currency Code"
+                                ELSE
+                                  Berichtstabelle."Feld 12" := '°';
+                                Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                                Berichtstabelle.User := USERID;
+                              Berichtstabelle.INSERT;
+                            END;
+                        UNTIL ArchSalesHeader.NEXT = 0;
+                      //*******************************************************************************************************
+                      //         Temp Datensatz erzeugt, damit die Berichtsansicht eine neue Seite fr arch. Angebote
+                      //              ”ffnet und auf dieser neuen Seite der Header nicht zweimal angedruckt wird
+                      //*******************************************************************************************************
+                      Berichtstabelle_temp.RESET;
+                      Berichtstabelle_temp.SETFILTER(Berichtstabelle_temp.Tabelle,'%1','ARCH_DEBITOR');
+                      IF Berichtstabelle_temp.FINDFIRST THEN
+                        BEGIN
+                          Berichtstabelle.INIT;
+                            Berichtstabelle.Tabelle := 'TEMP';
+                            Berichtstabelle.Index := 'XXXX';
+                          Berichtstabelle.INSERT;
+                        END;
+                    END;
+                  ;ReportForNav.OpenDesigner:=ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
+                END;
+
+    OnPostReport=BEGIN
+                   IF Berichtstabelle.TABLECAPTION = 'Berichtstabelle' THEN
+                     Berichtstabelle.DELETEALL;
+                   ;ReportForNav.Post;
+                 END;
+
+  }
+  DATASET
+  {
+    { 1   ;    ;DataItem;Debitor             ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(DEBITOR));
+               OnPreDataItem=BEGIN
+                               IF sort = sort :: Nr THEN
+                                 Debitor.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               IF sort = sort :: Name THEN
+                                 Debitor.SETCURRENTKEY("Feld 10",Datum,Index);
+                               ReportForNav.GetDataItem('Debitor').NewPagePerRecord := NurEinProSeiteDrucken;
+                             END;
+                              }
+
+    { 2   ;1   ;Column  ;USERID              ;
+               SourceExpr=USERID }
+
+    { 3   ;1   ;Column  ;ReportForNavPageNo  ;
+               SourceExpr=ReportForNav.PageNo }
+
+    { 4   ;1   ;Column  ;TODAY_0_4           ;
+               SourceExpr=FORMAT(TODAY,0,4) }
+
+    { 5   ;1   ;Column  ;Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Teams;
+               SourceExpr='Verk„ufercode: '+verk„ufer+' Betreuer Innendienst: ' + betreuer + ' Teams: ' + teams + ' Gebietscode: ' + gebietscode + ' Hersteller: ' + hersteller + '  Auftragsdatum: ' + FORMAT(Startdatum) + '..' + FORMAT(Enddatum) }
+
+    { 6   ;1   ;Column  ;Feld10_Debitor      ;
+               SourceExpr="Feld 10" }
+
+    { 7   ;1   ;Column  ;Index_Debitor       ;
+               SourceExpr=Index }
+
+    { 8   ;1   ;Column  ;Euro                ;
+               SourceExpr='Euro' }
+
+    { 9   ;1   ;Column  ;AuftragBetrag_EURO  ;
+               SourceExpr=AuftragBetrag_EURO;
+               AutoFormatType=1 }
+
+    { 10  ;1   ;Column  ;USD                 ;
+               SourceExpr='USD' }
+
+    { 11  ;1   ;Column  ;AuftragBetrag_USD   ;
+               SourceExpr=AuftragBetrag_USD;
+               AutoFormatType=1 }
+
+    { 12  ;1   ;Column  ;JPY                 ;
+               SourceExpr='JPY' }
+
+    { 13  ;1   ;Column  ;AuftragBetrag_JPY   ;
+               SourceExpr=AuftragBetrag_JPY;
+               AutoFormatType=1 }
+
+    { 14  ;1   ;Column  ;AuftragBetrag_USD_WechselkursExchangeRateAmount;
+               SourceExpr=AuftragBetrag_USD/Wechselkurs."Exchange Rate Amount";
+               AutoFormatType=1 }
+
+    { 15  ;1   ;Column  ;ExchangeRateAmount_Wechselkurs;
+               DecimalPlaces=4:4;
+               SourceExpr=Wechselkurs."Exchange Rate Amount" }
+
+    { 16  ;1   ;Column  ;AuftragBetrag_JPY_WechselkursExchangeRateAmount;
+               SourceExpr=AuftragBetrag_JPY/Wechselkurs."Exchange Rate Amount";
+               AutoFormatType=1 }
+
+    { 17  ;1   ;Column  ;Gesamt_AU_EK        ;
+               SourceExpr=Gesamt_AU_EK }
+
+    { 18  ;1   ;Column  ;summe1_summe2       ;
+               SourceExpr=summe[1]+summe[2];
+               AutoFormatType=1 }
+
+    { 19  ;1   ;Column  ;AuftragBetragMW     ;
+               SourceExpr=AuftragBetragMW;
+               AutoFormatType=1 }
+
+    { 20  ;1   ;DataItem;Belegkopf           ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(BELEGKOPF));
+               DataItemLink=Feld 2=FIELD(Index) }
+
+    { 21  ;2   ;Column  ;waehrung            ;
+               SourceExpr=waehrung }
+
+    { 22  ;2   ;Column  ;AuftragBetrag       ;
+               SourceExpr=AuftragBetrag;
+               AutoFormatType=1 }
+
+    { 23  ;2   ;DataItem;Belegzeile          ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(BELEGZEILE));
+               OnAfterGetRecord=BEGIN
+                                  NeuerAuftrag := Belegzeile.Index <> Auftragkopf."No.";
+                                  IF NeuerAuftrag THEN
+                                    Auftragkopf.GET(1,Belegzeile.Index);
+                                  IF "Feld 18" <= WORKDATE THEN
+                                    RckstandMenge := "Feld 14"
+                                  ELSE
+                                    RckstandMenge := '0';
+                                  AuftragBetrag := "Feld 4" * "Feld 5";
+                                  IF NOT Betr„geDruckInMW THEN
+                                    BEGIN
+                                      IF Auftragkopf."Currency Code" = 'USD' THEN
+                                        AuftragBetrag_USD := AuftragBetrag;
+                                      IF Auftragkopf."Currency Code" = 'JPY' THEN
+                                      AuftragBetrag_JPY := AuftragBetrag;
+                                      IF Auftragkopf."Currency Code" = '' THEN
+                                        AuftragBetrag_EURO := AuftragBetrag;
+                                    END;
+                                  //AuftragBetrag := ROUND("Outstanding Quantity" * "Sales Line"."Line Amount" / Quantity);
+                                  AuftragBetragMW := AuftragBetrag;
+                                  IF Betr„geDruckInMW THEN
+                                    AuftragBetrag_EURO := AuftragBetragMW;
+                                  IF Auftragkopf."Currency Code" <> '' THEN BEGIN
+                                    IF Auftragkopf."Currency Factor" <> 0 THEN
+                                      AuftragBetragMW :=
+                                        ROUND(
+                                          W„hrungWechKurs.ExchangeAmtFCYToLCY(
+                                            WORKDATE,Auftragkopf."Currency Code",
+                                            AuftragBetragMW,Auftragkopf."Currency Factor"));
+                                    IF Betr„geDruckInMW THEN
+                                      BEGIN
+                                        AuftragBetrag := AuftragBetragMW;
+                                        AuftragBetrag_EURO := AuftragBetragMW;
+                                      END;
+                                  END;
+                                  waehrung := "Feld 7";
+                                  IF Betr„geDruckInMW=TRUE THEN
+                                    waehrung:='EUR';
+                                END;
+
+               DataItemLink=Index=FIELD(Index) }
+
+    { 24  ;3   ;Column  ;Feld11_Belegzeile   ;
+               SourceExpr="Feld 11" }
+
+    { 25  ;3   ;Column  ;Feld16_Belegzeile   ;
+               SourceExpr="Feld 16" }
+
+    { 26  ;3   ;Column  ;waehrung2           ;
+               SourceExpr=waehrung }
+
+    { 27  ;3   ;Column  ;Feld7_Belegzeile    ;
+               SourceExpr="Feld 7" }
+
+    { 28  ;3   ;Column  ;Feld13_Belegzeile   ;
+               SourceExpr="Feld 13" }
+
+    { 29  ;3   ;Column  ;Feld12_Belegzeile   ;
+               SourceExpr="Feld 12" }
+
+    { 30  ;3   ;Column  ;AuftragBetrag2      ;
+               SourceExpr=AuftragBetrag;
+               AutoFormatType=1 }
+
+    { 31  ;3   ;Column  ;Feld5_Belegzeile    ;
+               SourceExpr="Feld 5";
+               AutoFormatType=2 }
+
+    { 32  ;3   ;Column  ;RuckstandMenge      ;
+               DecimalPlaces=0:5;
+               SourceExpr=RckstandMenge }
+
+    { 33  ;3   ;Column  ;Feld4_Belegzeile    ;
+               DecimalPlaces=0:0;
+               SourceExpr="Feld 4" }
+
+    { 34  ;3   ;Column  ;Feld14_Belegzeile   ;
+               SourceExpr="Feld 14" }
+
+    { 35  ;3   ;Column  ;Datum_Belegzeile    ;
+               SourceExpr=Datum }
+
+    { 36  ;3   ;Column  ;Feld3_Belegzeile    ;
+               SourceExpr="Feld 3" }
+
+    { 37  ;3   ;Column  ;Index_Belegkopf     ;
+               SourceExpr=Belegkopf.Index }
+
+    { 38  ;3   ;Column  ;Datum_Belegkopf     ;
+               SourceExpr=Belegkopf.Datum }
+
+    { 39  ;3   ;Column  ;Feld6_Belegzeile    ;
+               SourceExpr="Feld 6" }
+
+    { 40  ;    ;DataItem;NewPage             ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(TEMP)) }
+
+    { 41  ;    ;DataItem;Arch_Debitor        ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(ARCH_DEBITOR));
+               OnPreDataItem=BEGIN
+                               IF sort = sort :: Nr THEN
+                                 Arch_Debitor.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               IF sort = sort :: Name THEN
+                                 Arch_Debitor.SETCURRENTKEY("Feld 10",Datum,Index);
+                               ReportForNav.GetDataItem('Arch_Debitor').NewPagePerRecord := NurEinProSeiteDrucken;
+                             END;
+                              }
+
+    { 42  ;1   ;Column  ;USERID2             ;
+               SourceExpr=USERID }
+
+    { 43  ;1   ;Column  ;ReportForNavPageNo2 ;
+               SourceExpr=ReportForNav.PageNo }
+
+    { 44  ;1   ;Column  ;TODAY_0_42          ;
+               SourceExpr=FORMAT(TODAY,0,4) }
+
+    { 45  ;1   ;Column  ;Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Team2;
+               SourceExpr='Verk„ufercode: '+verk„ufer+' Betreuer Innendienst: ' + betreuer + ' Teams: ' + teams + ' Gebietscode: ' + gebietscode + '  Auftragsdatum: ' + FORMAT(Startdatum) + '..' + FORMAT(Enddatum) }
+
+    { 46  ;1   ;Column  ;Feld10_Arch_Debitor ;
+               SourceExpr="Feld 10" }
+
+    { 47  ;1   ;Column  ;Index_Arch_Debitor  ;
+               SourceExpr=Index }
+
+    { 48  ;1   ;Column  ;Euro7               ;
+               SourceExpr='Euro' }
+
+    { 49  ;1   ;Column  ;ArchAuftragBetrag_EURO;
+               SourceExpr=ArchAuftragBetrag_EURO;
+               AutoFormatType=1 }
+
+    { 50  ;1   ;Column  ;USD2                ;
+               SourceExpr='USD' }
+
+    { 51  ;1   ;Column  ;ArchAuftragBetrag_USD;
+               SourceExpr=ArchAuftragBetrag_USD;
+               AutoFormatType=1 }
+
+    { 52  ;1   ;Column  ;JPY2                ;
+               SourceExpr='JPY' }
+
+    { 53  ;1   ;Column  ;ArchAuftragBetrag_JPY;
+               SourceExpr=ArchAuftragBetrag_JPY;
+               AutoFormatType=1 }
+
+    { 54  ;1   ;Column  ;ArchAuftragBetrag_USD_WechselkursExchangeRateAmount;
+               SourceExpr=ArchAuftragBetrag_USD/Wechselkurs."Exchange Rate Amount";
+               AutoFormatType=1 }
+
+    { 55  ;1   ;Column  ;ExchangeRateAmount_Wechselkurs3;
+               DecimalPlaces=4:4;
+               SourceExpr=Wechselkurs."Exchange Rate Amount" }
+
+    { 56  ;1   ;Column  ;ArchAuftragBetrag_JPY_WechselkursExchangeRateAmount;
+               SourceExpr=ArchAuftragBetrag_JPY/Wechselkurs."Exchange Rate Amount";
+               AutoFormatType=1 }
+
+    { 57  ;1   ;Column  ;summe1_summe22      ;
+               SourceExpr=summe[1]+summe[2];
+               AutoFormatType=1 }
+
+    { 58  ;1   ;Column  ;ArchAuftragBetragMW ;
+               SourceExpr=ArchAuftragBetragMW;
+               AutoFormatType=1 }
+
+    { 59  ;1   ;DataItem;Arch_Belegkopf      ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(ARCH_BELEGKOPF));
+               DataItemLink=Feld 2=FIELD(Index) }
+
+    { 60  ;2   ;Column  ;waehrung4           ;
+               SourceExpr=waehrung }
+
+    { 61  ;2   ;Column  ;ArchAuftragBetrag   ;
+               SourceExpr=ArchAuftragBetrag;
+               AutoFormatType=1 }
+
+    { 62  ;2   ;DataItem;Arch_Belegzeile     ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(ARCH_BELEGZEILE));
+               OnAfterGetRecord=BEGIN
+                                  NeuerAuftrag := Arch_Belegzeile.Index <> ArchAuftragkopf."No.";
+                                  IF NeuerAuftrag THEN
+                                    BEGIN
+                                      ArchAuftragkopf.RESET;
+                                      ArchAuftragkopf.SETFILTER(ArchAuftragkopf."No.",'%1',Arch_Belegzeile.Index);
+                                      ArchAuftragkopf.SETFILTER(ArchAuftragkopf."Document Type",'%1',ArchAuftragkopf."Document Type" :: Order);
+                                      ArchAuftragkopf.FINDFIRST;
+                                    END;
+                                  ArchAuftragBetrag := "Feld 4" * "Feld 5";
+                                  IF NOT Betr„geDruckInMW THEN
+                                    BEGIN
+                                      IF ArchAuftragkopf."Currency Code" = 'USD' THEN
+                                        ArchAuftragBetrag_USD := ArchAuftragBetrag;
+                                      IF ArchAuftragkopf."Currency Code" = 'JPY' THEN
+                                      ArchAuftragBetrag_JPY := ArchAuftragBetrag;
+                                      IF ArchAuftragkopf."Currency Code" = '' THEN
+                                        ArchAuftragBetrag_EURO := ArchAuftragBetrag;
+                                    END;
+                                  ArchAuftragBetragMW := ArchAuftragBetrag;
+                                  IF Betr„geDruckInMW THEN
+                                    ArchAuftragBetrag_EURO := ArchAuftragBetragMW;
+                                  IF ArchAuftragkopf."Currency Code" <> '' THEN BEGIN
+                                    IF ArchAuftragkopf."Currency Factor" <> 0 THEN
+                                      ArchAuftragBetragMW :=
+                                        ROUND(
+                                          W„hrungWechKurs.ExchangeAmtFCYToLCY(
+                                            WORKDATE,ArchAuftragkopf."Currency Code",
+                                            ArchAuftragBetragMW,ArchAuftragkopf."Currency Factor"));
+                                    IF Betr„geDruckInMW THEN
+                                      BEGIN
+                                        ArchAuftragBetrag := ArchAuftragBetragMW;
+                                        ArchAuftragBetrag_EURO := ArchAuftragBetragMW;
+                                      END;
+                                  END;
+                                  waehrung := "Feld 7";
+                                  IF Betr„geDruckInMW=TRUE THEN
+                                    waehrung:='EUR'
+                                END;
+
+               DataItemLink=Index=FIELD(Index) }
+
+    { 63  ;3   ;Column  ;Feld11_Arch_Belegzeile;
+               SourceExpr="Feld 11" }
+
+    { 64  ;3   ;Column  ;Feld16_Arch_Belegzeile;
+               SourceExpr="Feld 16" }
+
+    { 65  ;3   ;Column  ;waehrung5           ;
+               SourceExpr=waehrung }
+
+    { 66  ;3   ;Column  ;Feld7_Arch_Belegzeile;
+               SourceExpr="Feld 7" }
+
+    { 67  ;3   ;Column  ;Feld13_Arch_Belegzeile;
+               SourceExpr="Feld 13" }
+
+    { 68  ;3   ;Column  ;Feld12_Arch_Belegzeile;
+               SourceExpr="Feld 12" }
+
+    { 69  ;3   ;Column  ;ArchAuftragBetrag2  ;
+               SourceExpr=ArchAuftragBetrag;
+               AutoFormatType=1 }
+
+    { 70  ;3   ;Column  ;Feld5_Arch_Belegzeile;
+               SourceExpr="Feld 5";
+               AutoFormatType=2 }
+
+    { 71  ;3   ;Column  ;Feld4_Arch_Belegzeile;
+               DecimalPlaces=0:0;
+               SourceExpr="Feld 4" }
+
+    { 72  ;3   ;Column  ;Datum_Arch_Belegzeile;
+               SourceExpr=Datum }
+
+    { 73  ;3   ;Column  ;Feld3_Arch_Belegzeile;
+               SourceExpr="Feld 3" }
+
+    { 74  ;3   ;Column  ;Index_Arch_Belegkopf;
+               SourceExpr=Arch_Belegkopf.Index }
+
+    { 75  ;3   ;Column  ;Datum_Arch_Belegkopf;
+               SourceExpr=Arch_Belegkopf.Datum }
+
+    { 76  ;3   ;Column  ;Feld6_Arch_Belegzeile;
+               SourceExpr="Feld 6" }
+
+  }
+  REQUESTPAGE
+  {
+    PROPERTIES
+    {
+      SaveValues=Yes;
+    }
+    CONTROLS
+    {
+      { 1900000001;0;Container;
+                  ContainerType=ContentArea }
+
+      { 1900000002;1;Group  ;
+                  CaptionML=[CSY=Moznosti;
+                             DAN=Indstillinger;
+                             DEU=Optionen;
+                             ENU=Options;
+                             FIN=Vaihtoehdot;
+                             ISL=Valkostir;
+                             NLD=Opties;
+                             NOR=Alternativer;
+                             SVE=Alternativ;
+                             ITS=Opzioni;
+                             NLB=Opties] }
+
+      { 1140002;2;Field     ;
+                  CaptionML=DEU=Auftragsdatum von;
+                  SourceExpr=Startdatum }
+
+      { 1140000;2;Field     ;
+                  CaptionML=DEU=bis;
+                  SourceExpr=Enddatum }
+
+      { 1140029;2;Field     ;
+                  CaptionML=DEU=Ohne Archiv;
+                  SourceExpr=ohne_archiv }
+
+      { 1140003;2;Field     ;
+                  CaptionML=DEU=Betreuer Innendienst;
+                  SourceExpr=betreuer }
+
+      { 1140006;2;Field     ;
+                  CaptionML=DEU=Verk„ufercode;
+                  SourceExpr=verk„ufer }
+
+      { 1140009;2;Field     ;
+                  CaptionML=DEU=Teams;
+                  SourceExpr=teams }
+
+      { 1140011;2;Field     ;
+                  CaptionML=DEU=Gebietscode;
+                  SourceExpr=gebietscode }
+
+      { 1140015;2;Field     ;
+                  CaptionML=DEU=Herstellercode;
+                  SourceExpr=hersteller;
+                  TableRelation=Manufacturer }
+
+      { 1140023;2;Field     ;
+                  CaptionML=DEU=Zug. Lieferdatum;
+                  SourceExpr=zugesagtes_startdatum }
+
+      { 1140025;2;Field     ;
+                  CaptionML=DEU=bis;
+                  SourceExpr=zugesagtes_enddatum }
+
+      { 1140020;2;Field     ;
+                  CaptionML=DEU=Betr„ge in MW anzeigen;
+                  SourceExpr=Betr„geDruckInMW }
+
+      { 1140013;2;Field     ;
+                  CaptionML=DEU=Neue Seite pro Debitor;
+                  SourceExpr=NurEinProSeiteDrucken }
+
+      { 1140018;2;Field     ;
+                  CaptionML=DEU=Berichtssortierung;
+                  OptionCaptionML=DEU=Debitornr.,Debitorname;
+                  SourceExpr=sort }
+
+      { 5000;2   ;Field     ;
+                  Name=ForNavOpenDesigner;
+                  CaptionML=ENU=Open Designer;
+                  SourceExpr=ReportForNavOpenDesigner;
+                  Visible=ReportForNavAllowDesign }
+
+    }
+  }
+  LABELS
+  {
+  }
+  CODE
+  {
+    VAR
+      Berichtstabelle@1140000 : Record 50037;
+      Berichtstabelle_temp@1140012 : Record 50037;
+      W„hrungWechKurs@1140022 : Record 330;
+      Wechselkurs@1140025 : Record 330;
+      Auftragkopf@1140019 : Record 36;
+      ArchAuftragkopf@1140037 : Record 5107;
+      SalesHeader@1140002 : Record 36;
+      SalesLine@1140003 : Record 37;
+      ArchSalesHeader@1140029 : Record 5107;
+      ArchSalesLine@1140030 : Record 5108;
+      Quotedaten@1140013 : Record 50014;
+      Startdatum@1140004 : Date;
+      Enddatum@1140005 : Date;
+      zugesagtes_startdatum@1140038 : Date;
+      zugesagtes_enddatum@1140039 : Date;
+      betreuer@1140006 : Code[40];
+      verk„ufer@1140007 : Code[40];
+      teams@1140008 : Code[40];
+      gebietscode@1140009 : Code[40];
+      hersteller@1140011 : Code[40];
+      belegzeilen_vorhanden@1140010 : Boolean;
+      arch_belegzeilen_vorhanden@1140036 : Boolean;
+      Betr„geDruckInMW@1140014 : Boolean;
+      NurEinProSeiteDrucken@1140021 : Boolean;
+      NeuerAuftrag@1140017 : Boolean;
+      ohne_archiv@1140040 : Boolean;
+      RckstandMenge@1140015 : Text[30];
+      summe@1140027 : ARRAY [3] OF Decimal;
+      waehrung@1140028 : Code[10];
+      AuftragBetrag@1140018 : Decimal;
+      AuftragBetrag_EURO@1140026 : Decimal;
+      AuftragBetrag_USD@1140023 : Decimal;
+      AuftragBetrag_JPY@1140024 : Decimal;
+      AuftragBetragMW@1140020 : Decimal;
+      ArchAuftragBetrag@1140031 : Decimal;
+      ArchAuftragBetrag_EURO@1140032 : Decimal;
+      ArchAuftragBetrag_USD@1140033 : Decimal;
+      ArchAuftragBetrag_JPY@1140034 : Decimal;
+      ArchAuftragBetragMW@1140035 : Decimal;
+      sort@1140016 : 'Nr,Name';
+      counter@1140001 : Integer;
+      Gesamt_AU_EK@1140041 : Decimal;
+      artzeile_ek@1140042 : Decimal;
+      ReportForNav@5000 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
+      ReportForNavClient@5003 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
+      ReportForNavDialog@5001 : Dialog;
+      ReportForNavOpenDesigner@5002 : Boolean;
+      ReportForNavAllowDesign@5004 : Boolean INDATASET;
+
+    LOCAL PROCEDURE OnPreSectionDebitor_Header2@5010(VAR Debitor@1000000000 : Record 50037);
+    BEGIN
+      WITH Debitor DO BEGIN
+        ReportForNav.ShowOutput(Betr„geDruckInMW);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionDebitor_Footer7@5011(VAR Debitor@1000000000 : Record 50037);
+    BEGIN
+      WITH Debitor DO BEGIN
+        ReportForNav.ShowOutput(AuftragBetrag_EURO <> 0);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionDebitor_Footer8@5012(VAR Debitor@1000000000 : Record 50037);
+    BEGIN
+      WITH Debitor DO BEGIN
+        ReportForNav.ShowOutput(AuftragBetrag_USD <> 0);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionDebitor_Footer9@5013(VAR Debitor@1000000000 : Record 50037);
+    BEGIN
+      WITH Debitor DO BEGIN
+        ReportForNav.ShowOutput(AuftragBetrag_JPY <> 0);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionDebitor_Footer10@5014(VAR Debitor@1000000000 : Record 50037);
+    BEGIN
+      WITH Debitor DO BEGIN
+        Wechselkurs.SETFILTER(Wechselkurs."Currency Code",'%1','USD');
+        Wechselkurs.FINDLAST;
+        summe[1] := AuftragBetrag_USD/Wechselkurs."Exchange Rate Amount";
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionDebitor_Footer11@5015(VAR Debitor@1000000000 : Record 50037);
+    BEGIN
+      WITH Debitor DO BEGIN
+        Wechselkurs.SETFILTER(Wechselkurs."Currency Code",'%1','JPY');
+        Wechselkurs.FINDLAST;
+        summe[2] := AuftragBetrag_JPY/Wechselkurs."Exchange Rate Amount";
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionBelegzeile_Body14@5016(VAR Belegzeile@1000000000 : Record 50037);
+    BEGIN
+      WITH Belegzeile DO BEGIN
+        IF ReportForNav.ShowOutput(NeuerAuftrag) THEN
+          BEGIN
+            EVALUATE(artzeile_ek,"Feld 13");
+            Gesamt_AU_EK := Gesamt_AU_EK + (artzeile_ek * "Feld 4");
+          END;
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionBelegzeile_Body15@5017(VAR Belegzeile@1000000000 : Record 50037);
+    BEGIN
+      WITH Belegzeile DO BEGIN
+        IF ReportForNav.ShowOutput(NOT NeuerAuftrag) THEN
+          BEGIN
+            EVALUATE(artzeile_ek,"Feld 13");
+            Gesamt_AU_EK := Gesamt_AU_EK + (artzeile_ek * "Feld 4");
+          END;
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionBelegzeile_Body16@5018(VAR Belegzeile@1000000000 : Record 50037);
+    BEGIN
+      WITH Belegzeile DO BEGIN
+        ReportForNav.ShowOutput("Feld 6" <> '');
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionNewPage_Body17@5019(VAR NewPage@1000000000 : Record 50037);
+    BEGIN
+      WITH NewPage DO BEGIN
+        ReportForNav.NewPageWithoutTransportTotals;
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionArch_Debitor_Header19@5020(VAR Arch_Debitor@1000000000 : Record 50037);
+    BEGIN
+      WITH Arch_Debitor DO BEGIN
+        ReportForNav.ShowOutput(Betr„geDruckInMW);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionArch_Debitor_Footer24@5021(VAR Arch_Debitor@1000000000 : Record 50037);
+    BEGIN
+      WITH Arch_Debitor DO BEGIN
+        ReportForNav.ShowOutput(ArchAuftragBetrag_EURO <> 0);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionArch_Debitor_Footer25@5022(VAR Arch_Debitor@1000000000 : Record 50037);
+    BEGIN
+      WITH Arch_Debitor DO BEGIN
+        ReportForNav.ShowOutput(ArchAuftragBetrag_USD <> 0);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionArch_Debitor_Footer26@5023(VAR Arch_Debitor@1000000000 : Record 50037);
+    BEGIN
+      WITH Arch_Debitor DO BEGIN
+        ReportForNav.ShowOutput(ArchAuftragBetrag_JPY <> 0);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionArch_Debitor_Footer27@5024(VAR Arch_Debitor@1000000000 : Record 50037);
+    BEGIN
+      WITH Arch_Debitor DO BEGIN
+        Wechselkurs.SETFILTER(Wechselkurs."Currency Code",'%1','USD');
+        Wechselkurs.FINDLAST;
+        summe[1] := ArchAuftragBetrag_USD/Wechselkurs."Exchange Rate Amount";
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionArch_Debitor_Footer28@5025(VAR Arch_Debitor@1000000000 : Record 50037);
+    BEGIN
+      WITH Arch_Debitor DO BEGIN
+        Wechselkurs.SETFILTER(Wechselkurs."Currency Code",'%1','JPY');
+        Wechselkurs.FINDLAST;
+        summe[2] := ArchAuftragBetrag_JPY/Wechselkurs."Exchange Rate Amount";
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionArch_Belegzeile_Body31@5026(VAR Arch_Belegzeile@1000000000 : Record 50037);
+    BEGIN
+      WITH Arch_Belegzeile DO BEGIN
+        ReportForNav.ShowOutput(NeuerAuftrag);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionArch_Belegzeile_Body32@5027(VAR Arch_Belegzeile@1000000000 : Record 50037);
+    BEGIN
+      WITH Arch_Belegzeile DO BEGIN
+        ReportForNav.ShowOutput(NOT NeuerAuftrag);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionArch_Belegzeile_Body33@5028(VAR Arch_Belegzeile@1000000000 : Record 50037);
+    BEGIN
+      WITH Arch_Belegzeile DO BEGIN
+        ReportForNav.ShowOutput("Feld 6" <> '');
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnInit@5002();
+    VAR
+      ReportLayoutSelection@1000 : Record 9651;
+      CustomReportLayout@1001 : Record 9650;
+      CustomLayoutID@1002 : Variant;
+      InStream@1004 : InStream;
+      EmptyLayout@1003 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+      ReportForNav.OData := GETURL(CLIENTTYPE::OData, COMPANYNAME, OBJECTTYPE::Page, 7702);
+      IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN
+        CustomLayoutID := ReportLayoutSelection.GetTempLayoutSelected
+      ELSE
+        IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN
+          CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+
+      IF (FORMAT(CustomLayoutID) <> EmptyLayout) AND CustomReportLayout.GET(CustomLayoutID) THEN BEGIN
+        CustomReportLayout.TESTFIELD(Type,CustomReportLayout.Type::RDLC);
+        CustomReportLayout.CALCFIELDS(Layout);
+        CustomReportLayout.Layout.CREATEINSTREAM(InStream,TEXTENCODING::UTF8);
+        ReportForNav.IsCustomLayout := TRUE;
+      END ELSE
+        REPORT.RDLCLAYOUT(ReportForNav.ReportID,InStream);
+
+      ReportForNav.LoadRdlc(InStream);
+      IF COPYSTR(LOWERCASE(GETURL(CLIENTTYPE::Current, COMPANYNAME, OBJECTTYPE::Codeunit, 1)), 1, 14) = 'dynamicsnav://' THEN BEGIN
+        ReportForNav.CheckClientAddIn();
+        ReportForNavClient := ReportForNavClient.Report(ReportForNav.Definition);
+        ReportForNavAllowDesign := ReportForNavClient.HasDesigner AND NOT ReportForNav.ParameterMode;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnSave@5010(Base64Layout@1000 : Text);
+    VAR
+      CustomReportLayout@1002 : Record 9650;
+      ReportLayoutSelection@1003 : Record 9651;
+      LayoutId@1004 : Variant;
+      TempBlob@1007 : Record 99008535;
+      OutStream@1006 : OutStream;
+      Bstr@1005 : BigText;
+      EmptyLayout@1001 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+      IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN BEGIN
+        IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN BEGIN
+          LayoutId := ReportLayoutSelection.GetTempLayoutSelected;
+        END ELSE BEGIN
+          IF ReportLayoutSelection.GET(ReportForNav.ReportID, COMPANYNAME) THEN BEGIN
+          LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+          END;
+        END;
+      END ELSE BEGIN
+        IF CONFIRM('Default custom layout not found. Create one?') THEN;
+      END;
+      IF FORMAT(LayoutId) <> EmptyLayout THEN BEGIN
+        TempBlob.Blob.CREATEOUTSTREAM(OutStream);
+        Bstr.ADDTEXT(Base64Layout);
+        Bstr.WRITE(OutStream);
+        CustomReportLayout.GET(LayoutId);
+        CustomReportLayout.ImportLayoutBlob(TempBlob, 'RDL');
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnParameters@5008(Parameters@1000 : Text);
+    BEGIN
+      ReportForNav.Parameters := REPORT.RUNREQUESTPAGE(ReportForNav.ReportID, Parameters);
+    END;
+
+    EVENT ReportForNav@5000::OnPreview@5009(Parameters@1000 : Text;FileName@1005 : Text);
+    VAR
+      PdfFile@1002 : File;
+      InStream@1003 : InStream;
+      OutStream@1004 : OutStream;
+    BEGIN
+      COMMIT;
+      PdfFile.CREATETEMPFILE;
+      PdfFile.CREATEOUTSTREAM(OutStream);
+      REPORT.SAVEAS(ReportForNav.ReportID, Parameters, REPORTFORMAT::Pdf, OutStream);
+      PdfFile.CREATEINSTREAM(InStream);
+      ReportForNavClient.ShowDesigner;
+      IF ReportForNav.IsValidPdf(PdfFile.NAME) THEN DOWNLOADFROMSTREAM(InStream, '', '', '', FileName);
+      PdfFile.CLOSE;
+    END;
+
+    EVENT ReportForNav@5000::OnPreSection@5012(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+      CASE DataItemId OF
+        'Debitor': CASE SectionId OF
+          'Header2': OnPreSectionDebitor_Header2(Debitor);
+          'Footer7': OnPreSectionDebitor_Footer7(Debitor);
+          'Footer8': OnPreSectionDebitor_Footer8(Debitor);
+          'Footer9': OnPreSectionDebitor_Footer9(Debitor);
+          'Footer10': OnPreSectionDebitor_Footer10(Debitor);
+          'Footer11': OnPreSectionDebitor_Footer11(Debitor);
+        END;
+        'Belegzeile': CASE SectionId OF
+          'Body14': OnPreSectionBelegzeile_Body14(Belegzeile);
+          'Body15': OnPreSectionBelegzeile_Body15(Belegzeile);
+          'Body16': OnPreSectionBelegzeile_Body16(Belegzeile);
+        END;
+        'NewPage': CASE SectionId OF
+          'Body17': OnPreSectionNewPage_Body17(NewPage);
+        END;
+        'Arch_Debitor': CASE SectionId OF
+          'Header19': OnPreSectionArch_Debitor_Header19(Arch_Debitor);
+          'Footer24': OnPreSectionArch_Debitor_Footer24(Arch_Debitor);
+          'Footer25': OnPreSectionArch_Debitor_Footer25(Arch_Debitor);
+          'Footer26': OnPreSectionArch_Debitor_Footer26(Arch_Debitor);
+          'Footer27': OnPreSectionArch_Debitor_Footer27(Arch_Debitor);
+          'Footer28': OnPreSectionArch_Debitor_Footer28(Arch_Debitor);
+        END;
+        'Arch_Belegzeile': CASE SectionId OF
+          'Body31': OnPreSectionArch_Belegzeile_Body31(Arch_Belegzeile);
+          'Body32': OnPreSectionArch_Belegzeile_Body32(Arch_Belegzeile);
+          'Body33': OnPreSectionArch_Belegzeile_Body33(Arch_Belegzeile);
+        END;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPostSection@50013(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+    END;
+
+    EVENT ReportForNav@5000::OnClientOperation@5008(Args@1000 : DotNet "'mscorlib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Array");
+    VAR
+      op@1001 : Text;
+      FileMgmt@1002 : Codeunit 419;
+      Process@1006 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.Process" RUNONCLIENT;
+      PathObj@1005 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Path" RUNONCLIENT;
+      FileVersionInfo@1003 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.FileVersionInfo" RUNONCLIENT;
+      DirectoryHelper@1004 : DotNet "'mscorlib'.System.IO.Directory" RUNONCLIENT;
+    BEGIN
+      op := Args.GetValue(0);
+      CASE op OF
+        'TempPath': ReportForNav.Result := PathObj.GetTempPath();
+        'FileExists': ReportForNav.Result := FileMgmt.ClientFileExists(Args.GetValue(1));
+        'DirectoryExists': ReportForNav.Result := FileMgmt.ClientDirectoryExists(Args.GetValue(1));
+        'ProcessLocation': ReportForNav.Result := Process.GetCurrentProcess().MainModule.FileName;
+        'FileVersion': ReportForNav.Result := FileVersionInfo.GetVersionInfo(Args.GetValue(1)).FileVersion;
+        'DeleteFile': FileMgmt.DeleteClientFile(Args.GetValue(1));
+        'DeleteDirectory': IF STRLEN(Args.GetValue(1)) > 20 THEN
+          IF FileMgmt.ClientDirectoryExists(Args.GetValue(1)) THEN
+            DirectoryHelper.Delete(FORMAT(Args.GetValue(1)), TRUE);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnCheckForNavClientVersion@5007();
+    BEGIN
+      ReportForNavClient := ReportForNavClient.Report();
+      IF ReportForNav.MyFileVersion <> ReportForNavClient.MyFileVersion THEN
+        ERROR('You have version %1 of the Reports ForNAV assembly here:\\%2\\Please close your NAV client and update it to version %3.',
+              ReportForNavClient.MyFileVersion, ReportForNavClient.MyFileName, ReportForNav.MyFileVersion);
+    END;
+
+    EVENT ReportForNav@5000::OnSelectPrinter@5006();
+    BEGIN
+      ReportForNav.PrinterSettings.PageSettings := ReportForNavClient.SelectPrinter(ReportForNav.PrinterSettings.PrinterName,ReportForNav.PrinterSettings.ShowPrinterDialog,ReportForNav.PrinterSettings.PageSettings);
+    END;
+
+    EVENT ReportForNav@5000::OnPrint@5005(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream");
+    VAR
+      ClientFileName@1000000001 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      ReportForNavClient.Print(ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnDesign@5007(Data@1001 : Text);
+    BEGIN
+      ReportForNavClient.Data := Data;
+      WHILE ReportForNavClient.DesignReport DO BEGIN
+        ReportForNav.HandleRequest(ReportForNavClient.GetRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnView@5008(ClientFileName@1000000000 : Text;Parameters@1000000001 : Text;ServerFileName@1000000002 : Text);
+    VAR
+      ServerFile@1000000003 : File;
+      ServerInStream@1000000004 : InStream;
+    BEGIN
+      ServerFile.OPEN(ServerFileName);
+      ServerFile.CREATEINSTREAM(ServerInStream);
+      DOWNLOADFROMSTREAM(ServerInStream,'','','',ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnMessage@5009(Operation@1000000000 : Text;Parameter@1000000001 : Text;ParameterNo@1000000002 : Integer);
+    BEGIN
+      CASE Operation OF
+        'Open'    : ReportForNavDialog.OPEN(Parameter);
+        'Update'  : ReportForNavDialog.UPDATE(ParameterNo,Parameter);
+        'Close'   : ReportForNavDialog.CLOSE();
+        'Message' : MESSAGE(Parameter);
+        'Error'   : ERROR(Parameter);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPrintPreview@5011(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream";Preview@1000000001 : Boolean);
+    VAR
+      ClientFileName@1000000002 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      WHILE ReportForNavClient.PrintPreviewDialog(ClientFileName,ReportForNav.PrinterSettings.PrinterName,Preview) DO BEGIN
+        ReportForNav.HandlePrintPreviewRequest(ReportForNavClient.GetPrintPreviewRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnTotals@5004(DataItemId@1000000000 : Text;Operation@1000000001 : Text;GroupTotalFieldNo@1000000002 : Integer);
+    VAR
+      CurrRecRef@1000000003 : RecordRef;
+      NextRecRef@1000000004 : RecordRef;
+      CurrKeyRef@1000000005 : KeyRef;
+      NextKeyRef@1000000006 : KeyRef;
+      FieldIndex@1000000007 : Integer;
+      GroupFieldIndex@1000000008 : Integer;
+    BEGIN
+      // Do not change (Autogenerated by Reports ForNAV) - Instead change the Create Totals, Total Fields or Group Total Fields properties on the Data item in the ForNAV designer
+      CASE DataItemId OF
+        'Debitor': WITH Debitor DO CASE Operation OF
+           'Add': BEGIN
+                ReportForNav.AddTotal(DataItemId,0,AuftragBetrag);
+                ReportForNav.AddTotal(DataItemId,1,AuftragBetragMW);
+                ReportForNav.AddTotal(DataItemId,2,AuftragBetrag_USD);
+                ReportForNav.AddTotal(DataItemId,3,AuftragBetrag_JPY);
+                ReportForNav.AddTotal(DataItemId,4,AuftragBetrag_EURO);
+              END;
+           'Restore': BEGIN
+                 AuftragBetrag := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
+                 AuftragBetragMW := ReportForNav.RestoreTotal(DataItemId,1,GroupTotalFieldNo);
+                 AuftragBetrag_USD := ReportForNav.RestoreTotal(DataItemId,2,GroupTotalFieldNo);
+                 AuftragBetrag_JPY := ReportForNav.RestoreTotal(DataItemId,3,GroupTotalFieldNo);
+                 AuftragBetrag_EURO := ReportForNav.RestoreTotal(DataItemId,4,GroupTotalFieldNo);
+              END;
+        END;  'Belegkopf': WITH Belegkopf DO CASE Operation OF
+           'Add': BEGIN
+                ReportForNav.AddTotal(DataItemId,0,AuftragBetrag);
+                ReportForNav.AddTotal(DataItemId,1,AuftragBetragMW);
+                ReportForNav.AddTotal(DataItemId,2,AuftragBetrag_USD);
+                ReportForNav.AddTotal(DataItemId,3,AuftragBetrag_JPY);
+                ReportForNav.AddTotal(DataItemId,4,AuftragBetrag_EURO);
+              END;
+           'Restore': BEGIN
+                 AuftragBetrag := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
+                 AuftragBetragMW := ReportForNav.RestoreTotal(DataItemId,1,GroupTotalFieldNo);
+                 AuftragBetrag_USD := ReportForNav.RestoreTotal(DataItemId,2,GroupTotalFieldNo);
+                 AuftragBetrag_JPY := ReportForNav.RestoreTotal(DataItemId,3,GroupTotalFieldNo);
+                 AuftragBetrag_EURO := ReportForNav.RestoreTotal(DataItemId,4,GroupTotalFieldNo);
+              END;
+        END;  'Belegzeile': WITH Belegzeile DO CASE Operation OF
+           'Add': BEGIN
+                ReportForNav.AddTotal(DataItemId,0,AuftragBetrag);
+                ReportForNav.AddTotal(DataItemId,1,AuftragBetragMW);
+                ReportForNav.AddTotal(DataItemId,2,AuftragBetrag_USD);
+                ReportForNav.AddTotal(DataItemId,3,AuftragBetrag_JPY);
+                ReportForNav.AddTotal(DataItemId,4,AuftragBetrag_EURO);
+              END;
+           'Restore': BEGIN
+                 AuftragBetrag := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
+                 AuftragBetragMW := ReportForNav.RestoreTotal(DataItemId,1,GroupTotalFieldNo);
+                 AuftragBetrag_USD := ReportForNav.RestoreTotal(DataItemId,2,GroupTotalFieldNo);
+                 AuftragBetrag_JPY := ReportForNav.RestoreTotal(DataItemId,3,GroupTotalFieldNo);
+                 AuftragBetrag_EURO := ReportForNav.RestoreTotal(DataItemId,4,GroupTotalFieldNo);
+              END;
+        END;  'Arch_Debitor': WITH Arch_Debitor DO CASE Operation OF
+           'Add': BEGIN
+                ReportForNav.AddTotal(DataItemId,0,ArchAuftragBetrag);
+                ReportForNav.AddTotal(DataItemId,1,ArchAuftragBetragMW);
+                ReportForNav.AddTotal(DataItemId,2,ArchAuftragBetrag_USD);
+                ReportForNav.AddTotal(DataItemId,3,ArchAuftragBetrag_JPY);
+                ReportForNav.AddTotal(DataItemId,4,ArchAuftragBetrag_EURO);
+              END;
+           'Restore': BEGIN
+                 ArchAuftragBetrag := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
+                 ArchAuftragBetragMW := ReportForNav.RestoreTotal(DataItemId,1,GroupTotalFieldNo);
+                 ArchAuftragBetrag_USD := ReportForNav.RestoreTotal(DataItemId,2,GroupTotalFieldNo);
+                 ArchAuftragBetrag_JPY := ReportForNav.RestoreTotal(DataItemId,3,GroupTotalFieldNo);
+                 ArchAuftragBetrag_EURO := ReportForNav.RestoreTotal(DataItemId,4,GroupTotalFieldNo);
+              END;
+        END;  'Arch_Belegkopf': WITH Arch_Belegkopf DO CASE Operation OF
+           'Add': BEGIN
+                ReportForNav.AddTotal(DataItemId,0,ArchAuftragBetrag);
+                ReportForNav.AddTotal(DataItemId,1,ArchAuftragBetragMW);
+                ReportForNav.AddTotal(DataItemId,2,ArchAuftragBetrag_USD);
+                ReportForNav.AddTotal(DataItemId,3,ArchAuftragBetrag_JPY);
+                ReportForNav.AddTotal(DataItemId,4,ArchAuftragBetrag_EURO);
+              END;
+           'Restore': BEGIN
+                 ArchAuftragBetrag := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
+                 ArchAuftragBetragMW := ReportForNav.RestoreTotal(DataItemId,1,GroupTotalFieldNo);
+                 ArchAuftragBetrag_USD := ReportForNav.RestoreTotal(DataItemId,2,GroupTotalFieldNo);
+                 ArchAuftragBetrag_JPY := ReportForNav.RestoreTotal(DataItemId,3,GroupTotalFieldNo);
+                 ArchAuftragBetrag_EURO := ReportForNav.RestoreTotal(DataItemId,4,GroupTotalFieldNo);
+              END;
+        END;  'Arch_Belegzeile': WITH Arch_Belegzeile DO CASE Operation OF
+           'Add': BEGIN
+                ReportForNav.AddTotal(DataItemId,0,ArchAuftragBetrag);
+                ReportForNav.AddTotal(DataItemId,1,ArchAuftragBetragMW);
+                ReportForNav.AddTotal(DataItemId,2,ArchAuftragBetrag_USD);
+                ReportForNav.AddTotal(DataItemId,3,ArchAuftragBetrag_JPY);
+                ReportForNav.AddTotal(DataItemId,4,ArchAuftragBetrag_EURO);
+              END;
+           'Restore': BEGIN
+                 ArchAuftragBetrag := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
+                 ArchAuftragBetragMW := ReportForNav.RestoreTotal(DataItemId,1,GroupTotalFieldNo);
+                 ArchAuftragBetrag_USD := ReportForNav.RestoreTotal(DataItemId,2,GroupTotalFieldNo);
+                 ArchAuftragBetrag_JPY := ReportForNav.RestoreTotal(DataItemId,3,GroupTotalFieldNo);
+                 ArchAuftragBetrag_EURO := ReportForNav.RestoreTotal(DataItemId,4,GroupTotalFieldNo);
+              END;
+        END;
+      END;
+    END;
+
+    BEGIN
+    END.
+  }
+  RDLDATA
+  {
+    <?xml version="1.0" encoding="utf-8"?>
+<Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
+  <Description>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</Description>
+  <AutoRefresh>0</AutoRefresh>
+  <DataSources>
+    <DataSource Name="DataSource">
+      <ConnectionProperties>
+        <DataProvider>SQL</DataProvider>
+        <ConnectString />
+      </ConnectionProperties>
+      <rd:SecurityType>None</rd:SecurityType>
+      <rd:DataSourceID>0d812d19-6df9-4074-9393-ed204fc91a1a</rd:DataSourceID>
+    </DataSource>
+  </DataSources>
+  <ReportSections>
+    <ReportSection>
+      <Body>
+        <Height>2in</Height>
+        <Style />
+      </Body>
+      <Width>6.5in</Width>
+      <Page>
+        <Style />
+      </Page>
+    </ReportSection>
+  </ReportSections>
+  <rd:ReportUnitType>Invalid</rd:ReportUnitType>
+  <rd:ReportID>14aa12f8-2efb-4e65-a107-93812b2332d1</rd:ReportID>
+  <DataSets>
+    <DataSet Name="DataSet_Result">
+      <Fields>
+        <Field Name="USERID">
+          <DataField>USERID</DataField>
+        </Field>
+        <Field Name="ReportForNavPageNo">
+          <DataField>ReportForNavPageNo</DataField>
+        </Field>
+        <Field Name="TODAY_0_4">
+          <DataField>TODAY_0_4</DataField>
+        </Field>
+        <Field Name="Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Teams">
+          <DataField>Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Teams</DataField>
+        </Field>
+        <Field Name="Feld10_Debitor">
+          <DataField>Feld10_Debitor</DataField>
+        </Field>
+        <Field Name="Index_Debitor">
+          <DataField>Index_Debitor</DataField>
+        </Field>
+        <Field Name="Euro">
+          <DataField>Euro</DataField>
+        </Field>
+        <Field Name="AuftragBetrag_EURO">
+          <DataField>AuftragBetrag_EURO</DataField>
+        </Field>
+        <Field Name="AuftragBetrag_EUROFormat">
+          <DataField>AuftragBetrag_EUROFormat</DataField>
+        </Field>
+        <Field Name="USD">
+          <DataField>USD</DataField>
+        </Field>
+        <Field Name="AuftragBetrag_USD">
+          <DataField>AuftragBetrag_USD</DataField>
+        </Field>
+        <Field Name="AuftragBetrag_USDFormat">
+          <DataField>AuftragBetrag_USDFormat</DataField>
+        </Field>
+        <Field Name="JPY">
+          <DataField>JPY</DataField>
+        </Field>
+        <Field Name="AuftragBetrag_JPY">
+          <DataField>AuftragBetrag_JPY</DataField>
+        </Field>
+        <Field Name="AuftragBetrag_JPYFormat">
+          <DataField>AuftragBetrag_JPYFormat</DataField>
+        </Field>
+        <Field Name="AuftragBetrag_USD_WechselkursExchangeRateAmount">
+          <DataField>AuftragBetrag_USD_WechselkursExchangeRateAmount</DataField>
+        </Field>
+        <Field Name="AuftragBetrag_USD_WechselkursExchangeRateAmountFormat">
+          <DataField>AuftragBetrag_USD_WechselkursExchangeRateAmountFormat</DataField>
+        </Field>
+        <Field Name="ExchangeRateAmount_Wechselkurs">
+          <DataField>ExchangeRateAmount_Wechselkurs</DataField>
+        </Field>
+        <Field Name="ExchangeRateAmount_WechselkursFormat">
+          <DataField>ExchangeRateAmount_WechselkursFormat</DataField>
+        </Field>
+        <Field Name="AuftragBetrag_JPY_WechselkursExchangeRateAmount">
+          <DataField>AuftragBetrag_JPY_WechselkursExchangeRateAmount</DataField>
+        </Field>
+        <Field Name="AuftragBetrag_JPY_WechselkursExchangeRateAmountFormat">
+          <DataField>AuftragBetrag_JPY_WechselkursExchangeRateAmountFormat</DataField>
+        </Field>
+        <Field Name="Gesamt_AU_EK">
+          <DataField>Gesamt_AU_EK</DataField>
+        </Field>
+        <Field Name="Gesamt_AU_EKFormat">
+          <DataField>Gesamt_AU_EKFormat</DataField>
+        </Field>
+        <Field Name="summe1_summe2">
+          <DataField>summe1_summe2</DataField>
+        </Field>
+        <Field Name="summe1_summe2Format">
+          <DataField>summe1_summe2Format</DataField>
+        </Field>
+        <Field Name="AuftragBetragMW">
+          <DataField>AuftragBetragMW</DataField>
+        </Field>
+        <Field Name="AuftragBetragMWFormat">
+          <DataField>AuftragBetragMWFormat</DataField>
+        </Field>
+        <Field Name="waehrung">
+          <DataField>waehrung</DataField>
+        </Field>
+        <Field Name="AuftragBetrag">
+          <DataField>AuftragBetrag</DataField>
+        </Field>
+        <Field Name="AuftragBetragFormat">
+          <DataField>AuftragBetragFormat</DataField>
+        </Field>
+        <Field Name="Feld11_Belegzeile">
+          <DataField>Feld11_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld16_Belegzeile">
+          <DataField>Feld16_Belegzeile</DataField>
+        </Field>
+        <Field Name="waehrung2">
+          <DataField>waehrung2</DataField>
+        </Field>
+        <Field Name="Feld7_Belegzeile">
+          <DataField>Feld7_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld13_Belegzeile">
+          <DataField>Feld13_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld12_Belegzeile">
+          <DataField>Feld12_Belegzeile</DataField>
+        </Field>
+        <Field Name="AuftragBetrag2">
+          <DataField>AuftragBetrag2</DataField>
+        </Field>
+        <Field Name="AuftragBetrag2Format">
+          <DataField>AuftragBetrag2Format</DataField>
+        </Field>
+        <Field Name="Feld5_Belegzeile">
+          <DataField>Feld5_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld5_BelegzeileFormat">
+          <DataField>Feld5_BelegzeileFormat</DataField>
+        </Field>
+        <Field Name="RuckstandMenge">
+          <DataField>RuckstandMenge</DataField>
+        </Field>
+        <Field Name="Feld4_Belegzeile">
+          <DataField>Feld4_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld4_BelegzeileFormat">
+          <DataField>Feld4_BelegzeileFormat</DataField>
+        </Field>
+        <Field Name="Feld14_Belegzeile">
+          <DataField>Feld14_Belegzeile</DataField>
+        </Field>
+        <Field Name="Datum_Belegzeile">
+          <DataField>Datum_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld3_Belegzeile">
+          <DataField>Feld3_Belegzeile</DataField>
+        </Field>
+        <Field Name="Index_Belegkopf">
+          <DataField>Index_Belegkopf</DataField>
+        </Field>
+        <Field Name="Datum_Belegkopf">
+          <DataField>Datum_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld6_Belegzeile">
+          <DataField>Feld6_Belegzeile</DataField>
+        </Field>
+        <Field Name="USERID2">
+          <DataField>USERID2</DataField>
+        </Field>
+        <Field Name="ReportForNavPageNo2">
+          <DataField>ReportForNavPageNo2</DataField>
+        </Field>
+        <Field Name="TODAY_0_42">
+          <DataField>TODAY_0_42</DataField>
+        </Field>
+        <Field Name="Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Team2">
+          <DataField>Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Team2</DataField>
+        </Field>
+        <Field Name="Feld10_Arch_Debitor">
+          <DataField>Feld10_Arch_Debitor</DataField>
+        </Field>
+        <Field Name="Index_Arch_Debitor">
+          <DataField>Index_Arch_Debitor</DataField>
+        </Field>
+        <Field Name="Euro7">
+          <DataField>Euro7</DataField>
+        </Field>
+        <Field Name="ArchAuftragBetrag_EURO">
+          <DataField>ArchAuftragBetrag_EURO</DataField>
+        </Field>
+        <Field Name="ArchAuftragBetrag_EUROFormat">
+          <DataField>ArchAuftragBetrag_EUROFormat</DataField>
+        </Field>
+        <Field Name="USD2">
+          <DataField>USD2</DataField>
+        </Field>
+        <Field Name="ArchAuftragBetrag_USD">
+          <DataField>ArchAuftragBetrag_USD</DataField>
+        </Field>
+        <Field Name="ArchAuftragBetrag_USDFormat">
+          <DataField>ArchAuftragBetrag_USDFormat</DataField>
+        </Field>
+        <Field Name="JPY2">
+          <DataField>JPY2</DataField>
+        </Field>
+        <Field Name="ArchAuftragBetrag_JPY">
+          <DataField>ArchAuftragBetrag_JPY</DataField>
+        </Field>
+        <Field Name="ArchAuftragBetrag_JPYFormat">
+          <DataField>ArchAuftragBetrag_JPYFormat</DataField>
+        </Field>
+        <Field Name="ArchAuftragBetrag_USD_WechselkursExchangeRateAmount">
+          <DataField>ArchAuftragBetrag_USD_WechselkursExchangeRateAmount</DataField>
+        </Field>
+        <Field Name="ArchAuftragBetrag_USD_WechselkursExchangeRateAmountFormat">
+          <DataField>ArchAuftragBetrag_USD_WechselkursExchangeRateAmountFormat</DataField>
+        </Field>
+        <Field Name="ExchangeRateAmount_Wechselkurs3">
+          <DataField>ExchangeRateAmount_Wechselkurs3</DataField>
+        </Field>
+        <Field Name="ExchangeRateAmount_Wechselkurs3Format">
+          <DataField>ExchangeRateAmount_Wechselkurs3Format</DataField>
+        </Field>
+        <Field Name="ArchAuftragBetrag_JPY_WechselkursExchangeRateAmount">
+          <DataField>ArchAuftragBetrag_JPY_WechselkursExchangeRateAmount</DataField>
+        </Field>
+        <Field Name="ArchAuftragBetrag_JPY_WechselkursExchangeRateAmountFormat">
+          <DataField>ArchAuftragBetrag_JPY_WechselkursExchangeRateAmountFormat</DataField>
+        </Field>
+        <Field Name="summe1_summe22">
+          <DataField>summe1_summe22</DataField>
+        </Field>
+        <Field Name="summe1_summe22Format">
+          <DataField>summe1_summe22Format</DataField>
+        </Field>
+        <Field Name="ArchAuftragBetragMW">
+          <DataField>ArchAuftragBetragMW</DataField>
+        </Field>
+        <Field Name="ArchAuftragBetragMWFormat">
+          <DataField>ArchAuftragBetragMWFormat</DataField>
+        </Field>
+        <Field Name="waehrung4">
+          <DataField>waehrung4</DataField>
+        </Field>
+        <Field Name="ArchAuftragBetrag">
+          <DataField>ArchAuftragBetrag</DataField>
+        </Field>
+        <Field Name="ArchAuftragBetragFormat">
+          <DataField>ArchAuftragBetragFormat</DataField>
+        </Field>
+        <Field Name="Feld11_Arch_Belegzeile">
+          <DataField>Feld11_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld16_Arch_Belegzeile">
+          <DataField>Feld16_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="waehrung5">
+          <DataField>waehrung5</DataField>
+        </Field>
+        <Field Name="Feld7_Arch_Belegzeile">
+          <DataField>Feld7_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld13_Arch_Belegzeile">
+          <DataField>Feld13_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld12_Arch_Belegzeile">
+          <DataField>Feld12_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="ArchAuftragBetrag2">
+          <DataField>ArchAuftragBetrag2</DataField>
+        </Field>
+        <Field Name="ArchAuftragBetrag2Format">
+          <DataField>ArchAuftragBetrag2Format</DataField>
+        </Field>
+        <Field Name="Feld5_Arch_Belegzeile">
+          <DataField>Feld5_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld5_Arch_BelegzeileFormat">
+          <DataField>Feld5_Arch_BelegzeileFormat</DataField>
+        </Field>
+        <Field Name="Feld4_Arch_Belegzeile">
+          <DataField>Feld4_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld4_Arch_BelegzeileFormat">
+          <DataField>Feld4_Arch_BelegzeileFormat</DataField>
+        </Field>
+        <Field Name="Datum_Arch_Belegzeile">
+          <DataField>Datum_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld3_Arch_Belegzeile">
+          <DataField>Feld3_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="Index_Arch_Belegkopf">
+          <DataField>Index_Arch_Belegkopf</DataField>
+        </Field>
+        <Field Name="Datum_Arch_Belegkopf">
+          <DataField>Datum_Arch_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld6_Arch_Belegzeile">
+          <DataField>Feld6_Arch_Belegzeile</DataField>
+        </Field>
+      </Fields>
+      <Query>
+        <DataSourceName>DataSource</DataSourceName>
+        <CommandText />
+      </Query>
+      <rd:DataSetInfo>
+        <rd:DataSetName>DataSet</rd:DataSetName>
+        <rd:SchemaPath>Report.xsd</rd:SchemaPath>
+        <rd:TableName>Result</rd:TableName>
+      </rd:DataSetInfo>
+    </DataSet>
+  </DataSets>
+</Report>
+    END_OF_RDLDATA
+  }
+}
