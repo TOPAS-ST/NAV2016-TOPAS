@@ -1,0 +1,1058 @@
+OBJECT Codeunit 50008 TOPAS Service Modul
+{
+  OBJECT-PROPERTIES
+  {
+    Date=06.10.17;
+    Time=10:51:47;
+    Modified=Yes;
+    Version List=;
+  }
+  PROPERTIES
+  {
+    OnRun=BEGIN
+          END;
+
+  }
+  CODE
+  {
+    VAR
+      Text51000@1000000011 : TextConst 'DEU=Systemvertrag %1 angelegt.';
+      Text51001@1000000010 : TextConst 'DEU=ACHTUNG!\\Fr Artikelnr. %1, Zeilennr. %2 konnte kein alleinstehendes ACS Basisger„t oder ein verbundener Serviceartikel im Auftrag gefunden werden. Bitte w„hlen Sie dazu in der folgenden šbersicht einen entsprechenden System- bzw. Wartungsvertrag aus. Wenn Sie sich nicht sicher sind drcken Sie im Anschluss auf Abbrechen, der Vorgang kann ber den Lieferschein erneut ausgefhrt werden.\\Hilfestellung %3: %4';
+      Text51002@1000000009 : TextConst 'DEU=Systemvertragserstellung fr Artikelnr. %1, Zeilennr. %2 auf Wunsch abgebrochen.';
+      Text51003@1000000008 : TextConst 'DEU=Anzeige von System- bzw. Wartungsvertr„gen nicht m”glich, da noch kein Vertrag mit diesem Debitorkonto verbunden wurde.';
+      Text51004@1000000007 : TextConst 'DEU=Die Systemposition %1, Artikel %2, Zeilennr. %3 konnte keinem Systemvertrag zugeordnet werden.Bitte informieren Sie die IT Abteilung.';
+      Text51005@1000000006 : TextConst 'DEU=Es wurden keine weiteren Aktionen durchgefhrt. Die Position(en) wurde(n) vermutlich schon angelegt.';
+      Text51006@1000000005 : TextConst 'DEU=Es konnte kein AudioCodes Artikel gefunden werden.';
+      Text51007@1000000004 : TextConst 'DEU=Bei dieser Lieferung wurden %1 servicef„hige Ger„te gleichzeitig geliefert, dementsprechend mssen auch genauso viele Systemvertr„ge angelegt werden. M”chten Sie jetzt fortfahren?';
+      Text51008@1000000003 : TextConst 'DEU=Es konnten mehrere System- bzw. Wartungsvertr„ge zu diesem Lieferschein gefunden werden.M”chten Sie Vetragsnr. %1 aufrufen?';
+      Text51009@1000000002 : TextConst 'DEU=Es konnte kein System- bzw. Wartungsvertrag gefunden werden.';
+      Text51010@1000000001 : TextConst 'DEU=Die Position %1, Artikel %2 mit der Seriennr. %3, wurde noch nicht zugeordnet.';
+      Text51011@1000000000 : TextConst 'DEU=Es konnten mehrere System- bzw. Wartungsvertr„ge (%1) gefunden werden. Sie k”nnen sich nun durch die einzelnen Vertr„ge bewegen.';
+
+    PROCEDURE CreateSystemFromShipHeader@1140001(ShipNo@1000000001 : Code[20]);
+    VAR
+      SystemPos@1140020 : Record 50024;
+      SeriennrVerfolgung@1140019 : Record 32;
+      SeriennrHistorie@1000000002 : Record 50018;
+      Liefkopf@1140018 : Record 110;
+      Liefzeile@1140017 : Record 111;
+      Beleghistorie@1000000003 : Record 50008;
+      Auftrag@1140016 : Record 36;
+      PrfeSystemLiefzeile@1140014 : Record 111;
+      Wartung@1140013 : Record 50011;
+      Wartungsšbersicht@1140012 : Record 50011;
+      PrfeHauptWartung@1140011 : Record 50011;
+      GetServiceCalc@1140010 : Record 50027;
+      CheckServiceCalc@1000000000 : Record 50027;
+      ZuordnungBasisger„t@1140000 : Record 50027;
+      Ansprech@1140009 : Record 50005;
+      DebKontaktBez@1140008 : Record 5054;
+      Artikel@1140007 : Record 27;
+      Customer@1000000004 : Record 18;
+      wartungsnr@1140006 : Code[20];
+      hauptwartungsnr@1140005 : Code[20];
+      system_service_verbindung@1140002 : Boolean;
+      systempos_angelegt@1140025 : Boolean;
+      NoSeriesMgt@1140024 : Codeunit 396;
+      laufende_nummer@1140023 : Code[20];
+      vertraege_anlegen@1140001 : Integer;
+      eingabe@1140022 : Code[10];
+      datensatz_auslassen@1140004 : Boolean;
+      zuletzt_system_service@1140028 : Boolean;
+      letzte_system_wartungsnr@1140027 : Code[20];
+      letzte_system_hauptwartungsnr@1140015 : Code[20];
+      ok@1140021 : Boolean;
+      k@1140003 : Integer;
+    BEGIN
+      ////Vorlage => SystemPos.CreateSystemFromSalesHeader("Order No.");
+
+      //*****************************************************************************************************************
+      //      29.08.11 ST - Neue Funktion: Das System holt sich nach Erstellung des Lieferscheins die
+      //                          entsprechenden Seriennr. aus den Artikelposten
+      //              Automatische Anlage von Systemvertr„gen + Systempositionen => šbernahme von Altdaten
+      //      06.10.17 ST - Neu ist auch die šbernahme aus NAV 5.0 anhand der Beleg- und Artikelverfolgungs Historie
+      //*****************************************************************************************************************
+
+      systempos_angelegt := FALSE;
+      zuletzt_system_service := FALSE;
+      letzte_system_wartungsnr := '';
+      letzte_system_hauptwartungsnr := '';
+
+      Liefkopf.RESET;
+      ////n
+      Liefkopf.SETFILTER("No.",'%1',ShipNo);
+      ////e
+      IF Liefkopf.FINDLAST THEN BEGIN
+        Liefzeile.RESET;
+        Liefzeile.SETFILTER("Document No.",'%1',Liefkopf."No.");
+        Liefzeile.SETFILTER("Manufacturer Code",'%1','59');
+        Liefzeile.SETFILTER(Type,'%1',Liefzeile.Type::Item);
+        Liefzeile.SETFILTER(Quantity,'>%1',0);
+        IF Liefzeile.FINDFIRST THEN
+          REPEAT
+
+            wartungsnr := '';
+            hauptwartungsnr := '';
+
+            //neu 10.05.12 ST - Update in Vorlage ausstehend
+            datensatz_auslassen := FALSE;
+
+            IF Artikel.GET(Liefzeile."No.") THEN BEGIN
+              IF (Artikel."Software Upgrade Protection" = TRUE)
+              //OR (Artikel.Serviceklassifizierung = 'SYSTEM FLAT')
+              OR (Artikel."No." = 'ADVC-RPLC-SRVC-IN#01')
+              OR (Artikel."No." = 'STD-SUPP-PROG/YR')
+              OR (Artikel."No." = 'PREM-SUPP-PROG/YR')
+              //OR (Artikel."No." = 'RCBK0001')
+              //OR (Artikel."No." = 'CENTOL10')
+              //OR (Artikel."No." = 'MCMK00015')
+              //OR (Artikel."No." = 'MCMK00016')
+              //OR (Artikel."No." = 'MPRS232')
+              //OR (Artikel."No." = 'MP-RMSHL')
+              THEN
+                datensatz_auslassen := TRUE
+              ELSE BEGIN
+                IF Artikel."Manufacturer Code" <> '59' THEN
+                  datensatz_auslassen := TRUE
+                ELSE
+                  datensatz_auslassen := FALSE;
+              END;
+            END ELSE
+              datensatz_auslassen := TRUE;
+
+            IF datensatz_auslassen = FALSE THEN BEGIN
+            //neu Ende
+
+              //***************************************************************************************************
+              //                         Generierung des Systemvertrages fr Chassis o.„.
+              //***************************************************************************************************
+
+              IF Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS' THEN BEGIN
+                Wartung.RESET;
+                Wartung.SETFILTER("Lieferscheinnr.",'%1',Liefzeile."Document No.");
+                Wartung.SETFILTER("Lieferscheinzeilennr.",'%1',Liefzeile."Line No.");
+                IF NOT Wartung.FINDFIRST THEN BEGIN
+
+                  ////n No. Series wird normalerweise direkt von der Tabelle bernommen bei INSERT(TRUE)
+                  ////n Nur in diesem Sonderfall, sollen nachtr„glich hinzugefgte Positionen
+                  ////n einen anderen Nummernserienkreis bekommen, so dass diese besser auseinander
+                  ////n gehaltn werden k”nnen
+
+                  IF Liefzeile.Quantity > 1 THEN BEGIN
+                    IF CONFIRM(Text51007,TRUE,Liefzeile.Quantity) THEN
+                      vertraege_anlegen := Liefzeile.Quantity
+                    ELSE
+                      ERROR(Text51002,Liefzeile."No.",Liefzeile."Line No.");
+                  END ELSE BEGIN
+                    vertraege_anlegen := 1;
+                  END;
+
+                  FOR k := 1 TO  vertraege_anlegen DO BEGIN
+                    Wartung.INIT;
+                    laufende_nummer := '';
+                    IF Liefkopf."Posting Date" > 010114D THEN
+                      eingabe := 'TOPAS-WART'
+                    ELSE
+                      eingabe := 'TOPAS-WTAL';
+
+                    NoSeriesMgt.InitSeries(eingabe,eingabe,TODAY,laufende_nummer,eingabe);
+                    Wartung."Wartungsvertragsnr." := laufende_nummer;
+                    Wartung."Angelegt von" := USERID;
+                    Wartung."Angelegt am" := WORKDATE;
+                    ////e
+                    Wartung.Status := Wartung.Status::System;
+                    Wartung.Klasse := Wartung.Klasse::Einzelger„t;
+                    Wartung.Volumen := 1;
+                    Wartung.Startdatum := Liefkopf."Posting Date";
+                    Wartung."Debitornr." := Liefkopf."Sell-to Customer No.";
+                    IF STRPOS(Liefkopf."Payment Terms Code",'SOR') <> 0 THEN BEGIN
+                      Wartung.SOR := TRUE;
+                      Wartung."SOR Option" := Liefkopf."Payment Terms Code";
+                    END;
+                    //Des Basisger„tes
+                    Wartung."Auftragsnr." := Liefzeile."Order No.";
+                    Wartung."Auftragszeilennr." := Liefzeile."Order Line No.";
+                    Wartung."Lieferscheinnr." := Liefzeile."Document No.";
+                    Wartung."Lieferscheinzeilennr." := Liefzeile."Line No.";
+                    IF Auftrag.GET(Auftrag."Document Type"::Order,Wartung."Auftragsnr.") THEN
+                      Wartung.Auftragsstatus := Wartung.Auftragsstatus::Aktuell
+                    ELSE
+                      Wartung.Auftragsstatus := Wartung.Auftragsstatus::Archiviert;
+
+                    ////n KEIN INSERT(TRUE), damit angepasste Nr. Serie verwendet wird
+                    Wartung.INSERT;
+                    MESSAGE(Text51000,Wartung."Wartungsvertragsnr.");
+                    ////e
+
+                    PrfeHauptWartung.RESET;
+                    PrfeHauptWartung.SETFILTER("Auftragsnr.",'%1',Wartung."Auftragsnr.");
+                    PrfeHauptWartung.SETFILTER("Auftragszeilennr.",'%1',Wartung."Auftragszeilennr.");
+                    IF NOT PrfeHauptWartung.FINDFIRST THEN BEGIN
+                      Wartung."Hauptwartungsvertragsnr." := Wartung."Wartungsvertragsnr.";
+                      Wartung.MODIFY(TRUE);
+                    END ELSE BEGIN
+                      Wartung."Hauptwartungsvertragsnr." := PrfeHauptWartung."Wartungsvertragsnr.";
+                      Wartung.MODIFY(TRUE);
+                    END;
+
+                    //neu 10.05.2012-ST, Update in Vorlage ausstehend
+                    zuletzt_system_service := TRUE;
+                    letzte_system_wartungsnr := Wartung."Wartungsvertragsnr.";
+                    letzte_system_hauptwartungsnr := Wartung."Hauptwartungsvertragsnr.";
+                    //neu Ende
+
+                    //Anlage der Fhrungsrolle anhand des Debitoren
+                    DebKontaktBez.RESET;
+                    DebKontaktBez.SETFILTER("Business Relation Code",'%1','DEB');
+                    DebKontaktBez.SETFILTER("No.",'%1',Wartung."Debitornr.");
+                    IF DebKontaktBez.FINDFIRST THEN BEGIN
+                      Ansprech.RESET;
+                      Ansprech.SETFILTER("Kampagnennr.",'%1',Wartung."Wartungsvertragsnr.");
+                      Ansprech.SETFILTER("Kontaktnr.",'%1',DebKontaktBez."Contact No.");
+                      IF NOT Ansprech.FINDFIRST THEN BEGIN
+                        Ansprech.INIT;
+                        Ansprech.VALIDATE("Kontaktnr.",DebKontaktBez."Contact No.");
+                        Ansprech."Kampagnennr." := Wartung."Wartungsvertragsnr.";
+                        Ansprech.Fhrungsrolle := TRUE;
+                        Ansprech.INSERT;
+                      END;
+                    END;
+                  END;
+                END;
+              END;
+
+              //***************************************************************************************************
+              //                          Generierung des Systemvertrages fr FLAT Ger„te
+              //***************************************************************************************************
+
+              IF Artikel.Serviceklassifizierung = 'SYSTEM FLAT' THEN BEGIN
+                Wartung.RESET;
+                Wartung.SETFILTER("Lieferscheinnr.",'%1',Liefzeile."Document No.");
+                Wartung.SETFILTER("Lieferscheinzeilennr.",'%1',Liefzeile."Line No.");
+                IF NOT Wartung.FINDFIRST THEN BEGIN
+                  Wartung.INIT;
+                  Wartung.Status := Wartung.Status::System;
+                  Wartung.Klasse := Wartung.Klasse::Mehrger„te;
+                  ////n
+                  laufende_nummer := '';
+                  IF Liefkopf."Posting Date" > 010114D THEN
+                    eingabe := 'TOPAS-WART'
+                  ELSE
+                    eingabe := 'TOPAS-WTAL';
+                  NoSeriesMgt.InitSeries(eingabe,eingabe,TODAY,laufende_nummer,eingabe);
+                  Wartung."Wartungsvertragsnr." := laufende_nummer;
+                  Wartung."Angelegt von" := USERID;
+                  Wartung."Angelegt am" := WORKDATE;
+                  ////e
+                  //Fr Mehrger„te immer 0, da das Volumen sp„ter durch die Einzelpositionen hochgez„hlt wird
+                  Wartung.Volumen := 0;
+                  Wartung.Startdatum := Liefkopf."Posting Date";
+                  Wartung."Debitornr." := Liefkopf."Sell-to Customer No.";
+                  IF STRPOS(Liefkopf."Payment Terms Code",'SOR') <> 0 THEN BEGIN
+                    Wartung.SOR := TRUE;
+                    Wartung."SOR Option" := Liefkopf."Payment Terms Code";
+                  END;
+                  //Des Basisger„tes
+                  Wartung."Auftragsnr." := Liefzeile."Order No.";
+                  Wartung."Auftragszeilennr." := Liefzeile."Order Line No.";
+                  Wartung."Lieferscheinnr." := Liefzeile."Document No.";
+                  Wartung."Lieferscheinzeilennr." := Liefzeile."Line No.";
+                  IF Auftrag.GET(Auftrag."Document Type"::Order,Wartung."Auftragsnr.") THEN
+                    Wartung.Auftragsstatus := Wartung.Auftragsstatus::Aktuell
+                  ELSE
+                    Wartung.Auftragsstatus := Wartung.Auftragsstatus::Archiviert;
+                  Wartung.Endkunde := Liefkopf.Endkunde;
+                  Wartung."Endkunde Adresse" := Liefkopf."Endkunde Adresse";
+                  Wartung."Endkunde PLZ-Code" := Liefkopf."Endkunde PLZ-Code";
+                  Wartung."Endkunde Ort"  := Liefkopf."Endkunde Ort";
+                  Wartung."Endkunde Land" := Liefkopf."Endkunde Land";
+                  Wartung."Endkunde Kontakt" := Liefkopf."Endkunde Kontakt";
+                  Wartung."Endkunde Telefonnr." := Liefkopf."Endkunde Telefonnr.";
+                  Wartung."Endkunde E-Mail" := Liefkopf."Endkunde E-Mail";
+                  Wartung."Systemhaus Kontakt" := Liefkopf."Systemhaus Kontakt";
+                  Wartung."Systemhaus E-Mail" := Liefkopf."Systemhaus E-Mail";
+                  ////n KEIN INSERT(TRUE), damit angepasste Nr. Serie verwendet wird
+                  Wartung.INSERT;
+                  MESSAGE(Text51000,Wartung."Wartungsvertragsnr.");
+                  ////e
+
+                  PrfeHauptWartung.RESET;
+                  PrfeHauptWartung.SETFILTER("Auftragsnr.",'%1',Wartung."Auftragsnr.");
+                  PrfeHauptWartung.SETFILTER("Auftragszeilennr.",'%1',Wartung."Auftragszeilennr.");
+                  IF NOT PrfeHauptWartung.FINDFIRST THEN BEGIN
+                    Wartung."Hauptwartungsvertragsnr." := Wartung."Wartungsvertragsnr.";
+                    Wartung.MODIFY(TRUE);
+                  END ELSE BEGIN
+                    Wartung."Hauptwartungsvertragsnr." := PrfeHauptWartung."Wartungsvertragsnr.";
+                    Wartung.MODIFY(TRUE);
+                  END;
+
+                  //neu 10.05.12 ST - Update in Vorlage ausstehend
+                  zuletzt_system_service := FALSE;
+                  //neu Ende
+
+                  //Anlage der Fhrungsrolle anhand des Debitoren
+                  DebKontaktBez.RESET;
+                  DebKontaktBez.SETFILTER("Business Relation Code",'%1','DEB');
+                  DebKontaktBez.SETFILTER("No.",'%1',Wartung."Debitornr.");
+                  IF DebKontaktBez.FINDFIRST THEN BEGIN
+                    Ansprech.RESET;
+                    Ansprech.SETFILTER("Kampagnennr.",'%1',Wartung."Wartungsvertragsnr.");
+                    Ansprech.SETFILTER("Kontaktnr.",'%1',DebKontaktBez."Contact No.");
+                    IF NOT Ansprech.FINDFIRST THEN BEGIN
+                      Ansprech.INIT;
+                      Ansprech.VALIDATE("Kontaktnr.",DebKontaktBez."Contact No.");
+                      Ansprech."Kampagnennr." := Wartung."Wartungsvertragsnr.";
+                      Ansprech.Fhrungsrolle := TRUE;
+                      Ansprech.INSERT;
+                    END;
+                  END;
+                END;
+              END;
+
+              //***************************************************************************************************
+              //         Auswahlfenster zum Vorbelegen des Wartungs- bzw. Systemvertrages bei nachtr„glich
+              //   gelieferten Modulen,Softwarelizenzen etc. ohne jegliche Wartungs oder Systemger„te Positionen
+              //***************************************************************************************************
+
+              IF (Artikel.Serviceklassifizierung <> 'SYSTEM CHAMPS') AND (Artikel.Serviceklassifizierung <> 'SYSTEM FLAT') THEN BEGIN
+                system_service_verbindung := FALSE;
+
+                //Prfe ob der Artikel ohne Service Kalkulation gebucht wurde
+                CheckServiceCalc.RESET;
+                CheckServiceCalc.SETFILTER(Art,'%1',CheckServiceCalc.Art::"SUP-AU");
+                CheckServiceCalc.SETFILTER("Belegnr.",'%1',Liefzeile."Order No.");
+                CheckServiceCalc.SETFILTER("Belegzeilennr.",'%1',Liefzeile."Order Line No.");
+                IF NOT CheckServiceCalc.FINDFIRST THEN BEGIN
+                  //Prfe ob Systemartikel alleinstehend gebucht wurde
+                  PrfeSystemLiefzeile.RESET;
+                  PrfeSystemLiefzeile.SETFILTER("Document No.",'%1',Liefkopf."No.");
+                  PrfeSystemLiefzeile.SETFILTER(Type,'%1',PrfeSystemLiefzeile.Type::Item);
+                  PrfeSystemLiefzeile.SETFILTER(Quantity,'>%1',0);
+                  IF PrfeSystemLiefzeile.FINDFIRST THEN BEGIN
+                    REPEAT
+                      IF (Artikel.GET(PrfeSystemLiefzeile."No.")) AND ((Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS')
+                      OR (Artikel.Serviceklassifizierung = 'SYSTEM FLAT')) THEN BEGIN
+                        CheckServiceCalc.RESET;
+                        CheckServiceCalc.SETFILTER("Belegnr.",'%1',PrfeSystemLiefzeile."Order No.");
+                        CheckServiceCalc.SETFILTER("Belegzeilennr.",'%1',PrfeSystemLiefzeile."Order Line No.");
+                        IF NOT CheckServiceCalc.FINDFIRST THEN
+                          system_service_verbindung := TRUE;
+                      END;
+                    UNTIL PrfeSystemLiefzeile.NEXT = 0;
+
+                    IF system_service_verbindung = FALSE THEN BEGIN
+                      MESSAGE(Text51001,Liefzeile."No.",Liefzeile."Line No.",Liefzeile.FIELDCAPTION("System Projektinfos"),
+                      Liefzeile."System Projektinfos");
+                      COMMIT;
+                      CLEAR(Wartungsšbersicht);
+                      Wartungsšbersicht.SETFILTER("Debitornr.",'%1',Liefkopf."Sell-to Customer No.");
+                      IF Wartungsšbersicht.FINDFIRST THEN BEGIN
+                        IF PAGE.RUNMODAL(50024,Wartungsšbersicht) = ACTION::LookupOK THEN BEGIN
+                            wartungsnr := Wartungsšbersicht."Wartungsvertragsnr.";
+                            hauptwartungsnr := Wartungsšbersicht."Hauptwartungsvertragsnr.";
+                        END ELSE BEGIN
+                          MESSAGE(Text51002,Liefzeile."No.",Liefzeile."Line No.");
+                        END;
+                      END ELSE
+                        MESSAGE(Text51003);
+                    END;
+                  END;
+                END;
+              END;
+
+              SeriennrVerfolgung.RESET;
+              //SeriennrVerfolgung.SETFILTER("Item Tracking",'%1',SeriennrVerfolgung."Item Tracking":: "Serial No.");
+              SeriennrVerfolgung.SETFILTER("Document No.",'%1',Liefzeile."Document No.");
+              SeriennrVerfolgung.SETFILTER("Document Line No.",'%1',Liefzeile."Line No.");
+              IF SeriennrVerfolgung.FINDFIRST THEN
+                REPEAT
+                  SystemPos.RESET;
+                  SystemPos.SETFILTER(Art,'%1',SystemPos.Art::System);
+                  SystemPos.SETFILTER("Nr.",'%1',Liefkopf."No.");
+                  SystemPos.SETFILTER("Belegzeilennr.",'%1',Liefzeile."Line No.");
+                  SystemPos.SETFILTER("Artikelnr.",'%1',Liefzeile."No.");
+                  SystemPos.SETFILTER("Seriennr.",'%1',SeriennrVerfolgung."Serial No.");
+                  IF NOT SystemPos.FINDFIRST THEN BEGIN
+                    SystemPos.RESET;
+                    SystemPos.INIT;
+                    SystemPos.Art := SystemPos.Art::System;
+                    SystemPos."Nr." := Liefkopf."No.";
+                    ////n KEIN INSERT(TRUE), damit angepasste Nr. Serie verwendet wird
+                    IF (SystemPos.Art = SystemPos.Art::Service)
+                    OR (SystemPos.Art = SystemPos.Art::System) THEN
+                      IF Liefkopf."Posting Date" > 010114D THEN
+                        ok := EVALUATE(eingabe,'TOPAS-SERV')
+                      ELSE
+                        ok := EVALUATE(eingabe,'TOPAS-SVAL');
+                    laufende_nummer := '';
+                    NoSeriesMgt.InitSeries(eingabe,eingabe,TODAY,laufende_nummer,eingabe);
+                    SystemPos."Lfd. Nr." := laufende_nummer;
+                    SystemPos."Angelegt von" := USERID;
+                    SystemPos."Angelegt am" := WORKDATE;
+                    SystemPos.INSERT;
+                    ////e
+                    SystemPos.Belegdatum := SeriennrVerfolgung."Posting Date";
+                    SystemPos.VALIDATE("Artikelnr.",Liefzeile."No.");
+                    SystemPos."Seriennr." := SeriennrVerfolgung."Serial No.";
+                    SystemPos."Debitornr." := Liefkopf."Sell-to Customer No.";
+                    SystemPos.Debitorname := Liefkopf."Sell-to Customer Name";
+                    SystemPos.Menge := SeriennrVerfolgung.Quantity * (-1);
+                    SystemPos.Kontakt := Liefkopf."Sell-to Contact";
+                    SystemPos."Name 2" := Liefkopf."Sell-to Customer Name 2";
+                    SystemPos.Adresse := Liefkopf."Sell-to Address";
+                    SystemPos."Adresse 2" := Liefkopf."Sell-to Address 2";
+                    SystemPos."PLZ-Code" := Liefkopf."Sell-to Post Code";
+                    SystemPos.Ort := Liefkopf."Sell-to City";
+                    SystemPos."System Projektinfos" := Liefzeile."System Projektinfos";
+                    SystemPos."Auftragsnr." := Liefkopf."Order No.";
+                    SystemPos."Auftragszeilennr." := Liefzeile."Line No.";
+                    SystemPos.Ursprungsland := SeriennrVerfolgung.Ursprungsland;
+                    SystemPos."Product Key" := SeriennrVerfolgung."Product Key";
+                    SystemPos."Seriennr. 2" := SeriennrVerfolgung."Serial No. 2";
+                    SystemPos."Belegzeilennr." := Liefzeile."Line No.";
+                    IF STRPOS(Liefkopf."Payment Terms Code",'SOR') <> 0 THEN BEGIN
+                      SystemPos.SOR := TRUE;
+                      SystemPos."SOR Option" := Liefkopf."Payment Terms Code";
+                    END;
+
+                    IF (wartungsnr <> '') AND (hauptwartungsnr <> '') THEN BEGIN
+                      SystemPos."Wartungsvertragsnr." := wartungsnr;
+                      SystemPos."Hauptwartungsvertragsnr." := hauptwartungsnr;
+                    END ELSE BEGIN
+                      //neu 10.05.2012-ST, Update in Vorlage ausstehend
+                      IF (Artikel.GET(SeriennrVerfolgung."Item No.")) AND ((Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS')
+                      OR (Artikel.Serviceklassifizierung = 'SYSTEM FLAT')) THEN BEGIN
+                        SystemPos."Wartungsvertragsnr." := Wartung."Wartungsvertragsnr.";
+                        SystemPos."Hauptwartungsvertragsnr." := Wartung."Hauptwartungsvertragsnr.";
+                      END ELSE BEGIN
+                        IF zuletzt_system_service = TRUE THEN BEGIN
+                          IF (SystemPos."Artikelnr." <> 'RCBK0001')
+                          AND (SystemPos."Artikelnr." <> 'CENTOL10')
+                          AND (SystemPos."Artikelnr." <> 'MCMK00015')
+                          AND (SystemPos."Artikelnr." <> 'MCMK00016')
+                          AND (SystemPos."Artikelnr." <> 'MPRS232')
+                          AND (SystemPos."Artikelnr." <> 'MP-RMSHL') THEN BEGIN
+                            SystemPos."Wartungsvertragsnr." := Wartung."Wartungsvertragsnr.";
+                            SystemPos."Hauptwartungsvertragsnr." := Wartung."Hauptwartungsvertragsnr.";
+                          END;
+                        END ELSE BEGIN
+                          IF (SystemPos."Artikelnr." = 'RCBK0001')
+                          OR (SystemPos."Artikelnr." = 'CENTOL10')
+                          OR (SystemPos."Artikelnr." = 'MCMK00015')
+                          OR (SystemPos."Artikelnr." = 'MCMK00016')
+                          OR (SystemPos."Artikelnr." = 'MPRS232')
+                          OR (SystemPos."Artikelnr." = 'MP-RMSHL')
+                          OR ((letzte_system_wartungsnr = '') AND ( letzte_system_hauptwartungsnr = '')) THEN BEGIN
+                            SystemPos."Wartungsvertragsnr." := Wartung."Wartungsvertragsnr.";
+                            SystemPos."Hauptwartungsvertragsnr." := Wartung."Hauptwartungsvertragsnr.";
+                          END ELSE BEGIN
+                            SystemPos."Wartungsvertragsnr." := letzte_system_wartungsnr;
+                            SystemPos."Hauptwartungsvertragsnr." := letzte_system_hauptwartungsnr;
+                          END;
+                        END;
+                      END;
+                    END;
+                    //neu Ende
+
+                    IF (Artikel.GET(SeriennrVerfolgung."Item No.")) AND ((Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS')
+                    OR (Artikel.Serviceklassifizierung = 'SYSTEM FLAT')) THEN BEGIN
+                      SystemPos.Basisger„t := TRUE;
+                      Wartung.GET(SystemPos."Wartungsvertragsnr.");
+                      Wartung.Basisger„t := SystemPos."Artikelnr.";
+                      Wartung."Ablauf Gew„hrleistung" := CALCDATE('1J-1T',SeriennrVerfolgung."Posting Date");
+                      IF Wartung.Klasse = Wartung.Klasse::Mehrger„te THEN
+                        Wartung.Volumen += 1;
+                      Wartung.MODIFY(TRUE);
+                    END;
+
+                    IF Wartung.GET(SystemPos."Wartungsvertragsnr.") AND (SystemPos."Wartungsvertragsnr." <> '') THEN
+                      Wartung.MODIFY(TRUE)
+                    ELSE BEGIN
+                      //Einzel Modul im AU + Service Kalkulation mit Basisger„t aus LS usw.
+                      GetServiceCalc.RESET;
+                      GetServiceCalc.SETFILTER(Art,'%1',GetServiceCalc.Art::"SUP-AU");
+                      GetServiceCalc.SETFILTER("Belegnr.",'%1',Liefkopf."Order No.");
+                      GetServiceCalc.SETFILTER("Belegzeilennr.",'%1',Liefzeile."Order Line No.");
+                      IF GetServiceCalc.FINDFIRST THEN BEGIN
+                        ZuordnungBasisger„t.RESET;
+                        ZuordnungBasisger„t.SETFILTER(Art,'%1',ZuordnungBasisger„t.Art::"SUP-AU");
+                        ZuordnungBasisger„t.SETFILTER("Nr.",'%1',Liefkopf."Order No.");
+                        ZuordnungBasisger„t.SETFILTER("Zeilennr.",'%1',GetServiceCalc."Zeilennr.");
+                        ZuordnungBasisger„t.SETFILTER(Basisger„t,'%1',TRUE);
+                        IF ZuordnungBasisger„t.FINDFIRST THEN BEGIN
+                          Wartung.RESET;
+                          Wartung.SETFILTER("Lieferscheinnr.",'%1',ZuordnungBasisger„t."Belegnr.");
+                          Wartung.SETFILTER("Lieferscheinzeilennr.",'%1',ZuordnungBasisger„t."Belegzeilennr.");
+                          IF Wartung.FINDFIRST THEN BEGIN
+                            SystemPos."Wartungsvertragsnr." := Wartung."Wartungsvertragsnr.";
+                            SystemPos."Hauptwartungsvertragsnr." := Wartung."Hauptwartungsvertragsnr.";
+                            Wartung.MODIFY(TRUE);
+                          END;
+                        END ELSE
+                          MESSAGE(Text51004,SystemPos."Lfd. Nr.",SystemPos."Artikelnr.",SystemPos."Belegzeilennr.");
+                      END ELSE
+                        MESSAGE(Text51004,SystemPos."Lfd. Nr.",SystemPos."Artikelnr.",SystemPos."Belegzeilennr.");
+                    END;
+
+                    //Zugeh”rigkeit der Positionen untereinander ermitteln
+                    SystemPos."Geh”rt zu Lfd. Nr." := SystemPos.SystemZugeh”rigkeitErmitteln(Liefkopf."Order No.",
+                                                      SystemPos."Lfd. Nr.",SystemPos."Wartungsvertragsnr.");
+                    SystemPos.MODIFY;
+                    systempos_angelegt := TRUE;
+                  END ELSE BEGIN
+                  ////n
+                    IF (SystemPos."Wartungsvertragsnr." = '') AND (wartungsnr <> '') AND (hauptwartungsnr <> '') THEN BEGIN
+                      SystemPos."Wartungsvertragsnr." := wartungsnr;
+                      SystemPos."Hauptwartungsvertragsnr." := hauptwartungsnr;
+                      SystemPos."Geh”rt zu Lfd. Nr." := SystemPos.SystemZugeh”rigkeitErmitteln(Liefkopf."Order No.",
+                                                        SystemPos."Lfd. Nr.",SystemPos."Wartungsvertragsnr.");
+
+                      SystemPos.MODIFY(TRUE);
+                      systempos_angelegt := TRUE;
+                    END ELSE BEGIN
+                      //neu 10.05.12 ST - Update in Vorlage ausstehend
+                      IF (system_service_verbindung = TRUE) AND (SystemPos."Wartungsvertragsnr." = '') THEN BEGIN
+                        MESSAGE(Text51010,SystemPos."Lfd. Nr.",Liefzeile."No.",SystemPos."Seriennr.");
+                        COMMIT;
+                        CLEAR(Wartungsšbersicht);
+                        Wartungsšbersicht.SETFILTER("Debitornr.",'%1',Liefkopf."Sell-to Customer No.");
+                        IF Wartungsšbersicht.FINDFIRST THEN BEGIN
+                          IF PAGE.RUNMODAL(50024,Wartungsšbersicht) = ACTION::LookupOK THEN BEGIN
+                            SystemPos."Wartungsvertragsnr." := Wartungsšbersicht."Wartungsvertragsnr.";
+                            SystemPos."Hauptwartungsvertragsnr." := Wartungsšbersicht."Hauptwartungsvertragsnr.";
+                            SystemPos."Geh”rt zu Lfd. Nr." := SystemPos.SystemZugeh”rigkeitErmitteln(Liefkopf."Order No.",
+                                                              SystemPos."Lfd. Nr.",SystemPos."Wartungsvertragsnr.");
+                            SystemPos.MODIFY(TRUE);
+                            systempos_angelegt := TRUE;
+                          END ELSE BEGIN
+                            MESSAGE(Text51002,Liefzeile."No.",Liefzeile."Line No.");
+                          END;
+                        END ELSE
+                          MESSAGE(Text51003);
+                      END;
+                      //neu Ende
+                    END;
+                  END;
+                  ////e
+                UNTIL SeriennrVerfolgung.NEXT = 0;
+
+            END;
+          UNTIL Liefzeile.NEXT = 0;
+
+      ////n
+          IF systempos_angelegt = FALSE THEN
+            MESSAGE(Text51005)
+          ELSE
+            COMMIT;
+      END ELSE BEGIN
+        //06.10.17 ST - Fr Anlage aus der Beleghistorie z.B. bei SOR Lieferscheinen woraus kein Systemvertrag entstand
+        Beleghistorie.RESET;
+        Beleghistorie.SETFILTER(Belegart,'%1',Beleghistorie.Belegart::"Sales Shipment");
+        Beleghistorie.SETFILTER("Belegnr.",'%1',ShipNo);
+        Beleghistorie.SETFILTER(Herstellercode,'%1','59');
+        Beleghistorie.SETFILTER(Menge,'>%1',0);
+        IF Beleghistorie.FINDFIRST THEN
+          REPEAT
+
+            wartungsnr := '';
+            hauptwartungsnr := '';
+
+            datensatz_auslassen := FALSE;
+
+            IF Artikel.GET(Beleghistorie."Artikelnr.") THEN BEGIN
+              IF (Artikel."Software Upgrade Protection" = TRUE)
+              //OR (Artikel.Serviceklassifizierung = 'SYSTEM FLAT')
+              OR (Artikel."No." = 'ADVC-RPLC-SRVC-IN#01')
+              OR (Artikel."No." = 'STD-SUPP-PROG/YR')
+              OR (Artikel."No." = 'PREM-SUPP-PROG/YR')
+              //OR (Artikel."No." = 'RCBK0001')
+              //OR (Artikel."No." = 'CENTOL10')
+              //OR (Artikel."No." = 'MCMK00015')
+              //OR (Artikel."No." = 'MCMK00016')
+              //OR (Artikel."No." = 'MPRS232')
+              //OR (Artikel."No." = 'MP-RMSHL')
+              THEN
+                datensatz_auslassen := TRUE
+              ELSE BEGIN
+                IF Artikel."Manufacturer Code" <> '59' THEN
+                  datensatz_auslassen := TRUE
+                ELSE
+                  datensatz_auslassen := FALSE;
+              END;
+            END ELSE
+              datensatz_auslassen := TRUE;
+
+            IF datensatz_auslassen = FALSE THEN BEGIN
+            //neu Ende
+
+              //***************************************************************************************************
+              //                         Generierung des Systemvertrages fr Chassis o.„.
+              //***************************************************************************************************
+
+              IF Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS' THEN BEGIN
+                Wartung.RESET;
+                Wartung.SETFILTER("Lieferscheinnr.",'%1',Beleghistorie."Belegnr.");
+                Wartung.SETFILTER("Lieferscheinzeilennr.",'%1',Beleghistorie."Zeilennr.");
+                IF NOT Wartung.FINDFIRST THEN BEGIN
+
+                  ////n No. Series wird normalerweise direkt von der Tabelle bernommen bei INSERT(TRUE)
+                  ////n Nur in diesem Sonderfall, sollen nachtr„glich hinzugefgte Positionen
+                  ////n einen anderen Nummernserienkreis bekommen, so dass diese besser auseinander
+                  ////n gehaltn werden k”nnen
+
+                  IF Beleghistorie.Menge > 1 THEN BEGIN
+                    IF CONFIRM(Text51007,TRUE,Beleghistorie.Menge) THEN
+                      vertraege_anlegen := Beleghistorie.Menge
+                    ELSE
+                      ERROR(Text51002,Beleghistorie."Artikelnr.",Beleghistorie."Zeilennr.");
+                  END ELSE BEGIN
+                    vertraege_anlegen  := 1;
+                  END;
+
+                  FOR k := 1 TO  vertraege_anlegen DO BEGIN
+                    Wartung.INIT;
+                    laufende_nummer := '';
+                    IF Beleghistorie.Belegdatum > 010114D THEN
+                      eingabe := 'TOPAS-WART'
+                    ELSE
+                      eingabe := 'TOPAS-WTAL';
+
+                    NoSeriesMgt.InitSeries(eingabe,eingabe,TODAY,laufende_nummer,eingabe);
+                    Wartung."Wartungsvertragsnr." := laufende_nummer;
+                    Wartung."Angelegt von" := USERID;
+                    Wartung."Angelegt am" := WORKDATE;
+                    ////e
+                    Wartung.Status := Wartung.Status::System;
+                    Wartung.Klasse := Wartung.Klasse::Einzelger„t;
+                    Wartung.Volumen := 1;
+                    Wartung.Startdatum := Beleghistorie.Belegdatum ;
+                    Wartung."Debitornr." := Beleghistorie."Debitornr.";
+                    //Das Feld "Payment Terms Code" gibt es in der Tabelle Beleghistorie noch nicht
+                    {
+                    IF STRPOS(Beleghistorie."Payment Terms Code",'SOR') <> 0 THEN BEGIN
+                      Wartung.SOR := TRUE;
+                      Wartung."SOR Option" := Beleghistorie."Payment Terms Code";
+                    END;
+                    }
+                    //Des Basisger„tes
+                    Wartung."Auftragsnr." := Beleghistorie."Auftragsnr.";
+                    Wartung."Auftragszeilennr." := Beleghistorie."Auftragszeilennr.";
+                    Wartung."Lieferscheinnr." := Beleghistorie."Belegnr.";
+                    Wartung."Lieferscheinzeilennr." := Beleghistorie."Zeilennr.";
+                    IF Auftrag.GET(Auftrag."Document Type"::Order,Wartung."Auftragsnr.") THEN
+                      Wartung.Auftragsstatus := Wartung.Auftragsstatus::Aktuell
+                    ELSE
+                      Wartung.Auftragsstatus := Wartung.Auftragsstatus::Archiviert;
+
+                    ////n KEIN INSERT(TRUE), damit angepasste Nr. Serie verwendet wird
+                    Wartung.INSERT;
+                    MESSAGE(Text51000,Wartung."Wartungsvertragsnr.");
+                    ////e
+
+                    PrfeHauptWartung.RESET;
+                    PrfeHauptWartung.SETFILTER("Auftragsnr.",'%1',Wartung."Auftragsnr.");
+                    PrfeHauptWartung.SETFILTER("Auftragszeilennr.",'%1',Wartung."Auftragszeilennr.");
+                    IF NOT PrfeHauptWartung.FINDFIRST THEN BEGIN
+                      Wartung."Hauptwartungsvertragsnr." := Wartung."Wartungsvertragsnr.";
+                      Wartung.MODIFY(TRUE);
+                    END ELSE BEGIN
+                      Wartung."Hauptwartungsvertragsnr." := PrfeHauptWartung."Wartungsvertragsnr.";
+                      Wartung.MODIFY(TRUE);
+                    END;
+
+                    //neu 10.05.2012-ST, Update in Vorlage ausstehend
+                    zuletzt_system_service := TRUE;
+                    letzte_system_wartungsnr := Wartung."Wartungsvertragsnr.";
+                    letzte_system_hauptwartungsnr := Wartung."Hauptwartungsvertragsnr.";
+                    //neu Ende
+
+                    //Anlage der Fhrungsrolle anhand des Debitoren
+                    DebKontaktBez.RESET;
+                    DebKontaktBez.SETFILTER("Business Relation Code",'%1','DEB');
+                    DebKontaktBez.SETFILTER("No.",'%1',Wartung."Debitornr.");
+                    IF DebKontaktBez.FINDFIRST THEN BEGIN
+                      Ansprech.RESET;
+                      Ansprech.SETFILTER("Kampagnennr.",'%1',Wartung."Wartungsvertragsnr.");
+                      Ansprech.SETFILTER("Kontaktnr.",'%1',DebKontaktBez."Contact No.");
+                      IF NOT Ansprech.FINDFIRST THEN BEGIN
+                        Ansprech.INIT;
+                        Ansprech.VALIDATE("Kontaktnr.",DebKontaktBez."Contact No.");
+                        Ansprech."Kampagnennr." := Wartung."Wartungsvertragsnr.";
+                        Ansprech.Fhrungsrolle := TRUE;
+                        Ansprech.INSERT;
+                      END;
+                    END;
+                  END;
+                END;
+              END;
+
+              //***************************************************************************************************
+              //                          Generierung des Systemvertrages fr FLAT Ger„te
+              //***************************************************************************************************
+
+              IF Artikel.Serviceklassifizierung = 'SYSTEM FLAT' THEN BEGIN
+                Wartung.RESET;
+                Wartung.SETFILTER("Lieferscheinnr.",'%1',Beleghistorie."Belegnr.");
+                Wartung.SETFILTER("Lieferscheinzeilennr.",'%1',Beleghistorie."Zeilennr.");
+                IF NOT Wartung.FINDFIRST THEN BEGIN
+                  Wartung.INIT;
+                  Wartung.Status := Wartung.Status::System;
+                  Wartung.Klasse := Wartung.Klasse::Mehrger„te;
+                  ////n
+                  laufende_nummer := '';
+                  IF Beleghistorie.Belegdatum > 010114D THEN
+                    eingabe := 'TOPAS-WART'
+                  ELSE
+                    eingabe := 'TOPAS-WTAL';
+                  NoSeriesMgt.InitSeries(eingabe,eingabe,TODAY,laufende_nummer,eingabe);
+                  Wartung."Wartungsvertragsnr." := laufende_nummer;
+                  Wartung."Angelegt von" := USERID;
+                  Wartung."Angelegt am" := WORKDATE;
+                  ////e
+                  //Fr Mehrger„te immer 0, da das Volumen sp„ter durch die Einzelpositionen hochgez„hlt wird
+                  Wartung.Volumen := 0;
+                  Wartung.Startdatum := Beleghistorie.Belegdatum;
+                  Wartung."Debitornr." := Beleghistorie."Debitornr.";
+                  //Das Feld "Payment Terms Code" gibt es in der Tabelle Beleghistorie noch nicht
+                  {
+                  IF STRPOS(Beleghistorie."Payment Terms Code",'SOR') <> 0 THEN BEGIN
+                    Wartung.SOR := TRUE;
+                    Wartung."SOR Option" := Beleghistorie."Payment Terms Code";
+                  END;
+                  }
+                  //Des Basisger„tes
+                  Wartung."Auftragsnr." := Beleghistorie."Auftragsnr.";
+                  Wartung."Auftragszeilennr." := Beleghistorie."Auftragszeilennr.";
+                  Wartung."Lieferscheinnr." := Beleghistorie."Belegnr.";
+                  Wartung."Lieferscheinzeilennr." := Beleghistorie."Zeilennr.";
+                  IF Auftrag.GET(Auftrag."Document Type"::Order,Wartung."Auftragsnr.") THEN
+                    Wartung.Auftragsstatus := Wartung.Auftragsstatus::Aktuell
+                  ELSE
+                    Wartung.Auftragsstatus := Wartung.Auftragsstatus::Archiviert;
+                  //Weitere Details zu den Endkunden fehlen leider in der Tabelle Beleghistorie
+                  Wartung.Endkunde := Beleghistorie.Endkunde;
+                  ////n KEIN INSERT(TRUE), damit angepasste Nr. Serie verwendet wird
+                  Wartung.INSERT;
+                  MESSAGE(Text51000,Wartung."Wartungsvertragsnr.");
+                  ////e
+
+                  PrfeHauptWartung.RESET;
+                  PrfeHauptWartung.SETFILTER("Auftragsnr.",'%1',Wartung."Auftragsnr.");
+                  PrfeHauptWartung.SETFILTER("Auftragszeilennr.",'%1',Wartung."Auftragszeilennr.");
+                  IF NOT PrfeHauptWartung.FINDFIRST THEN BEGIN
+                    Wartung."Hauptwartungsvertragsnr." := Wartung."Wartungsvertragsnr.";
+                    Wartung.MODIFY(TRUE);
+                  END ELSE BEGIN
+                    Wartung."Hauptwartungsvertragsnr." := PrfeHauptWartung."Wartungsvertragsnr.";
+                    Wartung.MODIFY(TRUE);
+                  END;
+
+                  //neu 10.05.12 ST - Update in Vorlage ausstehend
+                  zuletzt_system_service := FALSE;
+                  //neu Ende
+
+                  //Anlage der Fhrungsrolle anhand des Debitoren
+                  DebKontaktBez.RESET;
+                  DebKontaktBez.SETFILTER("Business Relation Code",'%1','DEB');
+                  DebKontaktBez.SETFILTER("No.",'%1',Wartung."Debitornr.");
+                  IF DebKontaktBez.FINDFIRST THEN BEGIN
+                    Ansprech.RESET;
+                    Ansprech.SETFILTER("Kampagnennr.",'%1',Wartung."Wartungsvertragsnr.");
+                    Ansprech.SETFILTER("Kontaktnr.",'%1',DebKontaktBez."Contact No.");
+                    IF NOT Ansprech.FINDFIRST THEN BEGIN
+                      Ansprech.INIT;
+                      Ansprech.VALIDATE("Kontaktnr.",DebKontaktBez."Contact No.");
+                      Ansprech."Kampagnennr." := Wartung."Wartungsvertragsnr.";
+                      Ansprech.Fhrungsrolle := TRUE;
+                      Ansprech.INSERT;
+                    END;
+                  END;
+                END;
+              END;
+
+              //***************************************************************************************************
+              //         Auswahlfenster zum Vorbelegen des Wartungs- bzw. Systemvertrages bei nachtr„glich
+              //   gelieferten Modulen,Softwarelizenzen etc. ohne jegliche Wartungs oder Systemger„te Positionen
+              //***************************************************************************************************
+
+              IF (Artikel.Serviceklassifizierung <> 'SYSTEM CHAMPS') AND (Artikel.Serviceklassifizierung <> 'SYSTEM FLAT') THEN BEGIN
+                system_service_verbindung := FALSE;
+
+                //Prfe ob der Artikel ohne Service Kalkulation gebucht wurde
+                CheckServiceCalc.RESET;
+                CheckServiceCalc.SETFILTER(Art,'%1',CheckServiceCalc.Art::"SUP-AU");
+                CheckServiceCalc.SETFILTER("Belegnr.",'%1',Beleghistorie."Auftragsnr.");
+                CheckServiceCalc.SETFILTER("Belegzeilennr.",'%1',Beleghistorie."Auftragszeilennr.");
+                IF NOT CheckServiceCalc.FINDFIRST THEN BEGIN
+                  //Prfe ob Systemartikel alleinstehend gebucht wurde
+                  PrfeSystemLiefzeile.RESET;
+                  PrfeSystemLiefzeile.SETFILTER("Document No.",'%1',Beleghistorie."Belegnr.");
+                  PrfeSystemLiefzeile.SETFILTER(Type,'%1',PrfeSystemLiefzeile.Type::Item);
+                  PrfeSystemLiefzeile.SETFILTER(Quantity,'>%1',0);
+                  IF PrfeSystemLiefzeile.FINDFIRST THEN BEGIN
+                    REPEAT
+                      IF (Artikel.GET(PrfeSystemLiefzeile."No.")) AND ((Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS')
+                      OR (Artikel.Serviceklassifizierung = 'SYSTEM FLAT')) THEN BEGIN
+                        CheckServiceCalc.RESET;
+                        CheckServiceCalc.SETFILTER("Belegnr.",'%1',PrfeSystemLiefzeile."Order No.");
+                        CheckServiceCalc.SETFILTER("Belegzeilennr.",'%1',PrfeSystemLiefzeile."Order Line No.");
+                        IF NOT CheckServiceCalc.FINDFIRST THEN
+                          system_service_verbindung := TRUE;
+                      END;
+                    UNTIL PrfeSystemLiefzeile.NEXT = 0;
+
+                    IF system_service_verbindung = FALSE THEN BEGIN
+                      MESSAGE(Text51001,Beleghistorie."Artikelnr.",Beleghistorie."Zeilennr.",Beleghistorie.FIELDCAPTION("ACS Projektinfos"),
+                      Beleghistorie."ACS Projektinfos");
+                      COMMIT;
+                      CLEAR(Wartungsšbersicht);
+                      Wartungsšbersicht.SETFILTER("Debitornr.",'%1',Beleghistorie."Debitornr.");
+                      IF Wartungsšbersicht.FINDFIRST THEN BEGIN
+                        IF PAGE.RUNMODAL(50024,Wartungsšbersicht) = ACTION::LookupOK THEN BEGIN
+                          wartungsnr := Wartungsšbersicht."Wartungsvertragsnr.";
+                          hauptwartungsnr := Wartungsšbersicht."Hauptwartungsvertragsnr.";
+                        END ELSE BEGIN
+                          MESSAGE(Text51002,Beleghistorie."Artikelnr.",Beleghistorie."Zeilennr.");
+                        END;
+                      END ELSE
+                        MESSAGE(Text51003);
+                    END;
+                  END;
+                END;
+              END;
+
+              SeriennrHistorie.RESET;
+              //SeriennrHistorie.SETFILTER("Item Tracking",'%1',SeriennrHistorie."Item Tracking":: "Serial No.");
+              SeriennrHistorie.SETFILTER("Shipment No.",'%1',Beleghistorie."Belegnr.");
+              SeriennrHistorie.SETFILTER("Shipment Line No.",'%1',Beleghistorie."Zeilennr.");
+              IF SeriennrHistorie.FINDFIRST THEN
+                REPEAT
+                  SystemPos.RESET;
+                  SystemPos.SETFILTER(Art,'%1',SystemPos.Art::System);
+                  SystemPos.SETFILTER("Nr.",'%1',Beleghistorie."Belegnr.");
+                  SystemPos.SETFILTER("Belegzeilennr.",'%1',Beleghistorie."Zeilennr.");
+                  SystemPos.SETFILTER("Artikelnr.",'%1',Beleghistorie."Artikelnr.");
+                  SystemPos.SETFILTER("Seriennr.",'%1',SeriennrHistorie."Serial No.");
+                  IF NOT SystemPos.FINDFIRST THEN BEGIN
+                    SystemPos.RESET;
+                    SystemPos.INIT;
+                    SystemPos.Art := SystemPos.Art::System;
+                    SystemPos."Nr." := Beleghistorie."Belegnr.";
+                    ////n KEIN INSERT(TRUE), damit angepasste Nr. Serie verwendet wird
+                    IF (SystemPos.Art = SystemPos.Art::Service)
+                    OR (SystemPos.Art = SystemPos.Art::System) THEN
+                      IF Beleghistorie.Belegdatum > 010114D THEN
+                        ok := EVALUATE(eingabe,'TOPAS-SERV')
+                      ELSE
+                        ok := EVALUATE(eingabe,'TOPAS-SVAL');
+                    laufende_nummer := '';
+                    NoSeriesMgt.InitSeries(eingabe,eingabe,TODAY,laufende_nummer,eingabe);
+                    SystemPos."Lfd. Nr." := laufende_nummer;
+                    SystemPos."Angelegt von" := USERID;
+                    SystemPos."Angelegt am" := WORKDATE;
+                    SystemPos.INSERT;
+                    ////e
+                    SystemPos.Belegdatum := SeriennrHistorie."Posting Date";
+                    SystemPos.VALIDATE("Artikelnr.",Beleghistorie."Artikelnr.");
+                    SystemPos."Seriennr." := SeriennrHistorie."Serial No.";
+                    SystemPos."Debitornr." := Beleghistorie."Debitornr.";
+                    IF Customer.GET(Beleghistorie."Debitornr.") THEN
+                      SystemPos.Debitorname := Customer.Name;
+                    SystemPos.Menge := SeriennrHistorie.Quantity;
+                    //Hier msste eigentlich der Kontaktname stehen, in der Tabelle ist hier aber die Kontaktnr. gemeint
+                    //SystemPos.Kontakt := Beleghistorie.Kontakt;
+                    //Die nachfolgenden Infos gibt es in der Beleghistorie nicht
+                    {
+                    SystemPos."Name 2" := Beleghistorie."Sell-to Customer Name 2";
+                    SystemPos.Adresse := Beleghistorie."Sell-to Address";
+                    SystemPos."Adresse 2" := Beleghistorie."Sell-to Address 2";
+                    SystemPos."PLZ-Code" := Beleghistorie."Sell-to Post Code";
+                    SystemPos.Ort := Beleghistorie."Sell-to City";
+                    }
+                    SystemPos."System Projektinfos" := Beleghistorie."ACS Projektinfos";
+                    SystemPos."Auftragsnr." := Beleghistorie."Auftragsnr.";
+                    SystemPos."Auftragszeilennr." := Beleghistorie."Auftragszeilennr.";
+                    SystemPos.Ursprungsland := SeriennrHistorie."Country of Origin";
+                    //Gab es zu NAV 5.0 noch nicht
+                    //SystemPos."Product Key" := SeriennrHistorie."Product Key";
+                    //SystemPos."Seriennr. 2" := SeriennrHistorie."Serial No. 2";
+                    SystemPos."Belegzeilennr." := Beleghistorie."Zeilennr.";
+                    //Das Feld "Payment Terms Code" gibt es in der Tabelle Beleghistorie noch nicht
+                    {
+                    IF STRPOS(Beleghistorie."Payment Terms Code",'SOR') <> 0 THEN BEGIN
+                      SystemPos.SOR := TRUE;
+                      SystemPos."SOR Option" := Beleghistorie."Payment Terms Code";
+                    END;
+                    }
+                    IF (wartungsnr <> '') AND (hauptwartungsnr <> '') THEN BEGIN
+                      SystemPos."Wartungsvertragsnr." := wartungsnr;
+                      SystemPos."Hauptwartungsvertragsnr." := hauptwartungsnr;
+                    END ELSE BEGIN
+                      //neu 10.05.2012-ST, Update in Vorlage ausstehend
+                      IF (Artikel.GET(SeriennrHistorie."Item No.")) AND ((Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS')
+                      OR (Artikel.Serviceklassifizierung = 'SYSTEM FLAT')) THEN BEGIN
+                        SystemPos."Wartungsvertragsnr." := Wartung."Wartungsvertragsnr.";
+                        SystemPos."Hauptwartungsvertragsnr." := Wartung."Hauptwartungsvertragsnr.";
+                      END ELSE BEGIN
+                        IF zuletzt_system_service = TRUE THEN BEGIN
+                          IF (SystemPos."Artikelnr." <> 'RCBK0001')
+                          AND (SystemPos."Artikelnr." <> 'CENTOL10')
+                          AND (SystemPos."Artikelnr." <> 'MCMK00015')
+                          AND (SystemPos."Artikelnr." <> 'MCMK00016')
+                          AND (SystemPos."Artikelnr." <> 'MPRS232')
+                          AND (SystemPos."Artikelnr." <> 'MP-RMSHL') THEN BEGIN
+                            SystemPos."Wartungsvertragsnr." := Wartung."Wartungsvertragsnr.";
+                            SystemPos."Hauptwartungsvertragsnr." := Wartung."Hauptwartungsvertragsnr.";
+                          END;
+                        END ELSE BEGIN
+                          IF (SystemPos."Artikelnr." = 'RCBK0001')
+                          OR (SystemPos."Artikelnr." = 'CENTOL10')
+                          OR (SystemPos."Artikelnr." = 'MCMK00015')
+                          OR (SystemPos."Artikelnr." = 'MCMK00016')
+                          OR (SystemPos."Artikelnr." = 'MPRS232')
+                          OR (SystemPos."Artikelnr." = 'MP-RMSHL')
+                          OR ((letzte_system_wartungsnr = '') AND ( letzte_system_hauptwartungsnr = '')) THEN BEGIN
+                            SystemPos."Wartungsvertragsnr." := Wartung."Wartungsvertragsnr.";
+                            SystemPos."Hauptwartungsvertragsnr." := Wartung."Hauptwartungsvertragsnr.";
+                          END ELSE BEGIN
+                            SystemPos."Wartungsvertragsnr." := letzte_system_wartungsnr;
+                            SystemPos."Hauptwartungsvertragsnr." := letzte_system_hauptwartungsnr;
+                          END;
+                        END;
+                      END;
+                    END;
+                    //neu Ende
+
+                    IF (Artikel.GET(SeriennrHistorie."Item No.")) AND ((Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS')
+                    OR (Artikel.Serviceklassifizierung = 'SYSTEM FLAT')) THEN BEGIN
+                      SystemPos.Basisger„t := TRUE;
+                      Wartung.GET(SystemPos."Wartungsvertragsnr.");
+                      Wartung.Basisger„t := SystemPos."Artikelnr.";
+                      Wartung."Ablauf Gew„hrleistung" := CALCDATE('1J-1T',SeriennrHistorie."Posting Date");
+                      IF Wartung.Klasse = Wartung.Klasse::Mehrger„te THEN
+                        Wartung.Volumen += 1;
+                      Wartung.MODIFY(TRUE);
+                    END;
+
+                    IF Wartung.GET(SystemPos."Wartungsvertragsnr.") AND (SystemPos."Wartungsvertragsnr." <> '') THEN
+                      Wartung.MODIFY(TRUE)
+                    ELSE BEGIN
+                      //Einzel Modul im AU + Service Kalkulation mit Basisger„t aus LS usw.
+                      GetServiceCalc.RESET;
+                      GetServiceCalc.SETFILTER(Art,'%1',GetServiceCalc.Art::"SUP-AU");
+                      GetServiceCalc.SETFILTER("Belegnr.",'%1',Beleghistorie."Auftragsnr.");
+                      GetServiceCalc.SETFILTER("Belegzeilennr.",'%1',Beleghistorie."Auftragszeilennr.");
+                      IF GetServiceCalc.FINDFIRST THEN BEGIN
+                        ZuordnungBasisger„t.RESET;
+                        ZuordnungBasisger„t.SETFILTER(Art,'%1',ZuordnungBasisger„t.Art::"SUP-AU");
+                        ZuordnungBasisger„t.SETFILTER("Nr.",'%1',Beleghistorie."Auftragsnr.");
+                        ZuordnungBasisger„t.SETFILTER("Zeilennr.",'%1',GetServiceCalc."Zeilennr.");
+                        ZuordnungBasisger„t.SETFILTER(Basisger„t,'%1',TRUE);
+                        IF ZuordnungBasisger„t.FINDFIRST THEN BEGIN
+                          Wartung.RESET;
+                          Wartung.SETFILTER("Lieferscheinnr.",'%1',ZuordnungBasisger„t."Belegnr.");
+                          Wartung.SETFILTER("Lieferscheinzeilennr.",'%1',ZuordnungBasisger„t."Belegzeilennr.");
+                          IF Wartung.FINDFIRST THEN BEGIN
+                            SystemPos."Wartungsvertragsnr." := Wartung."Wartungsvertragsnr.";
+                            SystemPos."Hauptwartungsvertragsnr." := Wartung."Hauptwartungsvertragsnr.";
+                            Wartung.MODIFY(TRUE);
+                          END;
+                        END ELSE
+                          MESSAGE(Text51004,SystemPos."Lfd. Nr.",SystemPos."Artikelnr.",SystemPos."Belegzeilennr.");
+                      END ELSE
+                        MESSAGE(Text51004,SystemPos."Lfd. Nr.",SystemPos."Artikelnr.",SystemPos."Belegzeilennr.");
+                    END;
+
+                    //Zugeh”rigkeit der Positionen untereinander ermitteln
+                    SystemPos."Geh”rt zu Lfd. Nr." := SystemPos.SystemZugeh”rigkeitErmitteln(Beleghistorie."Auftragsnr.",
+                                                      SystemPos."Lfd. Nr.",SystemPos."Wartungsvertragsnr.");
+                    SystemPos.MODIFY;
+                    systempos_angelegt := TRUE;
+                  END ELSE BEGIN
+                  ////n
+                    IF (SystemPos."Wartungsvertragsnr." = '') AND (wartungsnr <> '') AND (hauptwartungsnr <> '') THEN BEGIN
+                      SystemPos."Wartungsvertragsnr." := wartungsnr;
+                      SystemPos."Hauptwartungsvertragsnr." := hauptwartungsnr;
+                      SystemPos."Geh”rt zu Lfd. Nr." := SystemPos.SystemZugeh”rigkeitErmitteln(Beleghistorie."Auftragsnr.",
+                                                        SystemPos."Lfd. Nr.",SystemPos."Wartungsvertragsnr.");
+
+                      SystemPos.MODIFY(TRUE);
+                      systempos_angelegt := TRUE;
+                    END ELSE BEGIN
+                      //neu 10.05.12 ST - Update in Vorlage ausstehend
+                      IF (system_service_verbindung = TRUE) AND (SystemPos."Wartungsvertragsnr." = '') THEN BEGIN
+                        MESSAGE(Text51010,SystemPos."Lfd. Nr.",Beleghistorie."Artikelnr.",SystemPos."Seriennr.");
+                        COMMIT;
+                        CLEAR(Wartungsšbersicht);
+                        Wartungsšbersicht.SETFILTER("Debitornr.",'%1',Beleghistorie."Debitornr.");
+                        IF Wartungsšbersicht.FINDFIRST THEN BEGIN
+                          IF PAGE.RUNMODAL(50024,Wartungsšbersicht) = ACTION::LookupOK THEN BEGIN
+                            SystemPos."Wartungsvertragsnr." := Wartungsšbersicht."Wartungsvertragsnr.";
+                            SystemPos."Hauptwartungsvertragsnr." := Wartungsšbersicht."Hauptwartungsvertragsnr.";
+                            SystemPos."Geh”rt zu Lfd. Nr." := SystemPos.SystemZugeh”rigkeitErmitteln(Beleghistorie."Auftragsnr.",
+                                                              SystemPos."Lfd. Nr.",SystemPos."Wartungsvertragsnr.");
+                            SystemPos.MODIFY(TRUE);
+                            systempos_angelegt := TRUE;
+                          END ELSE BEGIN
+                            MESSAGE(Text51002,Beleghistorie."Artikelnr.",Beleghistorie."Zeilennr.");
+                          END;
+                        END ELSE
+                          MESSAGE(Text51003);
+                      END;
+                      //neu Ende
+                    END;
+                  END;
+                  ////e
+                UNTIL SeriennrHistorie.NEXT = 0;
+
+            END;
+          UNTIL Beleghistorie.NEXT = 0
+        ELSE
+          MESSAGE(Text51006);
+
+        IF systempos_angelegt = FALSE THEN
+          MESSAGE(Text51005)
+        ELSE
+          COMMIT;
+
+      END;
+    END;
+
+    PROCEDURE ShowSystemFromShipHeader@1140000(ShipNo@1000000000 : Code[20]);
+    VAR
+      Wartungsvertrag@1140002 : Record 50011;
+      Systemvertrag@1140003 : Record 50011;
+      Servicepositionen@1140001 : Record 50024;
+      wartungsnr@1140000 : Code[1024];
+    BEGIN
+      //TOPAS 27.06.12 ST - Sprungmarke vom Lieferschein zu den System- bzw. Wartungsvertr„gen
+      Servicepositionen.RESET;
+      Servicepositionen.SETRANGE("Nr.",ShipNo);
+      IF Servicepositionen.FINDFIRST THEN BEGIN
+        REPEAT
+          IF (Servicepositionen."Wartungsvertragsnr." <> '') AND
+          (STRPOS(wartungsnr,Servicepositionen."Wartungsvertragsnr.") = 0) THEN
+            IF wartungsnr = '' THEN
+              wartungsnr := Servicepositionen."Wartungsvertragsnr."
+            ELSE
+              wartungsnr := wartungsnr + '|' + Servicepositionen."Wartungsvertragsnr.";
+        UNTIL Servicepositionen.NEXT = 0;
+        IF wartungsnr <> '' THEN BEGIN
+          Wartungsvertrag.RESET;
+          Wartungsvertrag.SETFILTER("Wartungsvertragsnr.",wartungsnr);
+          IF Wartungsvertrag.FINDFIRST THEN
+            PAGE.RUN(50015,Wartungsvertrag);
+          IF Wartungsvertrag.COUNT > 1 THEN
+            MESSAGE(Text51011,Wartungsvertrag.COUNT);
+        END ELSE
+          MESSAGE(Text51009);
+      END ELSE
+        MESSAGE(Text51009);
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
