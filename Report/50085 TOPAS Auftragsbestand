@@ -2,8 +2,8 @@ OBJECT Report 50085 TOPAS Auftragsbestand
 {
   OBJECT-PROPERTIES
   {
-    Date=15.05.17;
-    Time=13:22:04;
+    Date=14.08.17;
+    Time=12:44:04;
     Modified=Yes;
     Version List=FORNAV2.0.0.1189/1189;
   }
@@ -21,249 +21,258 @@ OBJECT Report 50085 TOPAS Auftragsbestand
                     ERROR('Eine Sicherheitssperre verhindert die Ausfhrung dieses Berichtes.'+
                           'Stellen Sie sicher, dass die TABLECAPTION der Berichtstabelle auch auf Berichtstabelle lautet.');
                   Berichtstabelle.RESET;
-                  IF Berichtstabelle.ISEMPTY = FALSE THEN
-                    BEGIN
-                      REPEAT
-                        Berichtstabelle.RESET;
-                        IF Berichtstabelle.ISEMPTY = FALSE THEN
-                          BEGIN
-                            SLEEP(500);
-                            counter += 1;
-                          END;
-                        IF counter MOD 30 = 0 THEN
-                          BEGIN
-                            Berichtstabelle.FINDFIRST;
-                            IF CONFIRM('Die Berichtstabelle ist seit %1 durch Anwender %2 gesperrt. Wollen Sie die Anwendung abbrechen?',
-                            TRUE,Berichtstabelle.Uhrzeit,Berichtstabelle.User,counter,TRUE) THEN
-                              ERROR('');
-                          END;
-                      UNTIL Berichtstabelle.ISEMPTY = TRUE;
-                    END;
+                  IF Berichtstabelle.ISEMPTY = FALSE THEN BEGIN
+                    REPEAT
+                      Berichtstabelle.RESET;
+                      IF Berichtstabelle.ISEMPTY = FALSE THEN BEGIN
+                        SLEEP(500);
+                        counter += 1;
+                      END;
+                      IF counter MOD 30 = 0 THEN BEGIN
+                        Berichtstabelle.FINDFIRST;
+                        IF CONFIRM('Die Berichtstabelle ist seit %1 durch Anwender %2 gesperrt. Wollen Sie die Anwendung abbrechen?',
+                        TRUE,Berichtstabelle.Uhrzeit,Berichtstabelle.User,counter,TRUE) THEN
+                          ERROR('');
+                      END;
+                    UNTIL Berichtstabelle.ISEMPTY = TRUE;
+                  END;
+
                   //*******************************************************************************************************
                   //                                 Akt. Auftr„ge werden durchsucht
                   //*******************************************************************************************************
+
                   SalesHeader.RESET;
                   IF (Startdatum<>0D) AND (Enddatum=0D) THEN
-                    SalesHeader.SETFILTER(SalesHeader."Order Date",'>=%1',Startdatum);
+                    SalesHeader.SETFILTER("Order Date",'>=%1',Startdatum);
                   IF (Startdatum<>0D) AND (Enddatum<>0D) THEN
-                    SalesHeader.SETFILTER(SalesHeader."Order Date",'>=%1&<=%2',Startdatum,Enddatum);
+                    SalesHeader.SETFILTER("Order Date",'>=%1&<=%2',Startdatum,Enddatum);
                   IF (Startdatum=0D) AND (Enddatum<>0D) THEN
-                    SalesHeader.SETFILTER(SalesHeader."Order Date",'<=%1',Enddatum);
+                    SalesHeader.SETFILTER("Order Date",'<=%1',Enddatum);
                   SalesHeader.SETFILTER("Betreuer Innendienst",betreuer);
                   SalesHeader.SETFILTER("Salesperson Code",verk„ufer);
                   SalesHeader.SETFILTER(Teams,teams);
                   SalesHeader.SETFILTER("Territory Code",gebietscode);
-                  SalesHeader.SETFILTER(SalesHeader."Document Type",'%1',SalesHeader."Document Type" :: Order);
+                  SalesHeader.SETFILTER("Document Type",'%1',SalesHeader."Document Type"::Order);
                   IF SalesHeader.FIND('-') THEN
                     REPEAT
                       belegzeilen_vorhanden := FALSE;
                       SalesLine.RESET;
-                      SalesLine.SETFILTER(SalesLine."Document No.",SalesHeader."No.");
-                      SalesLine.SETFILTER(SalesLine.Type,'%1',SalesLine.Type :: Item);
-                      SalesLine.SETFILTER(SalesLine."Outstanding Quantity",'>%1',0);
-                      SalesLine.SETFILTER(SalesLine."Manufacturer Code",hersteller);
+                      SalesLine.SETFILTER("Document No.",SalesHeader."No.");
+                      SalesLine.SETFILTER(Type,'%1',SalesLine.Type::Item);
+                      SalesLine.SETFILTER("Outstanding Quantity",'>%1',0);
+                      SalesLine.SETFILTER("Manufacturer Code",hersteller);
                       IF (zugesagtes_startdatum <> 0D) AND (zugesagtes_enddatum = 0D) THEN
-                        SalesLine.SETFILTER(SalesLine."Promised Delivery Date",'>=%1',zugesagtes_startdatum);
+                        SalesLine.SETFILTER("Promised Delivery Date",'>=%1',zugesagtes_startdatum);
                       IF (zugesagtes_startdatum <> 0D) AND (zugesagtes_enddatum <> 0D) THEN
-                        SalesLine.SETFILTER(SalesLine."Promised Delivery Date",'>=%1&<=%2',zugesagtes_startdatum,zugesagtes_enddatum);
+                        SalesLine.SETFILTER("Promised Delivery Date",'>=%1&<=%2',zugesagtes_startdatum,zugesagtes_enddatum);
                       IF (zugesagtes_startdatum = 0D) AND (zugesagtes_enddatum <> 0D) THEN
-                        SalesLine.SETFILTER(SalesLine."Promised Delivery Date",'<=%1',zugesagtes_enddatum);
-                      IF SalesLine.FINDFIRST THEN
-                        BEGIN
-                          belegzeilen_vorhanden := TRUE;
+                        SalesLine.SETFILTER("Promised Delivery Date",'<=%1',zugesagtes_enddatum);
+                      IF SalesLine.FINDFIRST THEN BEGIN
+                        belegzeilen_vorhanden := TRUE;
+                        Berichtstabelle_temp.RESET;
+                        Berichtstabelle_temp.SETFILTER(Tabelle,'%1','DEBITOR');
+                        Berichtstabelle_temp.SETFILTER(Index,'%1',SalesHeader."Sell-to Customer No.");
+                        IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                          //*******************************************************************************************************
+                          //                                     Debitor Daten schreiben
+                          //*******************************************************************************************************
+                          Berichtstabelle.INIT;
+                          Berichtstabelle.Tabelle := 'DEBITOR';
+                          Berichtstabelle.Index := SalesHeader."Sell-to Customer No.";
+                          Berichtstabelle."Feld 10" := SalesHeader."Sell-to Customer Name";
+                          Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                          Berichtstabelle.User := USERID;
+                          Berichtstabelle.INSERT;
+                        END;
+                        REPEAT
+                          //*******************************************************************************************************
+                          //                                      Auftragszeilen schreiben
+                          //*******************************************************************************************************
+                          Berichtstabelle.INIT;
+                          Berichtstabelle.Tabelle := 'BELEGZEILE';
+                          Berichtstabelle.Index := SalesLine."Document No.";
+                          Berichtstabelle.Datum := SalesLine."Promised Delivery Date";
+                          Berichtstabelle."Belegnr." := SalesLine."Document No.";
+                          Berichtstabelle."Zeilennr." := SalesLine."Line No.";
+                          Berichtstabelle."Feld 3" := SalesLine."Artikelnr. 2";
+                          Berichtstabelle."Feld 4" := SalesLine."Outstanding Quantity";
+                          Berichtstabelle."Feld 5" := SalesLine."Unit Price";
+                          IF Quotedaten.GET(SalesLine."Quotenr.") THEN
+                            Berichtstabelle."Feld 6" := Quotedaten."Quotenr. Hersteller";
+                          IF SalesHeader."Currency Code" = '' THEN
+                            Berichtstabelle."Feld 7" := '°'
+                          ELSE
+                            Berichtstabelle."Feld 7" := SalesHeader."Currency Code";
+                          Berichtstabelle."Feld 10" := FORMAT(SalesLine."Outstanding Quantity" * SalesLine."Unit Price");
+                          Berichtstabelle."Feld 11" := FORMAT(SalesLine."Requested Delivery Date");
+                          Berichtstabelle."Feld 12" := FORMAT(ROUND(SalesLine."Profit %",0.01));
+                          Berichtstabelle."Feld 13" := FORMAT(ROUND(SalesLine."Unit Cost (LCY)",0.01));
+                            Berichtstabelle."Feld 14" := FORMAT(SalesLine.Quantity);
+                          Berichtstabelle."Feld 15" := FORMAT(RckstandMenge);
+                          Berichtstabelle."Feld 16" := FORMAT(SalesHeader."Currency Factor");
+                          Berichtstabelle."Feld 18" := SalesLine."Shipment Date";
+                          Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                          Berichtstabelle.User := USERID;
+                          Berichtstabelle.INSERT;
+                        UNTIL SalesLine.NEXT = 0;
+                      END;
+                      //*******************************************************************************************************
+                      //     Nachtr„glich alle anderen Daten schreiben, wenn auch wirklich Auftragszeilen vorhanden sind
+                      //*******************************************************************************************************
+                      IF belegzeilen_vorhanden THEN BEGIN
+                        //Auftragskopf
+                        Berichtstabelle.INIT;
+                        Berichtstabelle.Tabelle := 'BELEGKOPF';
+                        Berichtstabelle.Index := SalesHeader."No.";
+                        Berichtstabelle.Datum := SalesHeader."Order Date";
+                        Berichtstabelle."Belegnr." := SalesHeader."No.";
+                        Berichtstabelle."Feld 2" := SalesHeader."Sell-to Customer No.";
+                        SalesHeader.CALCFIELDS(Amount);
+                        Berichtstabelle."Feld 4" := SalesHeader.Amount;
+                        Berichtstabelle."Feld 6" := SalesHeader."Betreuer Innendienst";
+                        Berichtstabelle."Feld 7" := SalesHeader."Salesperson Code";
+                        Berichtstabelle."Feld 8" := SalesHeader.Teams;
+                        Berichtstabelle."Feld 9" := SalesHeader."Territory Code";
+                        IF SalesHeader."Currency Code" <> '' THEN
+                          Berichtstabelle."Feld 12" := SalesHeader."Currency Code"
+                        ELSE
+                          Berichtstabelle."Feld 12" := '°';
+                        Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                        Berichtstabelle.User := USERID;
+                        Berichtstabelle.INSERT;
+                      END;
+                    UNTIL SalesHeader.NEXT = 0;
+
+                  IF (zugesagtes_startdatum = 0D) AND (zugesagtes_enddatum = 0D) THEN BEGIN
+                    //*******************************************************************************************************
+                    //                                 Archivierte Auftr„ge werden durchsucht
+                    //*******************************************************************************************************
+                    IF ohne_archiv = TRUE THEN
+                      EXIT;
+                    ArchSalesHeader.RESET;
+                    IF (Startdatum <> 0D) AND (Enddatum = 0D) THEN
+                      ArchSalesHeader.SETFILTER("Order Date",'>=%1',Startdatum);
+                    IF (Startdatum <> 0D) AND (Enddatum <> 0D) THEN
+                      ArchSalesHeader.SETFILTER("Order Date",'>=%1&<=%2',Startdatum,Enddatum);
+                    IF (Startdatum = 0D) AND (Enddatum <> 0D) THEN
+                      ArchSalesHeader.SETFILTER("Order Date",'<=%1',Enddatum);
+                    ArchSalesHeader.SETFILTER("Betreuer Innendienst",betreuer);
+                    ArchSalesHeader.SETFILTER("Salesperson Code",verk„ufer);
+                    ArchSalesHeader.SETFILTER(Teams,teams);
+                    ArchSalesHeader.SETFILTER("Territory Code",gebietscode);
+                    ArchSalesHeader.SETFILTER("Document Type",'%1',ArchSalesHeader."Document Type"::Order);
+                    IF ArchSalesHeader.FIND('-') THEN
+                      REPEAT
+                        ArchivHeaderVersion.RESET;
+                        ArchivHeaderVersion.SETRANGE("No.",ArchSalesHeader."No.");
+                        ArchivHeaderVersion.FINDLAST;
+                        //ArchSalesHeader.SETFILTER("Version No.",'%1',ArchivHeaderVersion."Version No.");
+                        //ArchSalesHeader.FINDLAST;
+                        arch_belegzeilen_vorhanden := FALSE;
+                        ArchSalesLine.RESET;
+                        ArchSalesLine.SETFILTER("Document No.",ArchSalesHeader."No.");
+                        ArchSalesLine.SETFILTER(Type,'%1',ArchSalesLine.Type::Item);
+                        //ArchSalesLine.SETFILTER("Outstanding Quantity",'>%1',0);
+                        ArchSalesLine.SETFILTER("Qty. to Invoice",'>%1',0);
+                        ArchSalesLine.SETFILTER("Manufacturer Code",hersteller);
+                        ArchSalesLine.SETFILTER("Version No.",'%1',ArchivHeaderVersion."Version No.");
+                        IF ArchSalesLine.FINDFIRST THEN BEGIN
                           Berichtstabelle_temp.RESET;
-                          Berichtstabelle_temp.SETFILTER(Tabelle,'%1','DEBITOR');
-                          Berichtstabelle_temp.SETFILTER(Index,'%1',SalesHeader."Sell-to Customer No.");
-                          IF NOT Berichtstabelle_temp.FINDFIRST THEN
-                            BEGIN
+                          Berichtstabelle_temp.SETFILTER(Tabelle,'%1','ARCH_BELEGZEILE');
+                          Berichtstabelle_temp.SETFILTER(Index,'%1',ArchSalesLine."Document No.");
+                          Berichtstabelle_temp.SETFILTER("Zeilennr.",'%1',ArchSalesLine."Line No.");
+                          IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                            arch_belegzeilen_vorhanden := TRUE;
+                            Berichtstabelle_temp.RESET;
+                            Berichtstabelle_temp.SETFILTER(Tabelle,'%1','ARCH_DEBITOR');
+                            Berichtstabelle_temp.SETFILTER(Index,'%1',ArchSalesHeader."Sell-to Customer No.");
+                            IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
                               //*******************************************************************************************************
                               //                                     Debitor Daten schreiben
                               //*******************************************************************************************************
                               Berichtstabelle.INIT;
-                                Berichtstabelle.Tabelle := 'DEBITOR';
-                                Berichtstabelle.Index := SalesHeader."Sell-to Customer No.";
-                                Berichtstabelle."Feld 10" := SalesHeader."Sell-to Customer Name";
-                                Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-                                Berichtstabelle.User := USERID;
-                              Berichtstabelle.INSERT;
-                            END;
-                          REPEAT
-                            //*******************************************************************************************************
-                            //                                      Auftragszeilen schreiben
-                            //*******************************************************************************************************
-                            Berichtstabelle.INIT;
-                              Berichtstabelle.Tabelle := 'BELEGZEILE';
-                              Berichtstabelle.Index := SalesLine."Document No.";
-                              Berichtstabelle.Datum := SalesLine."Promised Delivery Date";
-                              Berichtstabelle."Belegnr." := SalesLine."Document No.";
-                              Berichtstabelle."Zeilennr." := SalesLine."Line No.";
-                              Berichtstabelle."Feld 3" := SalesLine."Artikelnr. 2";
-                              Berichtstabelle."Feld 4" := SalesLine."Outstanding Quantity";
-                              Berichtstabelle."Feld 5" := SalesLine."Unit Price";
-                              IF Quotedaten.GET(SalesLine."Quotenr.") THEN
-                                Berichtstabelle."Feld 6" := Quotedaten."Quotenr. Hersteller";
-                              IF SalesHeader."Currency Code" = '' THEN
-                                Berichtstabelle."Feld 7" := '°'
-                              ELSE
-                                Berichtstabelle."Feld 7" := SalesHeader."Currency Code";
-                              Berichtstabelle."Feld 10" := FORMAT(SalesLine."Outstanding Quantity" * SalesLine."Unit Price");
-                              Berichtstabelle."Feld 11" := FORMAT(SalesLine."Requested Delivery Date");
-                              Berichtstabelle."Feld 12" := FORMAT(ROUND(SalesLine."Profit %",0.01));
-                              Berichtstabelle."Feld 13" := FORMAT(ROUND(SalesLine."Unit Cost (LCY)",0.01));
-                                Berichtstabelle."Feld 14" := FORMAT(SalesLine.Quantity);
-                              Berichtstabelle."Feld 15" := FORMAT(RckstandMenge);
-                              Berichtstabelle."Feld 16" := FORMAT(SalesHeader."Currency Factor");
-                              Berichtstabelle."Feld 18" := SalesLine."Shipment Date";
+                              Berichtstabelle.Tabelle := 'ARCH_DEBITOR';
+                              Berichtstabelle.Index := ArchSalesHeader."Sell-to Customer No.";
+                              Berichtstabelle."Feld 10" := ArchSalesHeader."Sell-to Customer Name";
                               Berichtstabelle.Uhrzeit := CURRENTDATETIME;
                               Berichtstabelle.User := USERID;
-                            Berichtstabelle.INSERT;
-                          UNTIL SalesLine.NEXT = 0;
+                              Berichtstabelle.INSERT;
+                            END;
+                            REPEAT
+                              //*******************************************************************************************************
+                              //                                 Archivierte Auftragszeilen schreiben
+                              //*******************************************************************************************************
+                              Berichtstabelle.INIT;
+                              Berichtstabelle.Tabelle := 'ARCH_BELEGZEILE';
+                              Berichtstabelle.Index := ArchSalesLine."Document No.";
+                              Berichtstabelle.Datum := ArchSalesLine."Promised Delivery Date";
+                              Berichtstabelle."Belegnr." := ArchSalesLine."Document No.";
+                              Berichtstabelle."Zeilennr." := ArchSalesLine."Line No.";
+                              Berichtstabelle."Feld 3" := ArchSalesLine."Artikelnr. 2";
+                              Berichtstabelle."Feld 4" := ArchSalesLine."Qty. to Invoice";
+                              Berichtstabelle."Feld 5" := ArchSalesLine."Unit Price";
+                              IF Quotedaten.GET(ArchSalesLine."Quotenr.") THEN
+                                Berichtstabelle."Feld 6" := Quotedaten."Quotenr. Hersteller";
+                              IF ArchSalesHeader."Currency Code" = '' THEN
+                                Berichtstabelle."Feld 7" := '°'
+                              ELSE
+                                Berichtstabelle."Feld 7" := ArchSalesHeader."Currency Code";
+                              Berichtstabelle."Feld 10" := FORMAT(ArchSalesLine."Qty. to Invoice" * ArchSalesLine."Unit Price");
+                              Berichtstabelle."Feld 11" := FORMAT(ArchSalesLine."Requested Delivery Date");
+                              Berichtstabelle."Feld 12" := FORMAT(ROUND(ArchSalesLine."Profit %",0.01));
+                              Berichtstabelle."Feld 13" := FORMAT(ROUND(ArchSalesLine."Unit Cost (LCY)",0.01));
+                              Berichtstabelle."Feld 16" := FORMAT(ArchSalesHeader."Currency Factor");
+                              Berichtstabelle."Feld 18" := ArchSalesLine."Shipment Date";
+                              Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                              Berichtstabelle.User := USERID;
+                              Berichtstabelle.INSERT;
+                            UNTIL ArchSalesLine.NEXT = 0;
+                          END;
                         END;
-                      //*******************************************************************************************************
-                      //     Nachtr„glich alle anderen Daten schreiben, wenn auch wirklich Auftragszeilen vorhanden sind
-                      //*******************************************************************************************************
-                      IF belegzeilen_vorhanden THEN
-                        BEGIN
-                          //Auftragskopf
-                          Berichtstabelle.INIT;
-                            Berichtstabelle.Tabelle := 'BELEGKOPF';
-                            Berichtstabelle.Index := SalesHeader."No.";
-                            Berichtstabelle.Datum := SalesHeader."Order Date";
-                            Berichtstabelle."Belegnr." := SalesHeader."No.";
-                            Berichtstabelle."Feld 2" := SalesHeader."Sell-to Customer No.";
-                            SalesHeader.CALCFIELDS(Amount);
-                            Berichtstabelle."Feld 4" := SalesHeader.Amount;
-                            Berichtstabelle."Feld 6" := SalesHeader."Betreuer Innendienst";
-                            Berichtstabelle."Feld 7" := SalesHeader."Salesperson Code";
-                            Berichtstabelle."Feld 8" := SalesHeader.Teams;
-                            Berichtstabelle."Feld 9" := SalesHeader."Territory Code";
-                            IF SalesHeader."Currency Code" <> '' THEN
-                              Berichtstabelle."Feld 12" := SalesHeader."Currency Code"
+                        //*******************************************************************************************************
+                        //     Nachtr„glich alle anderen Daten schreiben, wenn auch wirklich Auftragszeilen vorhanden sind
+                        //*******************************************************************************************************
+                        IF arch_belegzeilen_vorhanden THEN BEGIN
+                          Berichtstabelle_temp.RESET;
+                          Berichtstabelle_temp.SETFILTER(Tabelle,'%1','ARCH_BELEGKOPF');
+                          Berichtstabelle_temp.SETFILTER(Index,'%1',ArchSalesHeader."No.");
+                          IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                            //Auftragskopf
+                            Berichtstabelle.INIT;
+                            Berichtstabelle.Tabelle := 'ARCH_BELEGKOPF';
+                            Berichtstabelle.Index := ArchSalesHeader."No.";
+                            Berichtstabelle.Datum := ArchSalesHeader."Order Date";
+                            Berichtstabelle."Belegnr." := ArchSalesHeader."No.";
+                            Berichtstabelle."Feld 2" := ArchSalesHeader."Sell-to Customer No.";
+                            ArchSalesHeader.CALCFIELDS(Amount);
+                            Berichtstabelle."Feld 4" := ArchSalesHeader.Amount;
+                            Berichtstabelle."Feld 6" := ArchSalesHeader."Betreuer Innendienst";
+                            Berichtstabelle."Feld 7" := ArchSalesHeader."Salesperson Code";
+                            Berichtstabelle."Feld 8" := ArchSalesHeader.Teams;
+                            Berichtstabelle."Feld 9" := ArchSalesHeader."Territory Code";
+                            IF ArchSalesHeader."Currency Code" <> '' THEN
+                              Berichtstabelle."Feld 12" := ArchSalesHeader."Currency Code"
                             ELSE
                               Berichtstabelle."Feld 12" := '°';
                             Berichtstabelle.Uhrzeit := CURRENTDATETIME;
                             Berichtstabelle.User := USERID;
-                          Berichtstabelle.INSERT;
+                            Berichtstabelle.INSERT;
+                          END;
                         END;
-                    UNTIL SalesHeader.NEXT = 0;
-                  IF (zugesagtes_startdatum = 0D) AND (zugesagtes_enddatum = 0D) THEN
-                    BEGIN
-                      //*******************************************************************************************************
-                      //                                 Archivierte Auftr„ge werden durchsucht
-                      //*******************************************************************************************************
-                      IF ohne_archiv = TRUE THEN
-                        EXIT;
-                      ArchSalesHeader.RESET;
-                      IF (Startdatum<>0D) AND (Enddatum=0D) THEN
-                        ArchSalesHeader.SETFILTER(ArchSalesHeader."Order Date",'>=%1',Startdatum);
-                      IF (Startdatum<>0D) AND (Enddatum<>0D) THEN
-                        ArchSalesHeader.SETFILTER(ArchSalesHeader."Order Date",'>=%1&<=%2',Startdatum,Enddatum);
-                      IF (Startdatum=0D) AND (Enddatum<>0D) THEN
-                        ArchSalesHeader.SETFILTER(ArchSalesHeader."Order Date",'<=%1',Enddatum);
-                      ArchSalesHeader.SETFILTER("Betreuer Innendienst",betreuer);
-                      ArchSalesHeader.SETFILTER("Salesperson Code",verk„ufer);
-                      ArchSalesHeader.SETFILTER(Teams,teams);
-                      ArchSalesHeader.SETFILTER("Territory Code",gebietscode);
-                      ArchSalesHeader.SETFILTER(ArchSalesHeader."Document Type",'%1',ArchSalesHeader."Document Type" :: Order);
-                      IF ArchSalesHeader.FIND('-') THEN
-                        REPEAT
-                          arch_belegzeilen_vorhanden := FALSE;
-                          ArchSalesLine.RESET;
-                          ArchSalesLine.SETFILTER(ArchSalesLine."Document No.",ArchSalesHeader."No.");
-                          ArchSalesLine.SETFILTER(ArchSalesLine.Type,'%1',ArchSalesLine.Type :: Item);
-                          //ArchSalesLine.SETFILTER(ArchSalesLine."Outstanding Quantity",'>%1',0);
-                          ArchSalesLine.SETFILTER(ArchSalesLine."Manufacturer Code",hersteller);
-                          ArchSalesLine.SETFILTER("Version No.",'%1',ArchSalesHeader."Version No.");
-                          IF ArchSalesLine.FINDFIRST THEN
-                            BEGIN
-                              arch_belegzeilen_vorhanden := TRUE;
-                              Berichtstabelle_temp.RESET;
-                              Berichtstabelle_temp.SETFILTER(Tabelle,'%1','ARCH_DEBITOR');
-                              Berichtstabelle_temp.SETFILTER(Index,'%1',ArchSalesHeader."Sell-to Customer No.");
-                              IF NOT Berichtstabelle_temp.FINDFIRST THEN
-                                BEGIN
-                                  //*******************************************************************************************************
-                                  //                                     Debitor Daten schreiben
-                                  //*******************************************************************************************************
-                                  Berichtstabelle.INIT;
-                                    Berichtstabelle.Tabelle := 'ARCH_DEBITOR';
-                                    Berichtstabelle.Index := ArchSalesHeader."Sell-to Customer No.";
-                                    Berichtstabelle."Feld 10" := ArchSalesHeader."Sell-to Customer Name";
-                                    Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-                                    Berichtstabelle.User := USERID;
-                                  Berichtstabelle.INSERT;
-                                END;
-                              REPEAT
-                                //*******************************************************************************************************
-                                //                                 Archivierte Auftragszeilen schreiben
-                                //*******************************************************************************************************
-                                Berichtstabelle.INIT;
-                                  Berichtstabelle.Tabelle := 'ARCH_BELEGZEILE';
-                                  Berichtstabelle.Index := ArchSalesLine."Document No.";
-                                  Berichtstabelle.Datum := ArchSalesLine."Promised Delivery Date";
-                                  Berichtstabelle."Belegnr." := ArchSalesLine."Document No.";
-                                  Berichtstabelle."Zeilennr." := ArchSalesLine."Line No.";
-                                  Berichtstabelle."Feld 3" := ArchSalesLine."Artikelnr. 2";
-                                  Berichtstabelle."Feld 4" := ArchSalesLine.Quantity;
-                                  Berichtstabelle."Feld 5" := ArchSalesLine."Unit Price";
-                                  IF Quotedaten.GET(ArchSalesLine."Quotenr.") THEN
-                                    Berichtstabelle."Feld 6" := Quotedaten."Quotenr. Hersteller";
-                                  IF ArchSalesHeader."Currency Code" = '' THEN
-                                    Berichtstabelle."Feld 7" := '°'
-                                  ELSE
-                                    Berichtstabelle."Feld 7" := ArchSalesHeader."Currency Code";
-                                  Berichtstabelle."Feld 10" := FORMAT(ArchSalesLine."Outstanding Quantity" * ArchSalesLine."Unit Price");
-                                  Berichtstabelle."Feld 11" := FORMAT(ArchSalesLine."Requested Delivery Date");
-                                  Berichtstabelle."Feld 12" := FORMAT(ROUND(ArchSalesLine."Profit %",0.01));
-                                  Berichtstabelle."Feld 13" := FORMAT(ROUND(ArchSalesLine."Unit Cost (LCY)",0.01));
-                                  Berichtstabelle."Feld 16" := FORMAT(ArchSalesHeader."Currency Factor");
-                                  Berichtstabelle."Feld 18" := ArchSalesLine."Shipment Date";
-                                  Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-                                  Berichtstabelle.User := USERID;
-                                Berichtstabelle.INSERT;
-                              UNTIL ArchSalesLine.NEXT = 0;
-                            END;
-                          //*******************************************************************************************************
-                          //     Nachtr„glich alle anderen Daten schreiben, wenn auch wirklich Auftragszeilen vorhanden sind
-                          //*******************************************************************************************************
-                          IF arch_belegzeilen_vorhanden THEN
-                            BEGIN
-                              //Auftragskopf
-                              Berichtstabelle.INIT;
-                                Berichtstabelle.Tabelle := 'ARCH_BELEGKOPF';
-                                Berichtstabelle.Index := ArchSalesHeader."No.";
-                                Berichtstabelle.Datum := ArchSalesHeader."Order Date";
-                                Berichtstabelle."Belegnr." := ArchSalesHeader."No.";
-                                Berichtstabelle."Feld 2" := ArchSalesHeader."Sell-to Customer No.";
-                                ArchSalesHeader.CALCFIELDS(Amount);
-                                Berichtstabelle."Feld 4" := ArchSalesHeader.Amount;
-                                Berichtstabelle."Feld 6" := ArchSalesHeader."Betreuer Innendienst";
-                                Berichtstabelle."Feld 7" := ArchSalesHeader."Salesperson Code";
-                                Berichtstabelle."Feld 8" := ArchSalesHeader.Teams;
-                                Berichtstabelle."Feld 9" := ArchSalesHeader."Territory Code";
-                                IF ArchSalesHeader."Currency Code" <> '' THEN
-                                  Berichtstabelle."Feld 12" := ArchSalesHeader."Currency Code"
-                                ELSE
-                                  Berichtstabelle."Feld 12" := '°';
-                                Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-                                Berichtstabelle.User := USERID;
-                              Berichtstabelle.INSERT;
-                            END;
-                        UNTIL ArchSalesHeader.NEXT = 0;
-                      //*******************************************************************************************************
-                      //         Temp Datensatz erzeugt, damit die Berichtsansicht eine neue Seite fr arch. Angebote
-                      //              ”ffnet und auf dieser neuen Seite der Header nicht zweimal angedruckt wird
-                      //*******************************************************************************************************
-                      Berichtstabelle_temp.RESET;
-                      Berichtstabelle_temp.SETFILTER(Berichtstabelle_temp.Tabelle,'%1','ARCH_DEBITOR');
-                      IF Berichtstabelle_temp.FINDFIRST THEN
-                        BEGIN
-                          Berichtstabelle.INIT;
-                            Berichtstabelle.Tabelle := 'TEMP';
-                            Berichtstabelle.Index := 'XXXX';
-                          Berichtstabelle.INSERT;
-                        END;
+                      UNTIL ArchSalesHeader.NEXT = 0;
+                    //*******************************************************************************************************
+                    //         Temp Datensatz erzeugt, damit die Berichtsansicht eine neue Seite fr arch. Angebote
+                    //              ”ffnet und auf dieser neuen Seite der Header nicht zweimal angedruckt wird
+                    //*******************************************************************************************************
+                    Berichtstabelle_temp.RESET;
+                    Berichtstabelle_temp.SETFILTER(Tabelle,'%1','ARCH_DEBITOR');
+                    IF Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                      Berichtstabelle.INIT;
+                      Berichtstabelle.Tabelle := 'TEMP';
+                      Berichtstabelle.Index := 'XXXX';
+                      Berichtstabelle.INSERT;
                     END;
+                  END;
                   ;ReportForNav.OpenDesigner:=ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
                 END;
 
@@ -281,9 +290,9 @@ OBJECT Report 50085 TOPAS Auftragsbestand
                DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
                                  WHERE(Tabelle=FILTER(DEBITOR));
                OnPreDataItem=BEGIN
-                               IF sort = sort :: Nr THEN
+                               IF sort = sort::Nr THEN
                                  Debitor.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
-                               IF sort = sort :: Name THEN
+                               IF sort = sort::Name THEN
                                  Debitor.SETCURRENTKEY("Feld 10",Datum,Index);
                                ReportForNav.GetDataItem('Debitor').NewPagePerRecord := NurEinProSeiteDrucken;
                              END;
@@ -377,15 +386,14 @@ OBJECT Report 50085 TOPAS Auftragsbestand
                                   ELSE
                                     RckstandMenge := '0';
                                   AuftragBetrag := "Feld 4" * "Feld 5";
-                                  IF NOT Betr„geDruckInMW THEN
-                                    BEGIN
-                                      IF Auftragkopf."Currency Code" = 'USD' THEN
-                                        AuftragBetrag_USD := AuftragBetrag;
-                                      IF Auftragkopf."Currency Code" = 'JPY' THEN
-                                      AuftragBetrag_JPY := AuftragBetrag;
-                                      IF Auftragkopf."Currency Code" = '' THEN
-                                        AuftragBetrag_EURO := AuftragBetrag;
-                                    END;
+                                  IF NOT Betr„geDruckInMW THEN BEGIN
+                                    IF Auftragkopf."Currency Code" = 'USD' THEN
+                                      AuftragBetrag_USD := AuftragBetrag;
+                                    IF Auftragkopf."Currency Code" = 'JPY' THEN
+                                    AuftragBetrag_JPY := AuftragBetrag;
+                                    IF Auftragkopf."Currency Code" = '' THEN
+                                      AuftragBetrag_EURO := AuftragBetrag;
+                                  END;
                                   //AuftragBetrag := ROUND("Outstanding Quantity" * "Sales Line"."Line Amount" / Quantity);
                                   AuftragBetragMW := AuftragBetrag;
                                   IF Betr„geDruckInMW THEN
@@ -397,14 +405,13 @@ OBJECT Report 50085 TOPAS Auftragsbestand
                                           W„hrungWechKurs.ExchangeAmtFCYToLCY(
                                             WORKDATE,Auftragkopf."Currency Code",
                                             AuftragBetragMW,Auftragkopf."Currency Factor"));
-                                    IF Betr„geDruckInMW THEN
-                                      BEGIN
-                                        AuftragBetrag := AuftragBetragMW;
-                                        AuftragBetrag_EURO := AuftragBetragMW;
-                                      END;
+                                    IF Betr„geDruckInMW THEN BEGIN
+                                      AuftragBetrag := AuftragBetragMW;
+                                      AuftragBetrag_EURO := AuftragBetragMW;
+                                    END;
                                   END;
                                   waehrung := "Feld 7";
-                                  IF Betr„geDruckInMW=TRUE THEN
+                                  IF Betr„geDruckInMW = TRUE THEN
                                     waehrung:='EUR';
                                 END;
 
@@ -472,11 +479,14 @@ OBJECT Report 50085 TOPAS Auftragsbestand
                DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
                                  WHERE(Tabelle=FILTER(ARCH_DEBITOR));
                OnPreDataItem=BEGIN
-                               IF sort = sort :: Nr THEN
+                               IF sort = sort::Nr THEN
                                  Arch_Debitor.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
-                               IF sort = sort :: Name THEN
+                               IF sort = sort::Name THEN
                                  Arch_Debitor.SETCURRENTKEY("Feld 10",Datum,Index);
                                ReportForNav.GetDataItem('Arch_Debitor').NewPagePerRecord := NurEinProSeiteDrucken;
+
+                               //****************** Damit ist der Rest des Berichtes deaktiviert!!!! ************************
+                               CurrReport.BREAK;
                              END;
                               }
 
@@ -558,23 +568,21 @@ OBJECT Report 50085 TOPAS Auftragsbestand
                                  WHERE(Tabelle=FILTER(ARCH_BELEGZEILE));
                OnAfterGetRecord=BEGIN
                                   NeuerAuftrag := Arch_Belegzeile.Index <> ArchAuftragkopf."No.";
-                                  IF NeuerAuftrag THEN
-                                    BEGIN
-                                      ArchAuftragkopf.RESET;
-                                      ArchAuftragkopf.SETFILTER(ArchAuftragkopf."No.",'%1',Arch_Belegzeile.Index);
-                                      ArchAuftragkopf.SETFILTER(ArchAuftragkopf."Document Type",'%1',ArchAuftragkopf."Document Type" :: Order);
-                                      ArchAuftragkopf.FINDFIRST;
-                                    END;
+                                  IF NeuerAuftrag THEN BEGIN
+                                    ArchAuftragkopf.RESET;
+                                    ArchAuftragkopf.SETRANGE("No.",Arch_Belegzeile.Index);
+                                    ArchAuftragkopf.SETRANGE("Document Type",ArchAuftragkopf."Document Type"::Order);
+                                    ArchAuftragkopf.FINDLAST;
+                                  END;
                                   ArchAuftragBetrag := "Feld 4" * "Feld 5";
-                                  IF NOT Betr„geDruckInMW THEN
-                                    BEGIN
-                                      IF ArchAuftragkopf."Currency Code" = 'USD' THEN
-                                        ArchAuftragBetrag_USD := ArchAuftragBetrag;
-                                      IF ArchAuftragkopf."Currency Code" = 'JPY' THEN
-                                      ArchAuftragBetrag_JPY := ArchAuftragBetrag;
-                                      IF ArchAuftragkopf."Currency Code" = '' THEN
-                                        ArchAuftragBetrag_EURO := ArchAuftragBetrag;
-                                    END;
+                                  IF NOT Betr„geDruckInMW THEN BEGIN
+                                    IF ArchAuftragkopf."Currency Code" = 'USD' THEN
+                                      ArchAuftragBetrag_USD := ArchAuftragBetrag;
+                                    IF ArchAuftragkopf."Currency Code" = 'JPY' THEN
+                                    ArchAuftragBetrag_JPY := ArchAuftragBetrag;
+                                    IF ArchAuftragkopf."Currency Code" = '' THEN
+                                      ArchAuftragBetrag_EURO := ArchAuftragBetrag;
+                                  END;
                                   ArchAuftragBetragMW := ArchAuftragBetrag;
                                   IF Betr„geDruckInMW THEN
                                     ArchAuftragBetrag_EURO := ArchAuftragBetragMW;
@@ -585,15 +593,14 @@ OBJECT Report 50085 TOPAS Auftragsbestand
                                           W„hrungWechKurs.ExchangeAmtFCYToLCY(
                                             WORKDATE,ArchAuftragkopf."Currency Code",
                                             ArchAuftragBetragMW,ArchAuftragkopf."Currency Factor"));
-                                    IF Betr„geDruckInMW THEN
-                                      BEGIN
-                                        ArchAuftragBetrag := ArchAuftragBetragMW;
-                                        ArchAuftragBetrag_EURO := ArchAuftragBetragMW;
-                                      END;
+                                    IF Betr„geDruckInMW THEN BEGIN
+                                      ArchAuftragBetrag := ArchAuftragBetragMW;
+                                      ArchAuftragBetrag_EURO := ArchAuftragBetragMW;
+                                    END;
                                   END;
                                   waehrung := "Feld 7";
-                                  IF Betr„geDruckInMW=TRUE THEN
-                                    waehrung:='EUR'
+                                  IF Betr„geDruckInMW = TRUE THEN
+                                    waehrung := 'EUR'
                                 END;
 
                DataItemLink=Index=FIELD(Index) }
@@ -740,11 +747,12 @@ OBJECT Report 50085 TOPAS Auftragsbestand
       Berichtstabelle_temp@1140012 : Record 50037;
       W„hrungWechKurs@1140022 : Record 330;
       Wechselkurs@1140025 : Record 330;
-      Auftragkopf@1140019 : Record 36;
+      Auftragkopf@1000000001 : Record 36;
       ArchAuftragkopf@1140037 : Record 5107;
       SalesHeader@1140002 : Record 36;
       SalesLine@1140003 : Record 37;
       ArchSalesHeader@1140029 : Record 5107;
+      ArchivHeaderVersion@1000000000 : Record 5107;
       ArchSalesLine@1140030 : Record 5108;
       Quotedaten@1140013 : Record 50014;
       Startdatum@1140004 : Date;
@@ -834,22 +842,20 @@ OBJECT Report 50085 TOPAS Auftragsbestand
     LOCAL PROCEDURE OnPreSectionBelegzeile_Body14@5016(VAR Belegzeile@1000000000 : Record 50037);
     BEGIN
       WITH Belegzeile DO BEGIN
-        IF ReportForNav.ShowOutput(NeuerAuftrag) THEN
-          BEGIN
-            EVALUATE(artzeile_ek,"Feld 13");
-            Gesamt_AU_EK := Gesamt_AU_EK + (artzeile_ek * "Feld 4");
-          END;
+        IF ReportForNav.ShowOutput(NeuerAuftrag) THEN BEGIN
+          EVALUATE(artzeile_ek,"Feld 13");
+          Gesamt_AU_EK := Gesamt_AU_EK + (artzeile_ek * "Feld 4");
+        END;
       END;
     END;
 
     LOCAL PROCEDURE OnPreSectionBelegzeile_Body15@5017(VAR Belegzeile@1000000000 : Record 50037);
     BEGIN
       WITH Belegzeile DO BEGIN
-        IF ReportForNav.ShowOutput(NOT NeuerAuftrag) THEN
-          BEGIN
-            EVALUATE(artzeile_ek,"Feld 13");
-            Gesamt_AU_EK := Gesamt_AU_EK + (artzeile_ek * "Feld 4");
-          END;
+        IF ReportForNav.ShowOutput(NOT NeuerAuftrag) THEN BEGIN
+          EVALUATE(artzeile_ek,"Feld 13");
+          Gesamt_AU_EK := Gesamt_AU_EK + (artzeile_ek * "Feld 4");
+        END;
       END;
     END;
 
@@ -1250,13 +1256,21 @@ OBJECT Report 50085 TOPAS Auftragsbestand
     END;
 
     BEGIN
+    {
+      ******************************************
+      TOPAS 14.08.17 ST
+      In Arch_Debitor - OnPreDataItem() wurde ein CurrReport.BREAK eingebaut, damit die Auftragsarchive nicht mehr angezeigt werden
+      u.a. weil die Archive verschiedene Versionen enthalten (wurde nun aber bedacht) und der Bericht eigentlich den Auftragsbestand
+      und nicht den Auftragseingang zeigen soll
+      ******************************************
+    }
     END.
   }
   RDLDATA
   {
     <?xml version="1.0" encoding="utf-8"?>
 <Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
-  <Description>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</Description>
+  <Description>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</Description>
   <AutoRefresh>0</AutoRefresh>
   <DataSources>
     <DataSource Name="DataSource">
@@ -1583,3 +1597,4 @@ OBJECT Report 50085 TOPAS Auftragsbestand
     END_OF_RDLDATA
   }
 }
+
