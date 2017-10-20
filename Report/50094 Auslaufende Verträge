@@ -2,13 +2,14 @@ OBJECT Report 50094 Auslaufende Vertr„ge
 {
   OBJECT-PROPERTIES
   {
-    Date=19.06.17;
-    Time=16:17:27;
+    Date=19.10.17;
+    Time=11:41:00;
     Modified=Yes;
     Version List=FORNAV2.0.0.1189/1189;
   }
   PROPERTIES
   {
+    EnableHyperlinks=Yes;
     OnInitReport=BEGIN
                    ReportForNav:= ReportForNav.Report(CurrReport.OBJECTID,CurrReport.LANGUAGE,SERIALNUMBER,USERID,COMPANYNAME);ReportForNav.Init;
                  END;
@@ -54,14 +55,13 @@ OBJECT Report 50094 Auslaufende Vertr„ge
                    Sheet.Range('C2').Font.Color := 255;
                    Book.Save;
                    Book.Close;
-                   //CLEAR(Excel);
-                   //REPEAT
-                   //UNTIL ISCLEAR(Excel);
-                   //TOPAS_API.SendMailWithFile('Administrativ','','ml@topas.de;tk@topas.de;rl@topas.de','',Wartungsvertrag.GETFILTER(Vertragsablaufdatum),
-                   //Protokollpfaddatei,vertraege_abgelaufen);
+
+                   TOPAS_API.SendMailWithFile('Administrativ','','ml@topas.de;tk@topas.de;rl@topas.de','',Wartungsvertrag.GETFILTER(Vertragsablaufdatum),
+                   FilePath + FileName,vertraege_abgelaufen);
                    //Fr Testzwecke
-                   TOPAS_API.SendMailWithFile('Administrativ','','Administrativ@topas.de','',Wartungsvertrag.GETFILTER(Vertragsablaufdatum),
-                   Protokollpfaddatei,vertraege_abgelaufen);
+                   //TOPAS_API.SendMailWithFile('Administrativ','','Administrativ@topas.de','',Wartungsvertrag.GETFILTER(Vertragsablaufdatum),
+                   //FilePath + FileName,vertraege_abgelaufen);
+
                    ;ReportForNav.Post;
                  END;
 
@@ -74,6 +74,8 @@ OBJECT Report 50094 Auslaufende Vertr„ge
                                  WHERE(Status=FILTER(Auftrag|ACTS|ACHAT|Champs Partner));
                OnPreDataItem=BEGIN
                                Wartungsvertrag.SETFILTER(Vertragsablaufdatum,'%1..%2',ablaufdatum_ab,ablaufdatum_bis);
+                               //Manuellen Filter zum Testen hier setzen
+                               //Wartungsvertrag.SETFILTER(Vertragsablaufdatum,'%1..%2',010716D,WORKDATE);
                              END;
 
                OnAfterGetRecord=BEGIN
@@ -87,11 +89,11 @@ OBJECT Report 50094 Auslaufende Vertr„ge
                                   Sheet.Range('F'+j).Font.Color := 255;
                                   Sheet.Range('G'+j).Value := Wartungsvertrag.Endkunde;
                                   SystemPos.RESET;
-                                  SystemPos.SETFILTER(Art,'%1',SystemPos.Art :: System);
-                                  SystemPos.SETFILTER(Inaktiv,'%1',FALSE);
-                                  SystemPos.SETFILTER("Wartungsvertragsnr.",'%1',"Wartungsvertragsnr.");
-                                  SystemPos.SETFILTER("Artikelnr.",'%1',Basisger„t);
-                                  SystemPos.SETFILTER(Basisger„t,'%1',TRUE);
+                                  SystemPos.SETRANGE(Art,SystemPos.Art::System);
+                                  SystemPos.SETRANGE(Inaktiv,FALSE);
+                                  SystemPos.SETRANGE("Wartungsvertragsnr.","Wartungsvertragsnr.");
+                                  SystemPos.SETRANGE("Artikelnr.",Basisger„t);
+                                  SystemPos.SETRANGE(Basisger„t,TRUE);
                                   IF SystemPos.FINDLAST THEN BEGIN
                                     Sheet.Range('H'+j).Value := SystemPos."Artikelnr. 2";
                                     Sheet.Range('I'+j).Value := TOPAS_API.CreateExcelHyperlinkToNav(SystemPos.TABLENAME,1,50096,SystemPos."Seriennr.");
@@ -123,9 +125,9 @@ OBJECT Report 50094 Auslaufende Vertr„ge
                                             v_datum := SalesHeader."Document Date";
                                             v_belegnr := SalesHeader."No.";
                                           END;
-                                        ArchSalesHeader.SETRANGE("Document Type",ArchSalesHeader."Document Type" :: Quote);
+                                        ArchSalesHeader.SETRANGE("Document Type",ArchSalesHeader."Document Type"::Quote);
                                         ArchSalesHeader.SETRANGE("No.",ServiceZuordnung."Nr.");
-                                        IF ArchSalesHeader.FINDFIRST THEN
+                                        IF ArchSalesHeader.FINDLAST THEN
                                           IF CALCDATE('-3M',WORKDATE) < ArchSalesHeader."Document Date" THEN BEGIN
                                             AN_liegt_vor := TRUE;
                                             v_datum := ArchSalesHeader."Document Date";
@@ -253,7 +255,8 @@ OBJECT Report 50094 Auslaufende Vertr„ge
       Lieferschein@1140007 : Record 110;
       "ext-referenz"@1140008 : Text[80];
       "show_ext-referenz"@1140009 : Boolean;
-      Protokollpfaddatei@1140018 : Text[250];
+      FileName@1140018 : Text[250];
+      FilePath@1000000001 : Text[250];
       SystemPos@1140010 : Record 50024;
       ServicePos@1140026 : Record 50024;
       board_ini@1140011 : Code[20];
@@ -268,7 +271,6 @@ OBJECT Report 50094 Auslaufende Vertr„ge
       v_datum@1140030 : Date;
       v_belegnr@1140031 : Code[20];
       FileMgt@1000000000 : Codeunit 419;
-      wshFile@1000000001 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{0D43FE01-F093-11CF-8940-00A0C9054228}:'Windows Script Host Object Model'.FileSystemObject";
       ReportForNav@5000 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
       ReportForNavClient@5003 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
       ReportForNavDialog@5001 : Dialog;
@@ -277,18 +279,19 @@ OBJECT Report 50094 Auslaufende Vertr„ge
 
     PROCEDURE ExcelKopf@1140002();
     BEGIN
-      IF vertraege_abgelaufen =TRUE THEN
-        Protokollpfaddatei := 'F:\Daten NEU\Gemeinsame Ordner\Navision\EMailVersand\Ausgelaufene Wartungsvertraege - Uebersicht_test.xlsx'
+      IF vertraege_abgelaufen = TRUE THEN
+        FileName := 'Ausgelaufene Wartungsvertraege - Uebersicht.xlsx'
       ELSE
-        Protokollpfaddatei := 'F:\Daten NEU\Gemeinsame Ordner\Navision\EMailVersand\Auslaufende Wartungsvertraege - Uebersicht_test.xlsx';
+        FileName := 'Auslaufende Wartungsvertraege - Uebersicht.xlsx';
+
+      FilePath := 'F:\Daten NEU\Gemeinsame Ordner\Navision\EMailVersand\';
+
       //********************************************************************************************
       //                               Definiert die Protokolldatei
       //********************************************************************************************
       IF ISCLEAR(Excel) THEN
         IF CREATE (Excel,FALSE,TRUE) THEN BEGIN END ELSE ERROR('Cannot start Excel Application.');
-      //IF EXISTS(Protokollpfaddatei) THEN ; EXISTS scheint nicht mehr in NAV 2016 zu funktionieren
-      CREATE(wshFile,FALSE,TRUE);
-      IF wshFile.FileExists(Protokollpfaddatei) THEN wshFile.DeleteFile(Protokollpfaddatei);
+
       Excel.Visible(FALSE);
       Book := Excel.Workbooks.Add(-4167);                // legt neue datei in excel an
       Sheet := Excel.ActiveSheet;                        // definiert aktives worksheet
@@ -319,9 +322,10 @@ OBJECT Report 50094 Auslaufende Vertr„ge
       Sheet.Range('N4').Value := 'Angebotsnr.';
       Sheet.Range('O4').Value := 'Inaktiv';
       Sheet.Range('A4:O4').Font.Bold := TRUE;
-      Book.SaveAs(Protokollpfaddatei,51,'','',FALSE,FALSE);
 
-      CLEAR(wshFile);
+      IF FileMgt.ClientFileExists(FilePath + FileName) THEN FileMgt.DeleteClientFile(FilePath + FileName);
+      IF FileMgt.ClientDirectoryExists(FilePath) = FALSE THEN FileMgt.CreateClientDirectory(FilePath);
+      Book.SaveAs(FilePath + FileName,51,'','',FALSE,FALSE);
     END;
 
     EVENT ReportForNav@5000::OnInit@5002();
@@ -578,7 +582,7 @@ OBJECT Report 50094 Auslaufende Vertr„ge
   {
     <?xml version="1.0" encoding="utf-8"?>
 <Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
-  <Description>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</Description>
+  <Description>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</Description>
   <AutoRefresh>0</AutoRefresh>
   <DataSources>
     <DataSource Name="DataSource">
@@ -604,7 +608,62 @@ OBJECT Report 50094 Auslaufende Vertr„ge
   </ReportSections>
   <rd:ReportUnitType>Invalid</rd:ReportUnitType>
   <rd:ReportID>5c6c2e5c-002f-4754-a82c-3e1831835ce4</rd:ReportID>
+  <DataSets>
+    <DataSet Name="DataSet_Result">
+      <Fields>
+        <Field Name="WartungsvertragFIELDCAPTION_Auftragsnr">
+          <DataField>WartungsvertragFIELDCAPTION_Auftragsnr</DataField>
+        </Field>
+        <Field Name="WartungsvertragFIELDCAPTION_Wartungsvertragsnr">
+          <DataField>WartungsvertragFIELDCAPTION_Wartungsvertragsnr</DataField>
+        </Field>
+        <Field Name="Debitornr_Wartungsvertrag">
+          <DataField>Debitornr_Wartungsvertrag</DataField>
+        </Field>
+        <Field Name="Debitorname_Wartungsvertrag">
+          <DataField>Debitorname_Wartungsvertrag</DataField>
+        </Field>
+        <Field Name="Vertragsablaufdatum_Wartungsvertrag">
+          <DataField>Vertragsablaufdatum_Wartungsvertrag</DataField>
+        </Field>
+        <Field Name="Startdatum_Wartungsvertrag_Lbl">
+          <DataField>Startdatum_Wartungsvertrag_Lbl</DataField>
+        </Field>
+        <Field Name="Startdatum_Wartungsvertrag">
+          <DataField>Startdatum_Wartungsvertrag</DataField>
+        </Field>
+        <Field Name="Status_Wartungsvertrag_Lbl">
+          <DataField>Status_Wartungsvertrag_Lbl</DataField>
+        </Field>
+        <Field Name="Status_Wartungsvertrag">
+          <DataField>Status_Wartungsvertrag</DataField>
+        </Field>
+        <Field Name="Endkunde_Wartungsvertrag_Lbl">
+          <DataField>Endkunde_Wartungsvertrag_Lbl</DataField>
+        </Field>
+        <Field Name="Endkunde_Wartungsvertrag">
+          <DataField>Endkunde_Wartungsvertrag</DataField>
+        </Field>
+        <Field Name="Auftragsnr_Wartungsvertrag">
+          <DataField>Auftragsnr_Wartungsvertrag</DataField>
+        </Field>
+        <Field Name="Wartungsvertragsnr_Wartungsvertrag">
+          <DataField>Wartungsvertragsnr_Wartungsvertrag</DataField>
+        </Field>
+      </Fields>
+      <Query>
+        <DataSourceName>DataSource</DataSourceName>
+        <CommandText />
+      </Query>
+      <rd:DataSetInfo>
+        <rd:DataSetName>DataSet</rd:DataSetName>
+        <rd:SchemaPath>Report.xsd</rd:SchemaPath>
+        <rd:TableName>Result</rd:TableName>
+      </rd:DataSetInfo>
+    </DataSet>
+  </DataSets>
 </Report>
     END_OF_RDLDATA
   }
 }
+
