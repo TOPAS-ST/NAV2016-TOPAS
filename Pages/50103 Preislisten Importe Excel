@@ -3,7 +3,7 @@ OBJECT Page 50103 Preislisten Importe Excel
   OBJECT-PROPERTIES
   {
     Date=20.10.17;
-    Time=13:39:55;
+    Time=15:00:30;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -200,7 +200,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       CREATE(Protokoll_Excel,FALSE,TRUE);                                    // erzeugt excel
       Protokoll_Book := Protokoll_Excel.Workbooks.Add(-4167);                // legt neue datei in excel an
       Protokoll_Sheet := Protokoll_Excel.ActiveSheet;                        // definiert aktives worksheet
-      Protokoll_j:='2';
+      Protokoll_j := '2';
 
       Protokoll_Sheet.Range('A'+'1').Value:= 'Artikelnr';                    // šberschriften der 2. Datei
       Protokoll_Sheet.Range('A:A').ColumnWidth := 20;
@@ -227,279 +227,245 @@ OBJECT Page 50103 Preislisten Importe Excel
       EVALUATE(a,Quelle_j);
       excel_datens„tze := Quelle_Sheet.UsedRange.Rows.Count - a + 1;
 
-      IF testlauf = FALSE THEN
-        BEGIN
-          IF excel_datens„tze > 99 THEN
-            IF CONFIRM('Es konnte mehr als 100 Eintr„ge in der Quelldatei gefunden werden.\' +
-                       'Soll der Status Update letzte Preisliste fr alle Artikel zurckgesetzt und neu ' +
-                       'bewertet werden?',TRUE) THEN
-              BEGIN
-                Artikel.RESET;
-                Artikel.SETFILTER("Manufacturer Code",'%1','54');
-                IF Artikel.FINDFIRST THEN
-                  Artikel.MODIFYALL("Update letzte Preisliste",FALSE);
+      IF testlauf = FALSE THEN BEGIN
+        IF excel_datens„tze > 99 THEN
+          IF CONFIRM('Es konnte mehr als 100 Eintr„ge in der Quelldatei gefunden werden.\' +
+                      'Soll der Status Update letzte Preisliste fr alle Artikel zurckgesetzt und neu ' +
+                      'bewertet werden?',TRUE) THEN BEGIN
+            Artikel.RESET;
+            Artikel.SETFILTER("Manufacturer Code",'%1','54');
+            IF Artikel.FINDFIRST THEN
+              Artikel.MODIFYALL("Update letzte Preisliste",FALSE);
+          END;
+      END;
+
+      FOR k := 1 TO 4 DO BEGIN
+
+        Quelle_j := '10';
+        Quelle_Sheet := Quelle_Book.Worksheets.Item(k);
+
+        REPEAT
+
+          IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value)) <= 40 THEN
+            Artikelname := FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value);
+
+          IF Artikelname <> '' THEN BEGIN
+            Artikel.RESET;
+            Artikel.SETFILTER("No. 2",'%1',Artikelname);
+            IF Artikel.FINDFIRST THEN BEGIN
+
+              PL_PACKAGE := FORMAT(Quelle_Sheet.Range(Spalte_Package+Quelle_j).Value);
+              PL_DISTI_TEXT := FORMAT(Quelle_Sheet.Range(Spalte_DC+Quelle_j).Value);
+              PL_REG := FORMAT(Quelle_Sheet.Range(Spalte_Reg+Quelle_j).Value);
+              IF (FORMAT(Quelle_Sheet.Range(Spalte_VPE+Quelle_j).Value) <> '') THEN
+                EVALUATE(PL_VPE,FORMAT(Quelle_Sheet.Range(Spalte_VPE+Quelle_j).Value))
+              ELSE
+                PL_VPE := 0;
+              IF (FORMAT(Quelle_Sheet.Range(Spalte_MOQ+Quelle_j).Value) <> '') AND
+              (FORMAT(Quelle_Sheet.Range(Spalte_MOQ+Quelle_j).Value) <> 'TBA') THEN
+                EVALUATE(PL_MOQ,FORMAT(Quelle_Sheet.Range(Spalte_MOQ+Quelle_j).Value))
+              ELSE
+                PL_MOQ := 0;
+
+              IF (STRLEN(DELCHR(PL_DISTI_TEXT,'=','ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')) =
+              (STRLEN(PL_DISTI_TEXT))) THEN BEGIN
+                //falls sich 1000er Trennzeichen eingeschlichen hat wird dies entfernt
+                IF STRLEN(COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1)) > 2 THEN
+                  PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','.');
+
+                IF STRPOS(PL_DISTI_TEXT, ',') <> 0 THEN BEGIN
+                  PL_DISTI_TEXT := COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, ',')-1)
+                            + ',' + COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, ',')+1);
+                END;
+                IF STRPOS(PL_DISTI_TEXT, '.') <> 0 THEN BEGIN
+                  PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, '.')-1)
+                            + ',' + COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1);
+                END;
+                IF PL_DISTI_TEXT = '' THEN PL_DISTI_TEXT := '0';
+
+                // Wenn manuell das Dollar Zeichen in die Zeile geraten ist
+                IF STRPOS(PL_DISTI_TEXT,'$') <> 0 THEN BEGIN
+                  //PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','$');
+                  hilfs_PL_DISTI_TEXT := PL_DISTI_TEXT;
+                  hilfs_PL_DISTI_TEXT := DELCHR(hilfs_PL_DISTI_TEXT,'<>=',' ');
+                  hilfs_PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=',DELCHR(PL_DISTI_TEXT,'=','.,0123456789'));
+                  PL_DISTI_TEXT := hilfs_PL_DISTI_TEXT;
+                END;
+
+                EVALUATE(PL_DC,PL_DISTI_TEXT);
+                PL_DC := ROUND(PL_DC,0.01);
+              END ELSE
+                PL_DC := 0;
+
+              „nderung := FALSE;
+
+              //*********************************************************************************************
+              //                                    EK-Preise updaten
+              //*********************************************************************************************
+
+              einkaufspreis.RESET;
+              einkaufspreis.SETFILTER("Item No.",'%1',Artikel."No.");
+              //einkaufspreis.SETFILTER("Vendor No.",'%1',Artikel."Vendor No.");
+              IF einkaufspreis.FINDLAST THEN BEGIN
+                IF (einkaufspreis."Direct Unit Cost" <> PL_DC) AND (PL_DC <> 0) THEN BEGIN
+                  Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+                  Protokoll_Sheet.Range('B'+Protokoll_j).Value := FORMAT(einkaufspreis."Direct Unit Cost");
+                  Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
+                  Protokoll_Sheet.Range('D'+Protokoll_j).Value := FORMAT(PL_DC-einkaufspreis."Direct Unit Cost");
+                  IF einkaufspreis."Direct Unit Cost" > PL_DC THEN
+                    Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-11489280'; //grn
+                  IF einkaufspreis."Direct Unit Cost" < PL_DC THEN
+                    Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-16776961'; //rot
+                  Artikel.CALCFIELDS(Inventory,Artikel."Qty. on Purch. Order",Artikel."Qty. on Sales Order",
+                  Artikel."Menge in Angebot",Artikel."Menge im Rahmen");
+                  Protokoll_Sheet.Range('E'+Protokoll_j).Value := FORMAT(Artikel.Inventory);
+                  Protokoll_Sheet.Range('F'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Purch. Order");
+                  Protokoll_Sheet.Range('G'+Protokoll_j).Value := FORMAT(Artikel."Menge in Angebot");
+                  Protokoll_Sheet.Range('H'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Sales Order");
+                  Protokoll_Sheet.Range('I'+Protokoll_j).Value := FORMAT(Artikel."Menge im Rahmen");
+
+                  IF testlauf = FALSE THEN BEGIN
+                    einkaufspreis."Direct Unit Cost" := PL_DC;
+                    einkaufspreis.MODIFY(TRUE);
+                    Artikel.MODIFY(TRUE);
+                  END;
+
+                  neuer_preis += 1;
+                  „nderung := TRUE;
+
+                END;
               END;
-        END;
 
-      FOR k := 1 TO 4 DO
-        BEGIN
+              //*********************************************************************************************
+              //                                       VPE berprfen
+              //*********************************************************************************************
 
-          Quelle_j:='10';
-          Quelle_Sheet := Quelle_Book.Worksheets.Item(k);
+              IF (Artikel.Verpackungsmenge <> PL_VPE) AND (PL_VPE <> 0) THEN BEGIN
+                IF testlauf = FALSE THEN BEGIN
+                  Artikel.Mindestbestellmenge := PL_VPE;
+                  Artikel.MODIFY(TRUE);
+                END;
+                sonstige_aenderungen += 1;
+                „nderung := TRUE;
+                Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+                Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'x';
+              END;
 
-          REPEAT
+              //*********************************************************************************************
+              //                                       MOQ berprfen
+              //*********************************************************************************************
 
-             IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value)) <= 40 THEN
-               Artikelname := FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value);
+              IF (Artikel.Mindestbestellmenge <> PL_MOQ) AND (PL_MOQ <> 0) THEN BEGIN
+                IF testlauf = FALSE THEN BEGIN
+                  Artikel.Mindestbestellmenge := PL_MOQ;
+                  Artikel.MODIFY(TRUE);
+                END;
+                sonstige_aenderungen += 1;
+                „nderung := TRUE;
+                Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+                Protokoll_Sheet.Range('K'+Protokoll_j).Value := 'x';
+              END;
 
-             IF Artikelname = '' THEN
-               BEGIN
-               END
-             ELSE
-               BEGIN
-                 Artikel.RESET;
-                 Artikel.SETFILTER("No. 2",'%1',Artikelname);
-                 IF Artikel.FINDFIRST THEN
-                   BEGIN
+              //*********************************************************************************************
+              //                                    Registrierbar berprfen
+              //*********************************************************************************************
 
-                     PL_PACKAGE := FORMAT(Quelle_Sheet.Range(Spalte_Package+Quelle_j).Value);
-                     PL_DISTI_TEXT := FORMAT(Quelle_Sheet.Range(Spalte_DC+Quelle_j).Value);
-                     PL_REG := FORMAT(Quelle_Sheet.Range(Spalte_Reg+Quelle_j).Value);
-                     IF (FORMAT(Quelle_Sheet.Range(Spalte_VPE+Quelle_j).Value) <> '') THEN
-                       EVALUATE(PL_VPE,FORMAT(Quelle_Sheet.Range(Spalte_VPE+Quelle_j).Value))
-                     ELSE
-                       PL_VPE := 0;
-                     IF (FORMAT(Quelle_Sheet.Range(Spalte_MOQ+Quelle_j).Value) <> '') AND
-                     (FORMAT(Quelle_Sheet.Range(Spalte_MOQ+Quelle_j).Value) <> 'TBA') THEN
-                       EVALUATE(PL_MOQ,FORMAT(Quelle_Sheet.Range(Spalte_MOQ+Quelle_j).Value))
-                     ELSE
-                       PL_MOQ := 0;
-
-                     IF (STRLEN(DELCHR(PL_DISTI_TEXT,'=','ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')) =
-                     (STRLEN(PL_DISTI_TEXT))) THEN
-                       BEGIN
-                          //falls sich 1000er Trennzeichen eingeschlichen hat wird dies entfernt
-                          IF STRLEN(COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1)) > 2 THEN
-                            PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','.');
-
-                          IF STRPOS(PL_DISTI_TEXT, ',') <> 0  THEN
-                             BEGIN
-                               PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, ',')-1)
-                                          +',' +COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, ',')+1);
-                             END;
-                          IF STRPOS(PL_DISTI_TEXT, '.') <> 0  THEN
-                             BEGIN
-                               PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, '.')-1)
-                                          +','+COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1);
-                             END;
-                          IF PL_DISTI_TEXT = '' THEN PL_DISTI_TEXT := '0';
-
-                          // Wenn manuell das Dollar Zeichen in die Zeile geraten ist
-                          IF STRPOS(PL_DISTI_TEXT,'$') <> 0 THEN
-                            BEGIN
-                              //PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','$');
-                              hilfs_PL_DISTI_TEXT := PL_DISTI_TEXT;
-                              hilfs_PL_DISTI_TEXT := DELCHR(hilfs_PL_DISTI_TEXT,'<>=',' ');
-                              hilfs_PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=',DELCHR(PL_DISTI_TEXT,'=','.,0123456789'));
-                              PL_DISTI_TEXT := hilfs_PL_DISTI_TEXT;
-                            END;
-
-                          EVALUATE(PL_DC,PL_DISTI_TEXT);
-                          PL_DC := ROUND(PL_DC,0.01);
-                       END
-                     ELSE
-                       PL_DC := 0;
-
-                     „nderung := FALSE;
-
-                     //*********************************************************************************************
-                     //                                    EK-Preise updaten
-                     //*********************************************************************************************
-
-                     einkaufspreis.RESET;
-                     einkaufspreis.SETFILTER("Item No.",'%1',Artikel."No.");
-                     //einkaufspreis.SETFILTER("Vendor No.",'%1',Artikel."Vendor No.");
-                     IF einkaufspreis.FINDLAST THEN
-                       BEGIN
-                         IF (einkaufspreis."Direct Unit Cost" <> PL_DC) AND (PL_DC <> 0) THEN
-                           BEGIN
-                             Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                             Protokoll_Sheet.Range('B'+Protokoll_j).Value := FORMAT(einkaufspreis."Direct Unit Cost");
-                             Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
-                             Protokoll_Sheet.Range('D'+Protokoll_j).Value := FORMAT(PL_DC-einkaufspreis."Direct Unit Cost");
-                             IF einkaufspreis."Direct Unit Cost" > PL_DC THEN
-                               Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-11489280'; //grn
-                             IF einkaufspreis."Direct Unit Cost" < PL_DC THEN
-                               Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-16776961'; //rot
-                             Artikel.CALCFIELDS(Inventory,Artikel."Qty. on Purch. Order",Artikel."Qty. on Sales Order",
-                             Artikel."Menge in Angebot",Artikel."Menge im Rahmen");
-                             Protokoll_Sheet.Range('E'+Protokoll_j).Value := FORMAT(Artikel.Inventory);
-                             Protokoll_Sheet.Range('F'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Purch. Order");
-                             Protokoll_Sheet.Range('G'+Protokoll_j).Value := FORMAT(Artikel."Menge in Angebot");
-                             Protokoll_Sheet.Range('H'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Sales Order");
-                             Protokoll_Sheet.Range('I'+Protokoll_j).Value := FORMAT(Artikel."Menge im Rahmen");
-
-                             IF testlauf = FALSE THEN
-                               BEGIN
-                                 einkaufspreis."Direct Unit Cost" := PL_DC;
-                                 einkaufspreis.MODIFY(TRUE);
-                                 Artikel.MODIFY(TRUE);
-                               END;
-
-                             neuer_preis += 1;
-                             „nderung := TRUE;
-
-                           END;
-                       END;
-
-                     //*********************************************************************************************
-                     //                                       VPE berprfen
-                     //*********************************************************************************************
-
-                     IF (Artikel.Verpackungsmenge <> PL_VPE) AND (PL_VPE <> 0) THEN
-                       BEGIN
-                         IF testlauf = FALSE THEN
-                           BEGIN
-                             Artikel.Mindestbestellmenge := PL_VPE;
-                             Artikel.MODIFY(TRUE);
-                           END;
-                         sonstige_aenderungen += 1;
-                         „nderung := TRUE;
-                         Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                         Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'x';
-                       END;
-
-                     //*********************************************************************************************
-                     //                                       MOQ berprfen
-                     //*********************************************************************************************
-
-                     IF (Artikel.Mindestbestellmenge <> PL_MOQ) AND (PL_MOQ <> 0) THEN
-                       BEGIN
-                         IF testlauf = FALSE THEN
-                           BEGIN
-                             Artikel.Mindestbestellmenge := PL_MOQ;
-                             Artikel.MODIFY(TRUE);
-                           END;
-                         sonstige_aenderungen += 1;
-                         „nderung := TRUE;
-                         Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                         Protokoll_Sheet.Range('K'+Protokoll_j).Value := 'x';
-                       END;
-
-                     //*********************************************************************************************
-                     //                                    Registrierbar berprfen
-                     //*********************************************************************************************
-
-                     IF (STRPOS(UPPERCASE(PL_REG),'Y') <> 0) AND (Artikel.Registrierbar = FALSE) THEN
-                       BEGIN
-                         IF testlauf = FALSE THEN
-                           BEGIN
-                             Artikel.Registrierbar := TRUE;
-                             Artikel.MODIFY(TRUE);
-                           END;
-                         sonstige_aenderungen += 1;
-                         „nderung := TRUE;
-                         Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                         Protokoll_Sheet.Range('L'+Protokoll_j).Value := 'x';
-                       END;
-                     IF (STRPOS(UPPERCASE(PL_REG),'N') <> 0) AND (Artikel.Registrierbar = TRUE) THEN
-                       BEGIN
-                         IF testlauf = FALSE THEN
-                           BEGIN
-                             Artikel.Registrierbar := FALSE;
-                             Artikel.MODIFY(TRUE);
-                           END;
-                         sonstige_aenderungen += 1;
-                         „nderung := TRUE;
-                         Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                         Protokoll_Sheet.Range('L'+Protokoll_j).Value := 'x';
-                       END;
+              IF (STRPOS(UPPERCASE(PL_REG),'Y') <> 0) AND (Artikel.Registrierbar = FALSE) THEN BEGIN
+                IF testlauf = FALSE THEN BEGIN
+                  Artikel.Registrierbar := TRUE;
+                  Artikel.MODIFY(TRUE);
+                END;
+                sonstige_aenderungen += 1;
+                „nderung := TRUE;
+                Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+                Protokoll_Sheet.Range('L'+Protokoll_j).Value := 'x';
+              END;
+              IF (STRPOS(UPPERCASE(PL_REG),'N') <> 0) AND (Artikel.Registrierbar = TRUE) THEN BEGIN
+                IF testlauf = FALSE THEN BEGIN
+                  Artikel.Registrierbar := FALSE;
+                  Artikel.MODIFY(TRUE);
+                END;
+                sonstige_aenderungen += 1;
+                „nderung := TRUE;
+                Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+                Protokoll_Sheet.Range('L'+Protokoll_j).Value := 'x';
+              END;
 
 
-                     //*********************************************************************************************
-                     //                                      Package berprfen
-                     //*********************************************************************************************
+              //*********************************************************************************************
+              //                                      Package berprfen
+              //*********************************************************************************************
 
-                     IF (PL_PACKAGE <> '') AND (Artikel.Geh„use <> PL_PACKAGE) THEN
-                       BEGIN
-                         IF testlauf = FALSE THEN
-                           BEGIN
-                             IF NOT Geh„use.GET(PL_PACKAGE) THEN
-                               BEGIN
-                                 Geh„use.INIT;
-                                 Geh„use.Code := PL_PACKAGE;
-                                 Geh„use.INSERT;
-                               END;
-                             Artikel.Geh„use := PL_PACKAGE;
-                             Artikel.MODIFY(TRUE);
-                           END;
-                         sonstige_aenderungen += 1;
-                         „nderung := TRUE;
-                         Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                         Protokoll_Sheet.Range('M'+Protokoll_j).Value := 'x';
-                       END;
+              IF (PL_PACKAGE <> '') AND (Artikel.Geh„use <> PL_PACKAGE) THEN BEGIN
+                IF testlauf = FALSE THEN BEGIN
+                  IF NOT Geh„use.GET(PL_PACKAGE) THEN BEGIN
+                    Geh„use.INIT;
+                    Geh„use.Code := PL_PACKAGE;
+                    Geh„use.INSERT;
+                  END;
+                  Artikel.Geh„use := PL_PACKAGE;
+                  Artikel.MODIFY(TRUE);
+                END;
+                sonstige_aenderungen += 1;
+                „nderung := TRUE;
+                Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+                Protokoll_Sheet.Range('M'+Protokoll_j).Value := 'x';
+              END;
 
-                     {
-                     //*********************************************************************************************
-                     //                                     Lead Free berprfen
-                     //*********************************************************************************************
+              {
+              //*********************************************************************************************
+              //                                     Lead Free berprfen
+              //*********************************************************************************************
 
-                     IF (STRPOS(UPPERCASE(PL_LF),'ROHS AND LEAD FREE') <> 0) AND (Artikel."Lead Free" = FALSE) THEN
-                       BEGIN
-                         IF testlauf = FALSE THEN
-                           BEGIN
-                             Artikel."Lead Free" := TRUE;
-                             Artikel.MODIFY(TRUE);
-                           END;
-                         sonstige_aenderungen += 1;
-                         „nderung := TRUE;
-                         Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                         Protokoll_Sheet.Range('N'+Protokoll_j).Value := 'x';
+              IF (STRPOS(UPPERCASE(PL_LF),'ROHS AND LEAD FREE') <> 0) AND (Artikel."Lead Free" = FALSE) THEN BEGIN
+                IF testlauf = FALSE THEN BEGIN
+                  Artikel."Lead Free" := TRUE;
+                  Artikel.MODIFY(TRUE);
+                END;
+                sonstige_aenderungen += 1;
+                „nderung := TRUE;
+                Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+                Protokoll_Sheet.Range('N'+Protokoll_j).Value := 'x';
+              END;
+              IF (STRPOS(UPPERCASE(PL_LF),'NO') <> 0) AND (Artikel."Lead Free" = TRUE) THEN BEGIN
+                IF testlauf = FALSE THEN BEGIN
+                  Artikel."Lead Free" := FALSE;
+                  Artikel.MODIFY(TRUE);
+                END;
+                „nderung := TRUE;
+                sonstige_aenderungen += 1;
+                Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+                Protokoll_Sheet.Range('N'+Protokoll_j).Value := 'x';
+              END;
+              }
 
-                       END;
-                     IF (STRPOS(UPPERCASE(PL_LF),'NO') <> 0) AND (Artikel."Lead Free" = TRUE) THEN
-                       BEGIN
-                         IF testlauf = FALSE THEN
-                           BEGIN
-                             Artikel."Lead Free" := FALSE;
-                             Artikel.MODIFY(TRUE);
-                           END;
-                         „nderung := TRUE;
-                         sonstige_aenderungen += 1;
-                         Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                         Protokoll_Sheet.Range('N'+Protokoll_j).Value := 'x';
-                       END;
-                     }
+              IF „nderung = TRUE THEN Protokoll_j := INCSTR(Protokoll_j);
 
-                     IF „nderung = TRUE THEN Protokoll_j := INCSTR(Protokoll_j);
+              IF PL_DC <> 0 THEN BEGIN
+                IF testlauf = FALSE THEN BEGIN
+                  Artikel."Update letzte Preisliste" := TRUE;
+                  Artikel.MODIFY;
+                END;
+              END;
 
-                     IF PL_DC <> 0 THEN
-                       BEGIN
-                         IF testlauf = FALSE THEN
-                           BEGIN
-                             Artikel."Update letzte Preisliste":=TRUE;
-                             Artikel.MODIFY;
-                           END;
-                       END;
+            END;
 
-                   END;
+          END;
 
-               END;
+          //*********************************************************************************************
+          //                                       Abbruchbedingung
+          //*********************************************************************************************
 
-            //*********************************************************************************************
-            //                                       Abbruchbedingung
-            //*********************************************************************************************
+          // Wenn in der Quelldatei 15 Leere Zeilen hintereinander kommen, ist das Dateiende erreicht
+          IF Artikelname = '' THEN                                 // erkennt das Ende der Excel Datei
+            leere_zeilen += 1
+          ELSE
+            leere_zeilen := 0;
 
-            // Wenn in der Quelldatei 15 Leere Zeilen hintereinander kommen, ist das Dateiende erreicht
-            IF Artikelname = '' THEN                                 // erkennt das Ende der Excel Datei
-              leere_zeilen += 1
-            ELSE
-              leere_zeilen :=0;
+          Quelle_j := INCSTR(Quelle_j);                            // n„chste Zeile Importdatei
 
-            Quelle_j:=INCSTR(Quelle_j);                              // n„chste Zeile Importdatei
-
-          UNTIL (Max_Datens„tze = Quelle_j) OR (leere_zeilen = 15);  // Nach 15 Zeilen ohne Artikel ist Schluss
-        END;
+        UNTIL (Max_Datens„tze = Quelle_j) OR (leere_zeilen = 15);  // Nach 15 Zeilen ohne Artikel ist Schluss
+      END;
 
       Quelle_Excel.Visible(TRUE);
       Protokoll_Excel.Visible(TRUE);
@@ -518,7 +484,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       REPEAT
       UNTIL ISCLEAR(Protokoll_Excel) AND ISCLEAR(Protokoll_Book) AND ISCLEAR(Protokoll_Sheet);
 
-      MESSAGE('Abgleich der Artikel abgeschlossen.'+ '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\'+
+      MESSAGE('Abgleich der Artikel abgeschlossen.' + '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\' +
               'Excel Datens„tze: %3 (Ausgewerte Tabs: 1)\',neuer_preis,sonstige_aenderungen,excel_datens„tze);
     END;
 
@@ -579,7 +545,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       CREATE(Protokoll_Excel,FALSE,TRUE);                                    // erzeugt excel
       Protokoll_Book := Protokoll_Excel.Workbooks.Add(-4167);                // legt neue datei in excel an
       Protokoll_Sheet := Protokoll_Excel.ActiveSheet;                        // definiert aktives worksheet
-      Protokoll_j:='2';
+      Protokoll_j := '2';
 
       Protokoll_Sheet.Range('A'+'1').Value:= 'Artikelnr';                    // šberschriften der 2. Datei
       Protokoll_Sheet.Range('A:A').ColumnWidth := 20;
@@ -619,8 +585,7 @@ OBJECT Page 50103 Preislisten Importe Excel
         IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value)) <= 40 THEN
           Artikelname := FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value);
 
-        IF Artikelname = '' THEN BEGIN END
-        ELSE BEGIN
+        IF Artikelname <> '' THEN BEGIN
           Artikel.RESET;
           Artikel.SETFILTER("No. 2",'%1',Artikelname);
           IF Artikel.FINDFIRST THEN BEGIN
@@ -632,11 +597,11 @@ OBJECT Page 50103 Preislisten Importe Excel
               IF STRLEN(COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1)) > 2 THEN
                 PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','.');
 
-              IF STRPOS(PL_DISTI_TEXT, ',') <> 0  THEN BEGIN
+              IF STRPOS(PL_DISTI_TEXT, ',') <> 0 THEN BEGIN
                 PL_DISTI_TEXT := COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, ',')-1)
                           + ',' + COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, ',')+1);
               END;
-              IF STRPOS(PL_DISTI_TEXT, '.') <> 0  THEN BEGIN
+              IF STRPOS(PL_DISTI_TEXT, '.') <> 0 THEN BEGIN
                 PL_DISTI_TEXT := COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, '.')-1)
                           + ',' + COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1);
               END;
@@ -777,7 +742,7 @@ OBJECT Page 50103 Preislisten Importe Excel
           gesperrte += 1;
         UNTIL Artikel.NEXT = 0;
 
-      MESSAGE('Abgleich der Artikel abgeschlossen.'+ '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\'+
+      MESSAGE('Abgleich der Artikel abgeschlossen.' + '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\' +
               'Excel Datens„tze: %3 (Ausgewerte Tabs: 1)\\Neu gesperrte Artikel: %4',neuer_preis,sonstige_aenderungen,excel_datens„tze,gesperrte);
     END;
 
@@ -836,7 +801,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       CREATE(Protokoll_Excel,FALSE,TRUE);                                    // erzeugt excel
       Protokoll_Book := Protokoll_Excel.Workbooks.Add(-4167);                // legt neue datei in excel an
       Protokoll_Sheet := Protokoll_Excel.ActiveSheet;                        // definiert aktives worksheet
-      Protokoll_j:='2';
+      Protokoll_j :='2';
 
       Protokoll_Sheet.Range('A'+'1').Value:= 'Artikelnr';                    // šberschriften der 2. Datei
       Protokoll_Sheet.Range('A:A').ColumnWidth := 20;
@@ -860,186 +825,158 @@ OBJECT Page 50103 Preislisten Importe Excel
       EVALUATE(a,Quelle_j);
       excel_datens„tze := Quelle_Sheet.UsedRange.Rows.Count - a + 1;
 
-      IF testlauf = FALSE THEN
-        BEGIN
-          IF excel_datens„tze > 19 THEN
-            IF CONFIRM('Es konnte mehr als 20 Eintr„ge in der Quelldatei gefunden werden.\' +
-                       'Soll der Status Update letzte Preisliste fr alle Artikel zurckgesetzt und neu ' +
-                       'bewertet werden?',TRUE) THEN
-              BEGIN
-                Artikel.RESET;
-                Artikel.SETFILTER("Manufacturer Code",'%1','30');
-                IF Artikel.FINDFIRST THEN
-                  Artikel.MODIFYALL("Update letzte Preisliste",FALSE);
-              END;
-        END;
+      IF testlauf = FALSE THEN BEGIN
+        IF excel_datens„tze > 19 THEN
+          IF CONFIRM('Es konnte mehr als 20 Eintr„ge in der Quelldatei gefunden werden.\' +
+                      'Soll der Status Update letzte Preisliste fr alle Artikel zurckgesetzt und neu ' +
+                      'bewertet werden?',TRUE) THEN BEGIN
+            Artikel.RESET;
+            Artikel.SETFILTER("Manufacturer Code",'%1','30');
+            IF Artikel.FINDFIRST THEN
+              Artikel.MODIFYALL("Update letzte Preisliste",FALSE);
+          END;
+      END;
 
       REPEAT
 
-         IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value)) <= 40 THEN
-           BEGIN
-             Artikelname := FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value);
-             Artikelname := DELCHR(Artikelname,'<',FORMAT(chr));
-             Artikelname := DELCHR(Artikelname,'>',FORMAT(chr));
-           END;
+        IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value)) <= 40 THEN BEGIN
+          Artikelname := FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value);
+          Artikelname := DELCHR(Artikelname,'<',FORMAT(chr));
+          Artikelname := DELCHR(Artikelname,'>',FORMAT(chr));
+        END;
 
-         IF Artikelname = '' THEN
-           BEGIN
-           END
-         ELSE
-           BEGIN
-             //Ben”tigt, um zwei Artikel in einer Zeile mit Trennstrich '/' auszuwerten
-             chr := 32;
-             save_artikelname := Artikelname;
-             IF (STRPOS(save_artikelname,'/') <> 0 )THEN
-               i := 2
-             ELSE
-               i := 1;
+        IF Artikelname <> '' THEN BEGIN
+          //Ben”tigt, um zwei Artikel in einer Zeile mit Trennstrich '/' auszuwerten
+          chr := 32;
+          save_artikelname := Artikelname;
+          IF (STRPOS(save_artikelname,'/') <> 0 )THEN
+            i := 2
+          ELSE
+            i := 1;
 
-             FOR k:= 1 TO i DO
-               BEGIN
-                 IF i > 1 THEN
-                   BEGIN
-                     temp_artikelname := '';
-                     IF k = 1 THEN
-                       BEGIN
-                         temp_artikelname := COPYSTR(save_artikelname, 1, STRPOS(save_artikelname, '/') - 1);
-                         Artikel.SETFILTER("No. 2",'%1',temp_artikelname);
-                         IF NOT Artikel.FINDFIRST THEN
-                           BEGIN
-                             temp_artikelname := temp_artikelname + COPYSTR(save_artikelname,
-                                                 STRPOS(save_artikelname,FORMAT(chr)));
+          FOR k := 1 TO i DO BEGIN
+            IF i > 1 THEN BEGIN
+              temp_artikelname := '';
+              IF k = 1 THEN BEGIN
+                temp_artikelname := COPYSTR(save_artikelname, 1, STRPOS(save_artikelname, '/') - 1);
+                Artikel.SETFILTER("No. 2",'%1',temp_artikelname);
+                IF NOT Artikel.FINDFIRST THEN BEGIN
+                  temp_artikelname := temp_artikelname + COPYSTR(save_artikelname,
+                                      STRPOS(save_artikelname,FORMAT(chr)));
 
-                           END;
-                       END;
-                     IF k = 2 THEN
-                       BEGIN
-                         temp_artikelname := COPYSTR(save_artikelname, STRPOS(save_artikelname, '/') + 1);
-                         Artikel.SETFILTER("No. 2",'%1',temp_artikelname);
-                         IF NOT Artikel.FINDFIRST THEN
-                           BEGIN
-                             temp_artikelname := DELCHR(COPYSTR(Artikelname, 1, STRPOS(save_artikelname, '/') - 1),'=',
-                                               COPYSTR(temp_artikelname,1,STRPOS(temp_artikelname, FORMAT(chr)) - 1)) +
-                                               COPYSTR(temp_artikelname,STRPOS(temp_artikelname, '/') + 1);
-                           END;
-                       END;
-                     Artikelname := temp_artikelname;
-                   END;
+                END;
+              END;
+              IF k = 2 THEN BEGIN
+                temp_artikelname := COPYSTR(save_artikelname, STRPOS(save_artikelname, '/') + 1);
+                Artikel.SETFILTER("No. 2",'%1',temp_artikelname);
+                IF NOT Artikel.FINDFIRST THEN BEGIN
+                  temp_artikelname := DELCHR(COPYSTR(Artikelname, 1, STRPOS(save_artikelname, '/') - 1),'=',
+                                    COPYSTR(temp_artikelname,1,STRPOS(temp_artikelname, FORMAT(chr)) - 1)) +
+                                    COPYSTR(temp_artikelname,STRPOS(temp_artikelname, '/') + 1);
+                END;
+              END;
+              Artikelname := temp_artikelname;
+            END;
 
-                 Artikel.RESET;
-                 Artikel.SETFILTER("No. 2",'%1',Artikelname);
-                 IF Artikel.FINDFIRST THEN
-                   BEGIN
+            Artikel.RESET;
+            Artikel.SETFILTER("No. 2",'%1',Artikelname);
+            IF Artikel.FINDFIRST THEN BEGIN
 
-                     PL_DISTI_TEXT := FORMAT(Quelle_Sheet.Range(Spalte_DC+Quelle_j).Value);
-                     IF STRPOS(PL_DISTI_TEXT,FORMAT(chr)) <> 0 THEN
-                       PL_DISTI_TEXT := COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT,FORMAT(chr))-1);
-                     IF (STRLEN(DELCHR(PL_DISTI_TEXT,'=','ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ')) =
-                     (STRLEN(PL_DISTI_TEXT))) THEN
-                       BEGIN
-                          //falls sich 1000er Trennzeichen eingeschlichen hat wird dies entfernt
-                          IF STRLEN(COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1)) > 2 THEN
-                            PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','.');
+              PL_DISTI_TEXT := FORMAT(Quelle_Sheet.Range(Spalte_DC+Quelle_j).Value);
+              IF STRPOS(PL_DISTI_TEXT,FORMAT(chr)) <> 0 THEN
+                PL_DISTI_TEXT := COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT,FORMAT(chr))-1);
+              IF (STRLEN(DELCHR(PL_DISTI_TEXT,'=','ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ')) =
+              (STRLEN(PL_DISTI_TEXT))) THEN BEGIN
+                //falls sich 1000er Trennzeichen eingeschlichen hat wird dies entfernt
+                IF STRLEN(COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1)) > 2 THEN
+                  PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','.');
 
-                          IF STRPOS(PL_DISTI_TEXT, ',') <> 0  THEN
-                             BEGIN
-                               PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, ',')-1)
-                                          +',' +COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, ',')+1);
-                             END;
-                          IF STRPOS(PL_DISTI_TEXT, '.') <> 0  THEN
-                             BEGIN
-                               PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, '.')-1)
-                                          +','+COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1);
-                             END;
-                          IF PL_DISTI_TEXT = '' THEN PL_DISTI_TEXT := '0';
+                IF STRPOS(PL_DISTI_TEXT, ',') <> 0 THEN BEGIN
+                  PL_DISTI_TEXT := COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, ',')-1)
+                            + ',' + COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, ',')+1);
+                END;
+                IF STRPOS(PL_DISTI_TEXT, '.') <> 0 THEN BEGIN
+                  PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, '.')-1)
+                            + ',' + COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1);
+                END;
+                IF PL_DISTI_TEXT = '' THEN PL_DISTI_TEXT := '0';
 
-                          // Wenn manuell das Dollar Zeichen in die Zeile geraten ist
-                          IF STRPOS(PL_DISTI_TEXT,'$') <> 0 THEN
-                            BEGIN
-                              //PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','$');
-                              hilfs_PL_DISTI_TEXT := PL_DISTI_TEXT;
-                              hilfs_PL_DISTI_TEXT := DELCHR(hilfs_PL_DISTI_TEXT,'<>=',' ');
-                              hilfs_PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=',DELCHR(PL_DISTI_TEXT,'=','.,0123456789'));
-                              PL_DISTI_TEXT := hilfs_PL_DISTI_TEXT;
-                            END;
+                // Wenn manuell das Dollar Zeichen in die Zeile geraten ist
+                IF STRPOS(PL_DISTI_TEXT,'$') <> 0 THEN BEGIN
+                  //PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','$');
+                  hilfs_PL_DISTI_TEXT := PL_DISTI_TEXT;
+                  hilfs_PL_DISTI_TEXT := DELCHR(hilfs_PL_DISTI_TEXT,'<>=',' ');
+                  hilfs_PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=',DELCHR(PL_DISTI_TEXT,'=','.,0123456789'));
+                  PL_DISTI_TEXT := hilfs_PL_DISTI_TEXT;
+                END;
 
-                          EVALUATE(PL_DC,PL_DISTI_TEXT);
-                          PL_DC := ROUND(PL_DC,0.01);
-                       END
-                     ELSE
-                       PL_DC := 0;
+                EVALUATE(PL_DC,PL_DISTI_TEXT);
+                PL_DC := ROUND(PL_DC,0.01);
+              END ELSE
+                PL_DC := 0;
 
-                     aenderung := FALSE;
+              aenderung := FALSE;
 
-                     Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                     Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
+              Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+              Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
 
-                     //*********************************************************************************************
-                     //                                    EK-Preise updaten
-                     //*********************************************************************************************
+              //*********************************************************************************************
+              //                                    EK-Preise updaten
+              //*********************************************************************************************
 
-                     einkaufspreis.RESET;
-                     einkaufspreis.SETFILTER("Item No.",'%1',Artikel."No.");
-                     //einkaufspreis.SETFILTER("Vendor No.",'%1',Artikel."Vendor No.");
-                     IF einkaufspreis.FINDLAST THEN
-                       BEGIN
-                         IF (einkaufspreis."Direct Unit Cost" <> PL_DC) AND (PL_DC <> 0) THEN
-                           BEGIN
-                             Protokoll_Sheet.Range('B'+Protokoll_j).Value := FORMAT(einkaufspreis."Direct Unit Cost");
-                             Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
-                             Protokoll_Sheet.Range('D'+Protokoll_j).Value := FORMAT(PL_DC-einkaufspreis."Direct Unit Cost");
-                             IF einkaufspreis."Direct Unit Cost" > PL_DC THEN
-                               Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-11489280'; //grn
-                             IF einkaufspreis."Direct Unit Cost" < PL_DC THEN
-                               Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-16776961'; //rot
-                             Artikel.CALCFIELDS(Inventory,Artikel."Qty. on Purch. Order",Artikel."Qty. on Sales Order",
-                             Artikel."Menge in Angebot",Artikel."Menge im Rahmen");
-                             Protokoll_Sheet.Range('E'+Protokoll_j).Value := FORMAT(Artikel.Inventory);
-                             Protokoll_Sheet.Range('F'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Purch. Order");
-                             Protokoll_Sheet.Range('G'+Protokoll_j).Value := FORMAT(Artikel."Menge in Angebot");
-                             Protokoll_Sheet.Range('H'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Sales Order");
-                             Protokoll_Sheet.Range('I'+Protokoll_j).Value := FORMAT(Artikel."Menge im Rahmen");
+              einkaufspreis.RESET;
+              einkaufspreis.SETFILTER("Item No.",'%1',Artikel."No.");
+              //einkaufspreis.SETFILTER("Vendor No.",'%1',Artikel."Vendor No.");
+              IF einkaufspreis.FINDLAST THEN BEGIN
+                IF (einkaufspreis."Direct Unit Cost" <> PL_DC) AND (PL_DC <> 0) THEN BEGIN
+                  Protokoll_Sheet.Range('B'+Protokoll_j).Value := FORMAT(einkaufspreis."Direct Unit Cost");
+                  Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
+                  Protokoll_Sheet.Range('D'+Protokoll_j).Value := FORMAT(PL_DC-einkaufspreis."Direct Unit Cost");
+                  IF einkaufspreis."Direct Unit Cost" > PL_DC THEN
+                    Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-11489280'; //grn
+                  IF einkaufspreis."Direct Unit Cost" < PL_DC THEN
+                    Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-16776961'; //rot
+                  Artikel.CALCFIELDS(Inventory,Artikel."Qty. on Purch. Order",Artikel."Qty. on Sales Order",
+                  Artikel."Menge in Angebot",Artikel."Menge im Rahmen");
+                  Protokoll_Sheet.Range('E'+Protokoll_j).Value := FORMAT(Artikel.Inventory);
+                  Protokoll_Sheet.Range('F'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Purch. Order");
+                  Protokoll_Sheet.Range('G'+Protokoll_j).Value := FORMAT(Artikel."Menge in Angebot");
+                  Protokoll_Sheet.Range('H'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Sales Order");
+                  Protokoll_Sheet.Range('I'+Protokoll_j).Value := FORMAT(Artikel."Menge im Rahmen");
 
-                             IF testlauf = FALSE THEN
-                               BEGIN
-                                 einkaufspreis."Direct Unit Cost" := PL_DC;
-                                 einkaufspreis.MODIFY(TRUE);
-                                 Artikel.MODIFY(TRUE);
-                               END;
+                  IF testlauf = FALSE THEN BEGIN
+                    einkaufspreis."Direct Unit Cost" := PL_DC;
+                    einkaufspreis.MODIFY(TRUE);
+                    Artikel.MODIFY(TRUE);
+                  END;
 
-                             neuer_preis += 1;
-                             aenderung := TRUE;
+                  neuer_preis += 1;
+                  aenderung := TRUE;
 
-                           END
-                         ELSE
-                           BEGIN
-                             Protokoll_Sheet.Range('B'+Protokoll_j).Value := FORMAT(einkaufspreis."Direct Unit Cost");
-                             Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'OK';
-                           END;
-                       END;
+                END ELSE BEGIN
+                  Protokoll_Sheet.Range('B'+Protokoll_j).Value := FORMAT(einkaufspreis."Direct Unit Cost");
+                  Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'OK';
+                END;
+              END;
 
-                       IF PL_DC <> 0 THEN
-                         BEGIN
-                           IF testlauf = FALSE THEN
-                             BEGIN
-                               Artikel."Update letzte Preisliste":=TRUE;
-                               Artikel.MODIFY;
-                             END;
-                         END;
+                IF PL_DC <> 0 THEN BEGIN
+                  IF testlauf = FALSE THEN BEGIN
+                    Artikel."Update letzte Preisliste" := TRUE;
+                    Artikel.MODIFY;
+                  END;
+                END;
 
-                     Protokoll_j := INCSTR(Protokoll_j);
+              Protokoll_j := INCSTR(Protokoll_j);
 
-                   END
-                 ELSE
-                   BEGIN
-                     Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                     Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'nicht angelegt';
-                     Protokoll_j := INCSTR(Protokoll_j);
-                   END;
+            END ELSE BEGIN
+              Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+              Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'nicht angelegt';
+              Protokoll_j := INCSTR(Protokoll_j);
+            END;
 
-               END;
+          END;
 
-           END;
+        END;
 
         //*********************************************************************************************
         //                                       Abbruchbedingung
@@ -1051,7 +988,7 @@ OBJECT Page 50103 Preislisten Importe Excel
         ELSE
           leere_zeilen := 0;
 
-        Quelle_j:=INCSTR(Quelle_j);                              // n„chste Zeile Importdatei
+        Quelle_j := INCSTR(Quelle_j);                            // n„chste Zeile Importdatei
 
       UNTIL (Max_Datens„tze = Quelle_j) OR (leere_zeilen = 15);  // Nach 15 Zeilen ohne Artikel ist Schluss
 
@@ -1072,7 +1009,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       REPEAT
       UNTIL ISCLEAR(Protokoll_Excel) AND ISCLEAR(Protokoll_Book) AND ISCLEAR(Protokoll_Sheet);
 
-      MESSAGE('Abgleich der Artikel abgeschlossen.'+ '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\'+
+      MESSAGE('Abgleich der Artikel abgeschlossen.' + '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\' +
               'Excel Datens„tze: %3 (Ausgewerte Tabs: 1)\',neuer_preis,sonstige_aenderungen,excel_datens„tze);
     END;
 
@@ -1131,7 +1068,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       CREATE(Protokoll_Excel,FALSE,TRUE);                                    // erzeugt excel
       Protokoll_Book := Protokoll_Excel.Workbooks.Add(-4167);                // legt neue datei in excel an
       Protokoll_Sheet := Protokoll_Excel.ActiveSheet;                        // definiert aktives worksheet
-      Protokoll_j:='2';
+      Protokoll_j := '2';
 
       Protokoll_Sheet.Range('A'+'1').Value:= 'Artikelnr';                    // šberschriften der 2. Datei
       Protokoll_Sheet.Range('A:A').ColumnWidth := 20;
@@ -1155,151 +1092,128 @@ OBJECT Page 50103 Preislisten Importe Excel
       EVALUATE(a,Quelle_j);
       excel_datens„tze := Quelle_Sheet.UsedRange.Rows.Count - a + 1;
 
-      IF testlauf = FALSE THEN
-        BEGIN
-          IF excel_datens„tze > 100 THEN
-            IF CONFIRM('Es konnte mehr als 100 Eintr„ge in der Quelldatei gefunden werden.\' +
-                       'Soll der Status Update letzte Preisliste fr alle Artikel zurckgesetzt und neu ' +
-                       'bewertet werden?',TRUE) THEN
-              BEGIN
-                Artikel.RESET;
-                Artikel.SETFILTER("Manufacturer Code",'%1','01');
-                IF Artikel.FINDFIRST THEN
-                  Artikel.MODIFYALL("Update letzte Preisliste",FALSE);
-              END;
-        END;
+      IF testlauf = FALSE THEN BEGIN
+        IF excel_datens„tze > 100 THEN
+          IF CONFIRM('Es konnte mehr als 100 Eintr„ge in der Quelldatei gefunden werden.\' +
+                      'Soll der Status Update letzte Preisliste fr alle Artikel zurckgesetzt und neu ' +
+                      'bewertet werden?',TRUE) THEN BEGIN
+            Artikel.RESET;
+            Artikel.SETFILTER("Manufacturer Code",'%1','01');
+            IF Artikel.FINDFIRST THEN
+              Artikel.MODIFYALL("Update letzte Preisliste",FALSE);
+          END;
+      END;
 
       REPEAT
 
-         IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value)) <= 40 THEN
-           BEGIN
-             Artikelname := FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value);
-             Artikelname := DELCHR(Artikelname,'<',FORMAT(chr));
-             Artikelname := DELCHR(Artikelname,'>',FORMAT(chr));
-           END;
+        IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value)) <= 40 THEN BEGIN
+          Artikelname := FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value);
+          Artikelname := DELCHR(Artikelname,'<',FORMAT(chr));
+          Artikelname := DELCHR(Artikelname,'>',FORMAT(chr));
+        END;
 
-         IF Artikelname = '' THEN
-           BEGIN
-           END
-         ELSE
-           BEGIN
-             Artikel.RESET;
-             Artikel.SETFILTER("No. 2",'%1',Artikelname);
-             IF NOT Artikel.FINDFIRST THEN
-               BEGIN
-                 Artikelname := 'LF' + Artikelname;
-                 Artikel.SETFILTER("No. 2",'%1',Artikelname);
-               END;
-             IF Artikel.FINDFIRST THEN
-               BEGIN
+        IF Artikelname <> '' THEN BEGIN
+          Artikel.RESET;
+          Artikel.SETFILTER("No. 2",'%1',Artikelname);
+          IF NOT Artikel.FINDFIRST THEN BEGIN
+            Artikelname := 'LF' + Artikelname;
+            Artikel.SETFILTER("No. 2",'%1',Artikelname);
+          END;
+          IF Artikel.FINDFIRST THEN BEGIN
 
-                 PL_DISTI_TEXT := FORMAT(Quelle_Sheet.Range(Spalte_DC+Quelle_j).Value);
-                 IF STRPOS(PL_DISTI_TEXT,FORMAT(chr)) <> 0 THEN
-                   PL_DISTI_TEXT := COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT,FORMAT(chr))-1);
-                 IF (STRLEN(DELCHR(PL_DISTI_TEXT,'=','ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ')) =
-                 (STRLEN(PL_DISTI_TEXT))) THEN
-                   BEGIN
-                      //falls sich 1000er Trennzeichen eingeschlichen hat wird dies entfernt
-                      IF STRLEN(COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1)) > 2 THEN
-                        PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','.');
+            PL_DISTI_TEXT := FORMAT(Quelle_Sheet.Range(Spalte_DC+Quelle_j).Value);
+            IF STRPOS(PL_DISTI_TEXT,FORMAT(chr)) <> 0 THEN
+              PL_DISTI_TEXT := COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT,FORMAT(chr))-1);
+            IF (STRLEN(DELCHR(PL_DISTI_TEXT,'=','ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ')) =
+            (STRLEN(PL_DISTI_TEXT))) THEN BEGIN
+              //falls sich 1000er Trennzeichen eingeschlichen hat wird dies entfernt
+              IF STRLEN(COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1)) > 2 THEN
+                PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','.');
 
-                      IF STRPOS(PL_DISTI_TEXT, ',') <> 0  THEN
-                         BEGIN
-                           PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, ',')-1)
-                                      +',' +COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, ',')+1);
-                         END;
-                      IF STRPOS(PL_DISTI_TEXT, '.') <> 0  THEN
-                         BEGIN
-                           PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, '.')-1)
-                                      +','+COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1);
-                         END;
-                      IF PL_DISTI_TEXT = '' THEN PL_DISTI_TEXT := '0';
+              IF STRPOS(PL_DISTI_TEXT, ',') <> 0 THEN BEGIN
+                PL_DISTI_TEXT := COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, ',')-1)
+                          + ',' + COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, ',')+1);
+              END;
+              IF STRPOS(PL_DISTI_TEXT, '.') <> 0 THEN BEGIN
+                PL_DISTI_TEXT := COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, '.')-1)
+                          + ',' + COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1);
+              END;
+              IF PL_DISTI_TEXT = '' THEN PL_DISTI_TEXT := '0';
 
-                      // Wenn manuell das Dollar Zeichen in die Zeile geraten ist
-                      IF STRPOS(PL_DISTI_TEXT,'$') <> 0 THEN
-                        BEGIN
-                          //PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','$');
-                          hilfs_PL_DISTI_TEXT := PL_DISTI_TEXT;
-                          hilfs_PL_DISTI_TEXT := DELCHR(hilfs_PL_DISTI_TEXT,'<>=',' ');
-                          hilfs_PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=',DELCHR(PL_DISTI_TEXT,'=','.,0123456789'));
-                          PL_DISTI_TEXT := hilfs_PL_DISTI_TEXT;
-                        END;
+              // Wenn manuell das Dollar Zeichen in die Zeile geraten ist
+              IF STRPOS(PL_DISTI_TEXT,'$') <> 0 THEN BEGIN
+                //PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','$');
+                hilfs_PL_DISTI_TEXT := PL_DISTI_TEXT;
+                hilfs_PL_DISTI_TEXT := DELCHR(hilfs_PL_DISTI_TEXT,'<>=',' ');
+                hilfs_PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=',DELCHR(PL_DISTI_TEXT,'=','.,0123456789'));
+                PL_DISTI_TEXT := hilfs_PL_DISTI_TEXT;
+              END;
 
-                      EVALUATE(PL_DC,PL_DISTI_TEXT);
-                      PL_DC := ROUND(PL_DC,0.01);
-                   END
-                 ELSE
-                   PL_DC := 0;
+              EVALUATE(PL_DC,PL_DISTI_TEXT);
+              PL_DC := ROUND(PL_DC,0.01);
+            END ELSE
+              PL_DC := 0;
 
-                 aenderung := FALSE;
+            aenderung := FALSE;
 
-                 Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                 Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
+            Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+            Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
 
-                 //*********************************************************************************************
-                 //                                    EK-Preise updaten
-                 //*********************************************************************************************
+            //*********************************************************************************************
+            //                                    EK-Preise updaten
+            //*********************************************************************************************
 
-                 einkaufspreis.RESET;
-                 einkaufspreis.SETFILTER("Item No.",'%1',Artikel."No.");
-                 //einkaufspreis.SETFILTER("Vendor No.",'%1',Artikel."Vendor No.");
-                 IF einkaufspreis.FINDLAST THEN
-                   BEGIN
-                     IF (einkaufspreis."Direct Unit Cost" <> PL_DC) AND (PL_DC <> 0) THEN
-                       BEGIN
-                         Protokoll_Sheet.Range('B'+Protokoll_j).Value := FORMAT(einkaufspreis."Direct Unit Cost");
-                         Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
-                         Protokoll_Sheet.Range('D'+Protokoll_j).Value := FORMAT(PL_DC-einkaufspreis."Direct Unit Cost");
-                         IF einkaufspreis."Direct Unit Cost" > PL_DC THEN
-                           Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-11489280'; //grn
-                         IF einkaufspreis."Direct Unit Cost" < PL_DC THEN
-                           Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-16776961'; //rot
-                         Artikel.CALCFIELDS(Inventory,Artikel."Qty. on Purch. Order",Artikel."Qty. on Sales Order",
-                         Artikel."Menge in Angebot",Artikel."Menge im Rahmen");
-                         Protokoll_Sheet.Range('E'+Protokoll_j).Value := FORMAT(Artikel.Inventory);
-                         Protokoll_Sheet.Range('F'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Purch. Order");
-                         Protokoll_Sheet.Range('G'+Protokoll_j).Value := FORMAT(Artikel."Menge in Angebot");
-                         Protokoll_Sheet.Range('H'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Sales Order");
-                         Protokoll_Sheet.Range('I'+Protokoll_j).Value := FORMAT(Artikel."Menge im Rahmen");
+            einkaufspreis.RESET;
+            einkaufspreis.SETFILTER("Item No.",'%1',Artikel."No.");
+            //einkaufspreis.SETFILTER("Vendor No.",'%1',Artikel."Vendor No.");
+            IF einkaufspreis.FINDLAST THEN BEGIN
+              IF (einkaufspreis."Direct Unit Cost" <> PL_DC) AND (PL_DC <> 0) THEN BEGIN
+                Protokoll_Sheet.Range('B'+Protokoll_j).Value := FORMAT(einkaufspreis."Direct Unit Cost");
+                Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
+                Protokoll_Sheet.Range('D'+Protokoll_j).Value := FORMAT(PL_DC-einkaufspreis."Direct Unit Cost");
+                IF einkaufspreis."Direct Unit Cost" > PL_DC THEN
+                  Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-11489280'; //grn
+                IF einkaufspreis."Direct Unit Cost" < PL_DC THEN
+                  Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-16776961'; //rot
+                Artikel.CALCFIELDS(Inventory,Artikel."Qty. on Purch. Order",Artikel."Qty. on Sales Order",
+                Artikel."Menge in Angebot",Artikel."Menge im Rahmen");
+                Protokoll_Sheet.Range('E'+Protokoll_j).Value := FORMAT(Artikel.Inventory);
+                Protokoll_Sheet.Range('F'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Purch. Order");
+                Protokoll_Sheet.Range('G'+Protokoll_j).Value := FORMAT(Artikel."Menge in Angebot");
+                Protokoll_Sheet.Range('H'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Sales Order");
+                Protokoll_Sheet.Range('I'+Protokoll_j).Value := FORMAT(Artikel."Menge im Rahmen");
 
-                         IF testlauf = FALSE THEN
-                           BEGIN
-                             einkaufspreis."Direct Unit Cost" := PL_DC;
-                             einkaufspreis.MODIFY(TRUE);
-                             Artikel.MODIFY(TRUE);
-                           END;
+                IF testlauf = FALSE THEN BEGIN
+                  einkaufspreis."Direct Unit Cost" := PL_DC;
+                  einkaufspreis.MODIFY(TRUE);
+                  Artikel.MODIFY(TRUE);
+                END;
 
-                         neuer_preis += 1;
-                         aenderung := TRUE;
+                neuer_preis += 1;
+                aenderung := TRUE;
 
-                       END
-                     ELSE
-                       BEGIN
-                         Protokoll_Sheet.Range('B'+Protokoll_j).Value := FORMAT(einkaufspreis."Direct Unit Cost");
-                         Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'OK';
-                       END;
-                   END;
+              END ELSE BEGIN
+                Protokoll_Sheet.Range('B'+Protokoll_j).Value := FORMAT(einkaufspreis."Direct Unit Cost");
+                Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'OK';
+              END;
+            END;
 
-                   IF PL_DC <> 0 THEN
-                     BEGIN
-                       IF testlauf = FALSE THEN
-                         BEGIN
-                           Artikel."Update letzte Preisliste":=TRUE;
-                           Artikel.MODIFY;
-                         END;
-                     END;
+            IF PL_DC <> 0 THEN BEGIN
+              IF testlauf = FALSE THEN BEGIN
+                Artikel."Update letzte Preisliste" := TRUE;
+                Artikel.MODIFY;
+              END;
+            END;
 
-                 Protokoll_j := INCSTR(Protokoll_j);
+            Protokoll_j := INCSTR(Protokoll_j);
 
-               END
-             ELSE
-               BEGIN
-                 Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                 Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'nicht angelegt';
-                 Protokoll_j := INCSTR(Protokoll_j);
-               END;
+          END ELSE BEGIN
+            Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+            Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'nicht angelegt';
+            Protokoll_j := INCSTR(Protokoll_j);
+          END;
 
-           END;
+        END;
 
         //*********************************************************************************************
         //                                       Abbruchbedingung
@@ -1311,7 +1225,7 @@ OBJECT Page 50103 Preislisten Importe Excel
         ELSE
           leere_zeilen := 0;
 
-        Quelle_j:=INCSTR(Quelle_j);                              // n„chste Zeile Importdatei
+        Quelle_j := INCSTR(Quelle_j);                            // n„chste Zeile Importdatei
 
       UNTIL (Max_Datens„tze = Quelle_j) OR (leere_zeilen = 15);  // Nach 15 Zeilen ohne Artikel ist Schluss
 
@@ -1332,7 +1246,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       REPEAT
       UNTIL ISCLEAR(Protokoll_Excel) AND ISCLEAR(Protokoll_Book) AND ISCLEAR(Protokoll_Sheet);
 
-      MESSAGE('Abgleich der Artikel abgeschlossen.'+ '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\'+
+      MESSAGE('Abgleich der Artikel abgeschlossen.' + '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\' +
               'Excel Datens„tze: %3 (Ausgewerte Tabs: 1)\',neuer_preis,sonstige_aenderungen,excel_datens„tze);
     END;
 
@@ -1375,7 +1289,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       IF CREATE(Quelle_Excel,FALSE,TRUE) THEN BEGIN END ELSE ERROR('Cannot start Excel Application.');
       Quelle_Book := Quelle_Excel.Workbooks._Open(filename,0,TRUE);
       Quelle_Sheet := Quelle_Book.Worksheets.Item(1);
-      Quelle_j:='2';
+      Quelle_j := '2';
 
       neuer_preis := 0;
       sonstige_aenderungen := 0;
@@ -1433,7 +1347,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       CREATE(Protokoll_Excel,FALSE,TRUE);                                    // erzeugt excel
       Protokoll_Book := Protokoll_Excel.Workbooks.Add(-4167);                // legt neue datei in excel an
       Protokoll_Sheet := Protokoll_Excel.ActiveSheet;                        // definiert aktives worksheet
-      Protokoll_j:='2';
+      Protokoll_j := '2';
 
       Protokoll_Sheet.Range('A'+'1').Value:= 'Artikelnr';                    // šberschriften der 2. Datei
       Protokoll_Sheet.Range('A:A').ColumnWidth := 20;
@@ -1465,274 +1379,243 @@ OBJECT Page 50103 Preislisten Importe Excel
       EVALUATE(a,Quelle_j);
       excel_datens„tze := Quelle_Sheet.UsedRange.Rows.Count - a + 1;
 
-      IF testlauf = FALSE THEN
-        BEGIN
-          IF excel_datens„tze > 99 THEN
-            IF CONFIRM('Es konnte mehr als 100 Eintr„ge in der Quelldatei gefunden werden.\' +
-                       'Soll der Status Update letzte Preisliste fr alle Artikel zurckgesetzt und neu ' +
-                       'bewertet werden?',TRUE) THEN
-              BEGIN
-                Artikel.RESET;
-                Artikel.SETFILTER("Manufacturer Code",'%1','69');
-                IF Artikel.FINDFIRST THEN
-                  Artikel.MODIFYALL("Update letzte Preisliste",FALSE);
-              END;
-        END;
+      IF testlauf = FALSE THEN BEGIN
+        IF excel_datens„tze > 99 THEN
+          IF CONFIRM('Es konnte mehr als 100 Eintr„ge in der Quelldatei gefunden werden.\' +
+                      'Soll der Status Update letzte Preisliste fr alle Artikel zurckgesetzt und neu ' +
+                      'bewertet werden?',TRUE) THEN BEGIN
+            Artikel.RESET;
+            Artikel.SETFILTER("Manufacturer Code",'%1','69');
+            IF Artikel.FINDFIRST THEN
+              Artikel.MODIFYALL("Update letzte Preisliste",FALSE);
+          END;
+      END;
 
       REPEAT
 
-         IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Part_Chips+Quelle_j).Value)) <= 40 THEN
-           Artikelname := FORMAT(Quelle_Sheet.Range(Spalte_Part_Chips+Quelle_j).Value);
-         //PL_msl := FORMAT(Quelle_Sheet.Range(Spalte_MSL+Quelle_j).Value);
-         PL_DISTI_TEXT := FORMAT(Quelle_Sheet.Range(Spalte_DC_Chips+Quelle_j).Value);
-         PL_LF := FORMAT(Quelle_Sheet.Range(Spalte_LF_Chips+Quelle_j).Value);
-         PL_REG := FORMAT(Quelle_Sheet.Range(Spalte_Reg_Chips+Quelle_j).Value);
-         PL_Class := FORMAT(Quelle_Sheet.Range(Spalte_Class_Chips+Quelle_j).Value);
-         PL_Status := FORMAT(Quelle_Sheet.Range(Spalte_Status_Chips+Quelle_j).Value);
-         IF UPPERCASE(PL_Status) = 'OBSOLETE SELLABLE' THEN
-           PL_Status := 'EOL SELLABLE';
-         IF (FORMAT(Quelle_Sheet.Range(Spalte_Mult_Chips+Quelle_j).Value) <> '') AND
-         (FORMAT(Quelle_Sheet.Range(Spalte_Mult_Chips+Quelle_j).Value) <> 'TBA') THEN
-           EVALUATE(PL_VPE,FORMAT(Quelle_Sheet.Range(Spalte_Mult_Chips+Quelle_j).Value))
-         ELSE
-           PL_VPE := 0;
-         IF (FORMAT(Quelle_Sheet.Range(Spalte_MOQ_Chips+Quelle_j).Value) <> '') AND
-         (FORMAT(Quelle_Sheet.Range(Spalte_MOQ_Chips+Quelle_j).Value) <> 'TBA') THEN
-           EVALUATE(PL_MOQ,FORMAT(Quelle_Sheet.Range(Spalte_MOQ_Chips+Quelle_j).Value))
-         ELSE
-           PL_MOQ := 0;
+        IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Part_Chips+Quelle_j).Value)) <= 40 THEN
+          Artikelname := FORMAT(Quelle_Sheet.Range(Spalte_Part_Chips+Quelle_j).Value);
+        //PL_msl := FORMAT(Quelle_Sheet.Range(Spalte_MSL+Quelle_j).Value);
+        PL_DISTI_TEXT := FORMAT(Quelle_Sheet.Range(Spalte_DC_Chips+Quelle_j).Value);
+        PL_LF := FORMAT(Quelle_Sheet.Range(Spalte_LF_Chips+Quelle_j).Value);
+        PL_REG := FORMAT(Quelle_Sheet.Range(Spalte_Reg_Chips+Quelle_j).Value);
+        PL_Class := FORMAT(Quelle_Sheet.Range(Spalte_Class_Chips+Quelle_j).Value);
+        PL_Status := FORMAT(Quelle_Sheet.Range(Spalte_Status_Chips+Quelle_j).Value);
+        IF UPPERCASE(PL_Status) = 'OBSOLETE SELLABLE' THEN
+          PL_Status := 'EOL SELLABLE';
+        IF (FORMAT(Quelle_Sheet.Range(Spalte_Mult_Chips+Quelle_j).Value) <> '') AND
+        (FORMAT(Quelle_Sheet.Range(Spalte_Mult_Chips+Quelle_j).Value) <> 'TBA') THEN
+          EVALUATE(PL_VPE,FORMAT(Quelle_Sheet.Range(Spalte_Mult_Chips+Quelle_j).Value))
+        ELSE
+          PL_VPE := 0;
+        IF (FORMAT(Quelle_Sheet.Range(Spalte_MOQ_Chips+Quelle_j).Value) <> '') AND
+        (FORMAT(Quelle_Sheet.Range(Spalte_MOQ_Chips+Quelle_j).Value) <> 'TBA') THEN
+          EVALUATE(PL_MOQ,FORMAT(Quelle_Sheet.Range(Spalte_MOQ_Chips+Quelle_j).Value))
+        ELSE
+          PL_MOQ := 0;
 
-         IF (STRLEN(DELCHR(PL_DISTI_TEXT,'=','ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')) =
-         (STRLEN(PL_DISTI_TEXT))) THEN
-           BEGIN
-              //falls sich 1000er Trennzeichen eingeschlichen hat wird dies entfernt
-              IF STRLEN(COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1)) > 2 THEN
-                PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','.');
+        IF (STRLEN(DELCHR(PL_DISTI_TEXT,'=','ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')) =
+        (STRLEN(PL_DISTI_TEXT))) THEN BEGIN
+          //falls sich 1000er Trennzeichen eingeschlichen hat wird dies entfernt
+          IF STRLEN(COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1)) > 2 THEN
+            PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','.');
 
-              IF STRPOS(PL_DISTI_TEXT, ',') <> 0  THEN
-                 BEGIN
-                   PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, ',')-1)
-                              +',' +COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, ',')+1);
-                 END;
-              IF STRPOS(PL_DISTI_TEXT, '.') <> 0  THEN
-                 BEGIN
-                   PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, '.')-1)
-                              +','+COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1);
-                 END;
-              IF PL_DISTI_TEXT = '' THEN PL_DISTI_TEXT := '0';
+          IF STRPOS(PL_DISTI_TEXT, ',') <> 0 THEN BEGIN
+            PL_DISTI_TEXT := COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, ',')-1)
+                      + ',' + COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, ',')+1);
+          END;
+          IF STRPOS(PL_DISTI_TEXT, '.') <> 0 THEN BEGIN
+            PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, '.')-1)
+                      + ',' + COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1);
+          END;
+          IF PL_DISTI_TEXT = '' THEN PL_DISTI_TEXT := '0';
 
-              // Wenn manuell das Dollar Zeichen in die Zeile geraten ist
-              IF STRPOS(PL_DISTI_TEXT,'$') <> 0 THEN
-                BEGIN
-                  //PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','$');
-                  hilfs_PL_DISTI_TEXT := PL_DISTI_TEXT;
-                  hilfs_PL_DISTI_TEXT := DELCHR(hilfs_PL_DISTI_TEXT,'<>=',' ');
-                  hilfs_PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=',DELCHR(PL_DISTI_TEXT,'=','.,0123456789'));
-                  PL_DISTI_TEXT := hilfs_PL_DISTI_TEXT;
+          // Wenn manuell das Dollar Zeichen in die Zeile geraten ist
+          IF STRPOS(PL_DISTI_TEXT,'$') <> 0 THEN BEGIN
+            //PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','$');
+            hilfs_PL_DISTI_TEXT := PL_DISTI_TEXT;
+            hilfs_PL_DISTI_TEXT := DELCHR(hilfs_PL_DISTI_TEXT,'<>=',' ');
+            hilfs_PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=',DELCHR(PL_DISTI_TEXT,'=','.,0123456789'));
+            PL_DISTI_TEXT := hilfs_PL_DISTI_TEXT;
+          END;
+
+          EVALUATE(PL_DC,PL_DISTI_TEXT);
+          PL_DC := ROUND(PL_DC,0.01);
+        END ELSE
+          PL_DC := 0;
+
+        IF Artikelname <> '' THEN BEGIN
+          Artikel.RESET;
+          Artikel.SETFILTER("No. 2",'%1',Artikelname);
+          IF Artikel.FINDFIRST THEN BEGIN
+
+            aenderung := FALSE;
+
+            {
+            IF (Artikel."MS-Level" <> PL_msl) AND (PL_msl <> '') AND (STRPOS(PL_msl) = 1) THEN BEGIN
+              IF testlauf = FALSE THEN BEGIN
+                Artikel."MS-Level" := PL_msl;
+                Artikel.MODIFY(TRUE);
+              END;
+              sonstige_aenderungen += 1;
+              aenderung := TRUE;
+              Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+              Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'MS-Level ge„ndert';
+            END;
+            }
+
+            //*********************************************************************************************
+            //                                    EK-Preise updaten
+            //*********************************************************************************************
+
+            einkaufspreis.RESET;
+            einkaufspreis.SETFILTER(einkaufspreis."Item No.",'%1',Artikel."No.");
+            //einkaufspreis.SETFILTER(einkaufspreis."Vendor No.",'%1',Artikel."Vendor No.");
+            IF einkaufspreis.FINDLAST THEN BEGIN
+              IF (einkaufspreis."Direct Unit Cost" <> PL_DC) AND (PL_DC <> 0) THEN BEGIN
+                Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+                Protokoll_Sheet.Range('B'+Protokoll_j).Value := FORMAT(einkaufspreis."Direct Unit Cost");
+                Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
+                Protokoll_Sheet.Range('D'+Protokoll_j).Value := FORMAT(PL_DC-einkaufspreis."Direct Unit Cost");
+                IF einkaufspreis."Direct Unit Cost" > PL_DC THEN
+                  Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-11489280'; //grn
+                IF einkaufspreis."Direct Unit Cost" < PL_DC THEN
+                  Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-16776961'; //rot
+                Artikel.CALCFIELDS(Inventory,Artikel."Qty. on Purch. Order",Artikel."Qty. on Sales Order",
+                Artikel."Menge in Angebot",Artikel."Menge im Rahmen");
+                Protokoll_Sheet.Range('E'+Protokoll_j).Value := FORMAT(Artikel.Inventory);
+                Protokoll_Sheet.Range('F'+Protokoll_j).Value := FORMAT(Artikel."Menge in Angebot");
+                Protokoll_Sheet.Range('G'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Sales Order");
+                Protokoll_Sheet.Range('H'+Protokoll_j).Value := FORMAT(Artikel."Menge im Rahmen");
+                Protokoll_Sheet.Range('I'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Purch. Order");
+                Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'X';
+
+                IF testlauf = FALSE THEN BEGIN
+                  einkaufspreis."Direct Unit Cost" := PL_DC;
+                  einkaufspreis.MODIFY(TRUE);
+                  Artikel.MODIFY(TRUE);
                 END;
 
-              EVALUATE(PL_DC,PL_DISTI_TEXT);
-              PL_DC := ROUND(PL_DC,0.01);
-           END
-         ELSE
-           PL_DC := 0;
+                neuer_preis += 1;
+                aenderung := TRUE;
 
-         IF Artikelname = '' THEN
-           BEGIN
-           END
-         ELSE
-           BEGIN
-             Artikel.RESET;
-             Artikel.SETFILTER("No. 2",'%1',Artikelname);
-             IF Artikel.FINDFIRST THEN
-               BEGIN
+              END;
+            END;
 
-                 aenderung := FALSE;
+            //*********************************************************************************************
+            //                                       MOQ und VPE berprfen
+            //*********************************************************************************************
 
-                 {
-                 IF (Artikel."MS-Level" <> PL_msl) AND (PL_msl <> '') AND (STRPOS(PL_msl) = 1) THEN
-                   BEGIN
-                     IF testlauf = FALSE THEN
-                       BEGIN
-                         Artikel."MS-Level" := PL_msl;
-                         Artikel.MODIFY(TRUE);
-                       END;
-                     sonstige_aenderungen += 1;
-                     aenderung := TRUE;
-                     Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                     Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'MS-Level ge„ndert';
-                   END;
-                 }
+            IF (Artikel.Mindestbestellmenge <> PL_MOQ) AND (PL_MOQ <> 0) THEN BEGIN
+              IF testlauf = FALSE THEN BEGIN
+                Artikel.Mindestbestellmenge := PL_MOQ;
+                Artikel.MODIFY(TRUE);
+              END;
+              sonstige_aenderungen += 1;
+              aenderung := TRUE;
+              Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+              Protokoll_Sheet.Range('K'+Protokoll_j).Value := 'X';
+            END;
 
-                 //*********************************************************************************************
-                 //                                    EK-Preise updaten
-                 //*********************************************************************************************
+            IF (Artikel.Verpackungsmenge <> PL_VPE) AND (PL_VPE <> 0) THEN BEGIN
+              IF testlauf = FALSE THEN BEGIN
+                Artikel.Verpackungsmenge := PL_VPE;
+                Artikel.MODIFY(TRUE);
+              END;
+              sonstige_aenderungen += 1;
+              aenderung := TRUE;
+              Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+              Protokoll_Sheet.Range('L'+Protokoll_j).Value := 'X';
+            END;
 
-                 einkaufspreis.RESET;
-                 einkaufspreis.SETFILTER(einkaufspreis."Item No.",'%1',Artikel."No.");
-                 //einkaufspreis.SETFILTER(einkaufspreis."Vendor No.",'%1',Artikel."Vendor No.");
-                 IF einkaufspreis.FINDLAST THEN
-                   BEGIN
-                     IF (einkaufspreis."Direct Unit Cost" <> PL_DC) AND (PL_DC <> 0) THEN
-                       BEGIN
-                         Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                         Protokoll_Sheet.Range('B'+Protokoll_j).Value := FORMAT(einkaufspreis."Direct Unit Cost");
-                         Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
-                         Protokoll_Sheet.Range('D'+Protokoll_j).Value := FORMAT(PL_DC-einkaufspreis."Direct Unit Cost");
-                         IF einkaufspreis."Direct Unit Cost" > PL_DC THEN
-                           Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-11489280'; //grn
-                         IF einkaufspreis."Direct Unit Cost" < PL_DC THEN
-                           Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-16776961'; //rot
-                         Artikel.CALCFIELDS(Inventory,Artikel."Qty. on Purch. Order",Artikel."Qty. on Sales Order",
-                         Artikel."Menge in Angebot",Artikel."Menge im Rahmen");
-                         Protokoll_Sheet.Range('E'+Protokoll_j).Value := FORMAT(Artikel.Inventory);
-                         Protokoll_Sheet.Range('F'+Protokoll_j).Value := FORMAT(Artikel."Menge in Angebot");
-                         Protokoll_Sheet.Range('G'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Sales Order");
-                         Protokoll_Sheet.Range('H'+Protokoll_j).Value := FORMAT(Artikel."Menge im Rahmen");
-                         Protokoll_Sheet.Range('I'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Purch. Order");
-                         Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'X';
+            //*********************************************************************************************
+            //                                     Lead Free berprfen
+            //*********************************************************************************************
 
-                         IF testlauf = FALSE THEN
-                           BEGIN
-                             einkaufspreis."Direct Unit Cost" := PL_DC;
-                             einkaufspreis.MODIFY(TRUE);
-                             Artikel.MODIFY(TRUE);
-                           END;
+            IF (STRPOS(UPPERCASE(PL_LF),'ROHS AND LEAD FREE') <> 0) AND (Artikel."Lead Free" = FALSE) THEN BEGIN
+              IF testlauf = FALSE THEN BEGIN
+                Artikel."Lead Free" := TRUE;
+                Artikel.MODIFY(TRUE);
+              END;
+              sonstige_aenderungen += 1;
+              aenderung := TRUE;
+              Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+              Protokoll_Sheet.Range('M'+Protokoll_j).Value := 'X';
+            END;
 
-                         neuer_preis += 1;
-                         aenderung := TRUE;
-                       END;
-                   END;
+            IF (STRPOS(UPPERCASE(PL_LF),'NO') <> 0) AND (Artikel."Lead Free" = TRUE) THEN BEGIN
+              IF testlauf = FALSE THEN BEGIN
+                Artikel."Lead Free" := FALSE;
+                Artikel.MODIFY(TRUE);
+              END;
+              sonstige_aenderungen += 1;
+              aenderung := TRUE;
+              Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+              Protokoll_Sheet.Range('M'+Protokoll_j).Value := 'X';
+            END;
 
-                 //*********************************************************************************************
-                 //                                       MOQ und VPE berprfen
-                 //*********************************************************************************************
+            //*********************************************************************************************
+            //                                    Registrierbar berprfen
+            //*********************************************************************************************
 
-                 IF (Artikel.Mindestbestellmenge <> PL_MOQ) AND (PL_MOQ <> 0) THEN
-                   BEGIN
-                     IF testlauf = FALSE THEN
-                       BEGIN
-                         Artikel.Mindestbestellmenge := PL_MOQ;
-                         Artikel.MODIFY(TRUE);
-                       END;
-                     sonstige_aenderungen += 1;
-                     aenderung := TRUE;
-                     Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                     Protokoll_Sheet.Range('K'+Protokoll_j).Value := 'X';
-                   END;
+            IF (STRPOS(UPPERCASE(PL_REG),'YES') <> 0) AND (Artikel.Registrierbar = FALSE) THEN BEGIN
+              IF testlauf = FALSE THEN BEGIN
+                Artikel.Registrierbar := TRUE;
+                Artikel.MODIFY(TRUE);
+              END;
+              sonstige_aenderungen += 1;
+              aenderung := TRUE;
+              Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+              Protokoll_Sheet.Range('N'+Protokoll_j).Value := 'X';
+            END;
 
-                 IF (Artikel.Verpackungsmenge <> PL_VPE) AND (PL_VPE <> 0) THEN
-                   BEGIN
-                     IF testlauf = FALSE THEN
-                       BEGIN
-                         Artikel.Verpackungsmenge := PL_VPE;
-                         Artikel.MODIFY(TRUE);
-                       END;
-                     sonstige_aenderungen += 1;
-                     aenderung := TRUE;
-                     Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                     Protokoll_Sheet.Range('L'+Protokoll_j).Value := 'X';
-                   END;
+            IF (STRPOS(UPPERCASE(PL_REG),'NO') <> 0) AND (Artikel.Registrierbar = TRUE) THEN BEGIN
+              IF testlauf = FALSE THEN BEGIN
+                Artikel.Registrierbar := FALSE;
+                Artikel.MODIFY(TRUE);
+              END;
+              sonstige_aenderungen += 1;
+              aenderung := TRUE;
+              Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+              Protokoll_Sheet.Range('N'+Protokoll_j).Value := 'X';
+            END;
 
-                 //*********************************************************************************************
-                 //                                     Lead Free berprfen
-                 //*********************************************************************************************
+            //*********************************************************************************************
+            //                         Lifetime Status Flag bzw. Part Status berprfen
+            //*********************************************************************************************
 
-                 IF (STRPOS(UPPERCASE(PL_LF),'ROHS AND LEAD FREE') <> 0) AND (Artikel."Lead Free" = FALSE) THEN
-                   BEGIN
-                     IF testlauf = FALSE THEN
-                       BEGIN
-                         Artikel."Lead Free" := TRUE;
-                         Artikel.MODIFY(TRUE);
-                       END;
-                     sonstige_aenderungen += 1;
-                     aenderung := TRUE;
-                     Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                     Protokoll_Sheet.Range('M'+Protokoll_j).Value := 'X';
-                   END;
+            CASE PL_Status OF
+              'EOL SELLABLE', 'NRND', 'EOL' : BEGIN
+                IF Artikel."Lifetime Status Flag" <> PL_Status THEN BEGIN
+                  IF testlauf = FALSE THEN BEGIN
+                    Artikel."Lifetime Status Flag" := PL_Status;
+                    Artikel.MODIFY(TRUE);
+                  END;
+                  sonstige_aenderungen += 1;
+                  aenderung := TRUE;
+                  Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+                  Protokoll_Sheet.Range('O'+Protokoll_j).Value := 'X - ' + PL_Status;
+                  Protokoll_Sheet.Range('P'+Protokoll_j).Value := Artikel."Description 2";
+                END;
+              END;
+            END;
 
-                 IF (STRPOS(UPPERCASE(PL_LF),'NO') <> 0) AND (Artikel."Lead Free" = TRUE) THEN
-                   BEGIN
-                     IF testlauf = FALSE THEN
-                       BEGIN
-                         Artikel."Lead Free" := FALSE;
-                         Artikel.MODIFY(TRUE);
-                       END;
-                     sonstige_aenderungen += 1;
-                     aenderung := TRUE;
-                     Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                     Protokoll_Sheet.Range('M'+Protokoll_j).Value := 'X';
-                   END;
+            //*********************************************************************************************
+            //                                    Update letzte Preisliste
+            //*********************************************************************************************
 
-                 //*********************************************************************************************
-                 //                                    Registrierbar berprfen
-                 //*********************************************************************************************
+            IF PL_DC <> 0 THEN BEGIN
+              IF testlauf = FALSE THEN BEGIN
+                Artikel."Update letzte Preisliste" := TRUE;
+                Artikel.MODIFY;
+              END;
+            END;
 
-                 IF (STRPOS(UPPERCASE(PL_REG),'YES') <> 0) AND (Artikel.Registrierbar = FALSE) THEN
-                   BEGIN
-                     IF testlauf = FALSE THEN
-                       BEGIN
-                         Artikel.Registrierbar := TRUE;
-                         Artikel.MODIFY(TRUE);
-                       END;
-                     sonstige_aenderungen += 1;
-                     aenderung := TRUE;
-                     Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                     Protokoll_Sheet.Range('N'+Protokoll_j).Value := 'X';
-                   END;
+            IF aenderung THEN
+              Protokoll_j := INCSTR(Protokoll_j);
 
-                 IF (STRPOS(UPPERCASE(PL_REG),'NO') <> 0) AND (Artikel.Registrierbar = TRUE) THEN
-                   BEGIN
-                     IF testlauf = FALSE THEN
-                       BEGIN
-                         Artikel.Registrierbar := FALSE;
-                         Artikel.MODIFY(TRUE);
-                       END;
-                     sonstige_aenderungen += 1;
-                     aenderung := TRUE;
-                     Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                     Protokoll_Sheet.Range('N'+Protokoll_j).Value := 'X';
-                   END;
-
-
-                 //*********************************************************************************************
-                 //                         Lifetime Status Flag bzw. Part Status berprfen
-                 //*********************************************************************************************
-
-                 CASE PL_Status OF
-                   'EOL SELLABLE', 'NRND', 'EOL' : BEGIN
-                     IF Artikel."Lifetime Status Flag" <> PL_Status THEN BEGIN
-                       IF testlauf = FALSE THEN BEGIN
-                         Artikel."Lifetime Status Flag" := PL_Status;
-                         Artikel.MODIFY(TRUE);
-                       END;
-                       sonstige_aenderungen += 1;
-                       aenderung := TRUE;
-                       Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                       Protokoll_Sheet.Range('O'+Protokoll_j).Value := 'X - ' + PL_Status;
-                       Protokoll_Sheet.Range('P'+Protokoll_j).Value := Artikel."Description 2";
-                     END;
-                   END;
-                 END;
-
-                 //*********************************************************************************************
-                 //                                    Update letzte Preisliste
-                 //*********************************************************************************************
-
-                 IF PL_DC <> 0 THEN
-                   BEGIN
-                     IF testlauf = FALSE THEN
-                       BEGIN
-                         Artikel."Update letzte Preisliste":=TRUE;
-                         Artikel.MODIFY;
-                       END;
-                   END;
-
-                 IF aenderung THEN
-                   Protokoll_j := INCSTR(Protokoll_j);
-
-               END;
-           END;
+          END;
+        END;
 
         //*********************************************************************************************
         //                                       Abbruchbedingung
@@ -1744,7 +1627,7 @@ OBJECT Page 50103 Preislisten Importe Excel
         ELSE
           leere_zeilen := 0;
 
-        Quelle_j:=INCSTR(Quelle_j);                              // n„chste Zeile Importdatei
+        Quelle_j := INCSTR(Quelle_j);                            // n„chste Zeile Importdatei
 
       UNTIL (Max_Datens„tze = Quelle_j) OR (leere_zeilen = 15);  // Nach 15 Zeilen ohne Artikel ist Schluss
 
@@ -1765,7 +1648,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       REPEAT
       UNTIL ISCLEAR(Protokoll_Excel) AND ISCLEAR(Protokoll_Book) AND ISCLEAR(Protokoll_Sheet);
 
-      MESSAGE('Abgleich der Cirrus Artikel abgeschlossen.'+ '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\'+
+      MESSAGE('Abgleich der Cirrus Artikel abgeschlossen.' + '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\' +
               'Excel Datens„tze: %3\',neuer_preis,sonstige_aenderungen,excel_datens„tze);
     END;
 
@@ -1825,7 +1708,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       CREATE(Protokoll_Excel,FALSE,TRUE);                                    // erzeugt excel
       Protokoll_Book := Protokoll_Excel.Workbooks.Add(-4167);                // legt neue datei in excel an
       Protokoll_Sheet := Protokoll_Excel.ActiveSheet;                        // definiert aktives worksheet
-      Protokoll_j:='2';
+      Protokoll_j := '2';
 
       Protokoll_Sheet.Range('A'+'1').Value:= 'Artikelnr';                    // šberschriften der 2. Datei
       Protokoll_Sheet.Range('A:A').ColumnWidth := 20;
@@ -1848,154 +1731,134 @@ OBJECT Page 50103 Preislisten Importe Excel
       EVALUATE(a,Quelle_j);
       excel_datens„tze := Quelle_Sheet.UsedRange.Rows.Count - a + 1;
 
-
-      IF testlauf = FALSE THEN
-        BEGIN
-          IF excel_datens„tze > 10 THEN
-            IF CONFIRM('Es konnte mehr als 10 Eintr„ge in der Quelldatei gefunden werden.\' +
-                       'Soll der Status Update letzte Preisliste fr alle Artikel zurckgesetzt und neu ' +
-                       'bewertet werden?',TRUE) THEN
-              BEGIN
-                Artikel.RESET;
-                Artikel.SETFILTER("Manufacturer Code",'%1','43');
-                Artikel.SETFILTER("Item Tracking Code",'%1','DATECODE');
-                Artikel.SETFILTER(Artikelgruppe,'<>%1&<>%2','EVAL.BOARD','BOARDS');
-                IF Artikel.FINDFIRST THEN
-                  Artikel.MODIFYALL("Update letzte Preisliste",FALSE);
-              END;
-        END;
+      IF testlauf = FALSE THEN BEGIN
+        IF excel_datens„tze > 10 THEN
+          IF CONFIRM('Es konnte mehr als 10 Eintr„ge in der Quelldatei gefunden werden.\' +
+                      'Soll der Status Update letzte Preisliste fr alle Artikel zurckgesetzt und neu ' +
+                      'bewertet werden?',TRUE) THEN BEGIN
+            Artikel.RESET;
+            Artikel.SETFILTER("Manufacturer Code",'%1','43');
+            Artikel.SETFILTER("Item Tracking Code",'%1','DATECODE');
+            Artikel.SETFILTER(Artikelgruppe,'<>%1&<>%2','EVAL.BOARD','BOARDS');
+            IF Artikel.FINDFIRST THEN
+              Artikel.MODIFYALL("Update letzte Preisliste",FALSE);
+          END;
+      END;
 
       REPEAT
 
-         IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value)) <= 40 THEN
-           Artikelname := FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value);
-         IF (UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte_VPE+Quelle_j).Value)) <> 'TBC')
-         AND (UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte_VPE+Quelle_j).Value)) <> '') THEN
-           EVALUATE(PL_VPE,FORMAT(Quelle_Sheet.Range(Spalte_VPE+Quelle_j).Value))
-         ELSE
-           PL_VPE := 0;
+        IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value)) <= 40 THEN
+          Artikelname := FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value);
+        IF (UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte_VPE+Quelle_j).Value)) <> 'TBC')
+        AND (UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte_VPE+Quelle_j).Value)) <> '') THEN
+          EVALUATE(PL_VPE,FORMAT(Quelle_Sheet.Range(Spalte_VPE+Quelle_j).Value))
+        ELSE
+          PL_VPE := 0;
 
-         IF Artikelname = '' THEN
-           BEGIN
-           END
-         ELSE
-           BEGIN
-             Artikel.RESET;
-             Artikel.SETFILTER("No. 2",'%1',Artikelname);
-             IF Artikel.FINDFIRST THEN
-               BEGIN
+        IF Artikelname <> '' THEN BEGIN
+          Artikel.RESET;
+          Artikel.SETFILTER("No. 2",'%1',Artikelname);
+          IF Artikel.FINDFIRST THEN BEGIN
 
-                 PL_DISTI_TEXT := FORMAT(Quelle_Sheet.Range(Spalte_DC+Quelle_j).Value);
-                 IF (STRLEN(DELCHR(PL_DISTI_TEXT,'=','ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')) =
-                 (STRLEN(PL_DISTI_TEXT))) THEN
-                   BEGIN
-                      //falls sich 1000er Trennzeichen eingeschlichen hat wird dies entfernt
-                      IF STRLEN(COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1)) > 2 THEN
-                        PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','.');
+            PL_DISTI_TEXT := FORMAT(Quelle_Sheet.Range(Spalte_DC+Quelle_j).Value);
+            IF (STRLEN(DELCHR(PL_DISTI_TEXT,'=','ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')) =
+            (STRLEN(PL_DISTI_TEXT))) THEN BEGIN
+              //falls sich 1000er Trennzeichen eingeschlichen hat wird dies entfernt
+              IF STRLEN(COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1)) > 2 THEN
+                PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','.');
 
-                      IF STRPOS(PL_DISTI_TEXT, ',') <> 0  THEN
-                         BEGIN
-                           PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, ',')-1)
-                                      +',' +COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, ',')+1);
-                         END;
-                      IF STRPOS(PL_DISTI_TEXT, '.') <> 0  THEN
-                         BEGIN
-                           PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, '.')-1)
-                                      +','+COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1);
-                         END;
-                      IF PL_DISTI_TEXT = '' THEN PL_DISTI_TEXT := '0';
+              IF STRPOS(PL_DISTI_TEXT, ',') <> 0 THEN BEGIN
+                PL_DISTI_TEXT := COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, ',')-1)
+                          + ',' + COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, ',')+1);
+              END;
+              IF STRPOS(PL_DISTI_TEXT, '.') <> 0 THEN BEGIN
+                PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, '.')-1)
+                          + ',' + COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1);
+              END;
+              IF PL_DISTI_TEXT = '' THEN PL_DISTI_TEXT := '0';
 
-                      // Wenn manuell das Dollar Zeichen in die Zeile geraten ist
-                      IF STRPOS(PL_DISTI_TEXT,'$') <> 0 THEN
-                        BEGIN
-                          //PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','$');
-                          hilfs_PL_DISTI_TEXT := PL_DISTI_TEXT;
-                          hilfs_PL_DISTI_TEXT := DELCHR(hilfs_PL_DISTI_TEXT,'<>=',' ');
-                          hilfs_PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=',DELCHR(PL_DISTI_TEXT,'=','.,0123456789'));
-                          PL_DISTI_TEXT := hilfs_PL_DISTI_TEXT;
-                        END;
+              // Wenn manuell das Dollar Zeichen in die Zeile geraten ist
+              IF STRPOS(PL_DISTI_TEXT,'$') <> 0 THEN BEGIN
+                //PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','$');
+                hilfs_PL_DISTI_TEXT := PL_DISTI_TEXT;
+                hilfs_PL_DISTI_TEXT := DELCHR(hilfs_PL_DISTI_TEXT,'<>=',' ');
+                hilfs_PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=',DELCHR(PL_DISTI_TEXT,'=','.,0123456789'));
+                PL_DISTI_TEXT := hilfs_PL_DISTI_TEXT;
+              END;
 
-                      EVALUATE(PL_DC,PL_DISTI_TEXT);
-                      PL_DC := ROUND(PL_DC,0.01);
+              EVALUATE(PL_DC,PL_DISTI_TEXT);
+              PL_DC := ROUND(PL_DC,0.01);
 
-                   END
-                 ELSE
-                   PL_DC := 0;
+            END ELSE
+              PL_DC := 0;
 
-                 aenderung := FALSE;
+            aenderung := FALSE;
 
-                 //*********************************************************************************************
-                 //                                    EK-Preise updaten
-                 //*********************************************************************************************
+            //*********************************************************************************************
+            //                                    EK-Preise updaten
+            //*********************************************************************************************
 
-                 einkaufspreis.RESET;
-                 einkaufspreis.SETFILTER("Item No.",'%1',Artikel."No.");
-                 //einkaufspreis.SETFILTER("Vendor No.",'%1',Artikel."Vendor No.");
-                 IF einkaufspreis.FINDLAST THEN
-                   BEGIN
-                     IF (einkaufspreis."Direct Unit Cost" <> PL_DC) AND (PL_DC <> 0) THEN
-                       BEGIN
-                         Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                         Protokoll_Sheet.Range('B'+Protokoll_j).Value := FORMAT(einkaufspreis."Direct Unit Cost");
-                         Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
-                         Protokoll_Sheet.Range('D'+Protokoll_j).Value := FORMAT(PL_DC-einkaufspreis."Direct Unit Cost");
-                         IF einkaufspreis."Direct Unit Cost" > PL_DC THEN
-                           Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-11489280'; //grn
-                         IF einkaufspreis."Direct Unit Cost" < PL_DC THEN
-                           Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-16776961'; //rot
-                         Artikel.CALCFIELDS(Inventory,Artikel."Qty. on Purch. Order",Artikel."Qty. on Sales Order",
-                         Artikel."Menge in Angebot",Artikel."Menge im Rahmen");
-                         Protokoll_Sheet.Range('E'+Protokoll_j).Value := FORMAT(Artikel.Inventory);
-                         Protokoll_Sheet.Range('F'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Purch. Order");
-                         Protokoll_Sheet.Range('G'+Protokoll_j).Value := FORMAT(Artikel."Menge in Angebot");
-                         Protokoll_Sheet.Range('H'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Sales Order");
-                         Protokoll_Sheet.Range('I'+Protokoll_j).Value := FORMAT(Artikel."Menge im Rahmen");
+            einkaufspreis.RESET;
+            einkaufspreis.SETFILTER("Item No.",'%1',Artikel."No.");
+            //einkaufspreis.SETFILTER("Vendor No.",'%1',Artikel."Vendor No.");
+            IF einkaufspreis.FINDLAST THEN BEGIN
+              IF (einkaufspreis."Direct Unit Cost" <> PL_DC) AND (PL_DC <> 0) THEN BEGIN
+                Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+                Protokoll_Sheet.Range('B'+Protokoll_j).Value := FORMAT(einkaufspreis."Direct Unit Cost");
+                Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
+                Protokoll_Sheet.Range('D'+Protokoll_j).Value := FORMAT(PL_DC-einkaufspreis."Direct Unit Cost");
+                IF einkaufspreis."Direct Unit Cost" > PL_DC THEN
+                  Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-11489280'; //grn
+                IF einkaufspreis."Direct Unit Cost" < PL_DC THEN
+                  Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-16776961'; //rot
+                Artikel.CALCFIELDS(Inventory,Artikel."Qty. on Purch. Order",Artikel."Qty. on Sales Order",
+                Artikel."Menge in Angebot",Artikel."Menge im Rahmen");
+                Protokoll_Sheet.Range('E'+Protokoll_j).Value := FORMAT(Artikel.Inventory);
+                Protokoll_Sheet.Range('F'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Purch. Order");
+                Protokoll_Sheet.Range('G'+Protokoll_j).Value := FORMAT(Artikel."Menge in Angebot");
+                Protokoll_Sheet.Range('H'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Sales Order");
+                Protokoll_Sheet.Range('I'+Protokoll_j).Value := FORMAT(Artikel."Menge im Rahmen");
 
-                         IF testlauf = FALSE THEN
-                           BEGIN
-                             einkaufspreis."Direct Unit Cost" := PL_DC;
-                             einkaufspreis.MODIFY(TRUE);
-                             Artikel.MODIFY(TRUE);
-                           END;
+                IF testlauf = FALSE THEN BEGIN
+                  einkaufspreis."Direct Unit Cost" := PL_DC;
+                  einkaufspreis.MODIFY(TRUE);
+                  Artikel.MODIFY(TRUE);
+                END;
 
-                         neuer_preis += 1;
-                         aenderung := TRUE;
+                neuer_preis += 1;
+                aenderung := TRUE;
 
-                       END;
-                   END;
-
-                 //*********************************************************************************************
-                 //                                       MOQ und VPE berprfen
-                 //*********************************************************************************************
-
-                 IF (Artikel.Verpackungsmenge <> PL_VPE) AND (PL_VPE <> 0) THEN
-                   BEGIN
-                     IF testlauf = FALSE THEN
-                       BEGIN
-                         Artikel.Verpackungsmenge := PL_VPE;
-                         Artikel.MODIFY(TRUE);
-                       END;
-                     sonstige_aenderungen += 1;
-                     aenderung := TRUE;
-                     Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
-                     Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'X';
-                   END;
-
-                 IF aenderung = TRUE THEN
-                   Protokoll_j := INCSTR(Protokoll_j);
-
-                 IF PL_DC <> 0 THEN
-                   BEGIN
-                     IF testlauf = FALSE THEN
-                       BEGIN
-                         Artikel."Update letzte Preisliste":=TRUE;
-                         Artikel.MODIFY;
-                       END;
-                   END;
-
-               END;
-
+              END;
            END;
+
+            //*********************************************************************************************
+            //                                       MOQ und VPE berprfen
+            //*********************************************************************************************
+
+            IF (Artikel.Verpackungsmenge <> PL_VPE) AND (PL_VPE <> 0) THEN BEGIN
+              IF testlauf = FALSE THEN BEGIN
+                Artikel.Verpackungsmenge := PL_VPE;
+                Artikel.MODIFY(TRUE);
+              END;
+              sonstige_aenderungen += 1;
+              aenderung := TRUE;
+              Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+              Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'X';
+            END;
+
+            IF aenderung = TRUE THEN
+              Protokoll_j := INCSTR(Protokoll_j);
+
+            IF PL_DC <> 0 THEN BEGIN
+              IF testlauf = FALSE THEN BEGIN
+                Artikel."Update letzte Preisliste" := TRUE;
+                Artikel.MODIFY;
+              END;
+            END;
+
+          END;
+
+        END;
 
         //*********************************************************************************************
         //                                       Abbruchbedingung
@@ -2007,7 +1870,7 @@ OBJECT Page 50103 Preislisten Importe Excel
         ELSE
           leere_zeilen := 0;
 
-        Quelle_j:=INCSTR(Quelle_j);                              // n„chste Zeile Importdatei
+        Quelle_j := INCSTR(Quelle_j);                            // n„chste Zeile Importdatei
 
       UNTIL (Max_Datens„tze = Quelle_j) OR (leere_zeilen = 15);  // Nach 15 Zeilen ohne Artikel ist Schluss
 
@@ -2028,7 +1891,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       REPEAT
       UNTIL ISCLEAR(Protokoll_Excel) AND ISCLEAR(Protokoll_Book) AND ISCLEAR(Protokoll_Sheet);
 
-      MESSAGE('Abgleich der Artikel abgeschlossen.'+ '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\'+
+      MESSAGE('Abgleich der Artikel abgeschlossen.' + '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\' +
               'Excel Datens„tze: %3 (Ausgewerte Tabs: 1)\',neuer_preis,sonstige_aenderungen,excel_datens„tze);
     END;
 
@@ -2065,7 +1928,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       IF CREATE(Quelle_Excel,FALSE,TRUE) THEN BEGIN END ELSE ERROR('Cannot start Excel Application.');
       Quelle_Book := Quelle_Excel.Workbooks._Open(filename,0,TRUE);
       Quelle_Sheet := Quelle_Book.Worksheets.Item(1);
-      Quelle_j:='12';
+      Quelle_j := '12';
 
       neuer_preis := 0;
       sonstige_aenderungen := 0;
@@ -2084,7 +1947,7 @@ OBJECT Page 50103 Preislisten Importe Excel
         Quelle_Book.Close;
         ERROR(Text000,Spalte_DC);
       END;
-      IF STRPOS(FORMAT(Quelle_Sheet.Range('D11').Value),'2 reel') = 0  THEN BEGIN
+      IF STRPOS(FORMAT(Quelle_Sheet.Range('D11').Value),'2 reel') = 0 THEN BEGIN
         Quelle_Book.Close;
         ERROR(Text000,Spalte_2reel);
       END;
@@ -2100,7 +1963,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       CREATE(Protokoll_Excel,FALSE,TRUE);                                    // erzeugt excel
       Protokoll_Book := Protokoll_Excel.Workbooks.Add(-4167);                // legt neue datei in excel an
       Protokoll_Sheet := Protokoll_Excel.ActiveSheet;                        // definiert aktives worksheet
-      Protokoll_j:='2';
+      Protokoll_j := '2';
 
       Protokoll_Sheet.Range('A'+'1').Value:= 'Artikelnr';                    // šberschriften der 2. Datei
       Protokoll_Sheet.Range('A:A').ColumnWidth := 20;
@@ -2130,28 +1993,24 @@ OBJECT Page 50103 Preislisten Importe Excel
       selection := STRMENU(Text001,1);
       IF selection = 0 THEN EXIT;
 
-      IF testlauf = FALSE THEN
-        BEGIN
-          IF excel_datens„tze > min_datens„tze_upd_pl THEN
-            BEGIN
-              IF CONFIRM('Es konnte mehr als %1 Eintr„ge in der Quelldatei gefunden werden.\' +
-                         'Soll der Status Update letzte Preisliste fr alle Artikel zurckgesetzt und neu ' +
-                         'bewertet werden?',TRUE,min_datens„tze_upd_pl) THEN
-                BEGIN
-                  Artikel.RESET;
-                  Artikel.SETFILTER("Manufacturer Code",'%1','40');
-                  IF selection = 1 THEN
-                    BEGIN
-                      Artikel.SETFILTER("Item Tracking Code",'%1','DATECODE');
-                      Artikel.SETFILTER(Artikelgruppe,'<>%1&<>%2','EVAL.BOARD','BOARDS');
-                    END;
-                  IF selection = 2 THEN
-                    Artikel.SETFILTER("Item Tracking Code",'<>%1','DATECODE');
-                  IF Artikel.FINDFIRST THEN
-                    Artikel.MODIFYALL("Update letzte Preisliste",FALSE);
-                END;
+      IF testlauf = FALSE THEN BEGIN
+        IF excel_datens„tze > min_datens„tze_upd_pl THEN BEGIN
+          IF CONFIRM('Es konnte mehr als %1 Eintr„ge in der Quelldatei gefunden werden.\' +
+                      'Soll der Status Update letzte Preisliste fr alle Artikel zurckgesetzt und neu ' +
+                      'bewertet werden?',TRUE,min_datens„tze_upd_pl) THEN BEGIN
+            Artikel.RESET;
+            Artikel.SETFILTER("Manufacturer Code",'%1','40');
+            IF selection = 1 THEN BEGIN
+              Artikel.SETFILTER("Item Tracking Code",'%1','DATECODE');
+              Artikel.SETFILTER(Artikelgruppe,'<>%1&<>%2','EVAL.BOARD','BOARDS');
             END;
+            IF selection = 2 THEN
+              Artikel.SETFILTER("Item Tracking Code",'<>%1','DATECODE');
+            IF Artikel.FINDFIRST THEN
+              Artikel.MODIFYALL("Update letzte Preisliste",FALSE);
+          END;
         END;
+      END;
 
       REPEAT
 
@@ -2166,21 +2025,18 @@ OBJECT Page 50103 Preislisten Importe Excel
         hilfs_PL_VPE_TEXT := '';
         PL_ALL_TEXT := FORMAT(Quelle_Sheet.Range(Spalte_Text+Quelle_j).Value);
         PL_VPE_TEXT := FORMAT(Quelle_Sheet.Range(Spalte_Text+Quelle_j).Value);
-        IF PL_VPE_TEXT <> '' THEN
-          BEGIN
-            IF STRPOS(PL_VPE_TEXT,'pcs') <> 0 THEN
-              PL_VPE_TEXT := COPYSTR(PL_VPE_TEXT,1,STRPOS(PL_VPE_TEXT,'pcs')-1);
-            REPEAT
-              IF (COPYSTR(PL_VPE_TEXT,STRLEN(PL_VPE_TEXT)) <> ' ') OR
-              (COPYSTR(PL_VPE_TEXT,STRLEN(PL_VPE_TEXT)) <> '/') THEN
-                BEGIN
-                  hilfs_PL_VPE_TEXT :=COPYSTR(PL_VPE_TEXT,STRLEN(PL_VPE_TEXT)) + hilfs_PL_VPE_TEXT;
-                  PL_VPE_TEXT := COPYSTR(PL_VPE_TEXT,1,STRLEN(PL_VPE_TEXT)-1);
-                END;
-            UNTIL (COPYSTR(PL_VPE_TEXT,STRLEN(PL_VPE_TEXT)) = ' ') OR (COPYSTR(PL_VPE_TEXT,STRLEN(PL_VPE_TEXT)) = '/');
-            hilfs_PL_VPE_TEXT := DELCHR(hilfs_PL_VPE_TEXT,'=',',');
-            EVALUATE(PL_VPE,hilfs_PL_VPE_TEXT);
-          END;
+        IF PL_VPE_TEXT <> '' THEN BEGIN
+          IF STRPOS(PL_VPE_TEXT,'pcs') <> 0 THEN
+            PL_VPE_TEXT := COPYSTR(PL_VPE_TEXT,1,STRPOS(PL_VPE_TEXT,'pcs')-1);
+          REPEAT
+            IF (COPYSTR(PL_VPE_TEXT,STRLEN(PL_VPE_TEXT)) <> ' ') OR (COPYSTR(PL_VPE_TEXT,STRLEN(PL_VPE_TEXT)) <> '/') THEN BEGIN
+              hilfs_PL_VPE_TEXT := COPYSTR(PL_VPE_TEXT,STRLEN(PL_VPE_TEXT)) + hilfs_PL_VPE_TEXT;
+              PL_VPE_TEXT := COPYSTR(PL_VPE_TEXT,1,STRLEN(PL_VPE_TEXT)-1);
+            END;
+          UNTIL (COPYSTR(PL_VPE_TEXT,STRLEN(PL_VPE_TEXT)) = ' ') OR (COPYSTR(PL_VPE_TEXT,STRLEN(PL_VPE_TEXT)) = '/');
+          hilfs_PL_VPE_TEXT := DELCHR(hilfs_PL_VPE_TEXT,'=',',');
+          EVALUATE(PL_VPE,hilfs_PL_VPE_TEXT);
+        END;
 
         IF (STRLEN(DELCHR(PL_DISTI_TEXT,'=','ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')) =
         (STRLEN(PL_DISTI_TEXT))) THEN BEGIN
@@ -2188,208 +2044,185 @@ OBJECT Page 50103 Preislisten Importe Excel
           IF STRLEN(COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1)) > 2 THEN
             PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','.');
 
-          IF STRPOS(PL_DISTI_TEXT, ',') <> 0  THEN
-             BEGIN
-               PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, ',')-1)
-                          +',' +COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, ',')+1);
-             END;
-          IF STRPOS(PL_DISTI_TEXT, '.') <> 0  THEN
-             BEGIN
-               PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, '.')-1)
-                          +','+COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1);
-             END;
+          IF STRPOS(PL_DISTI_TEXT, ',') <> 0 THEN BEGIN
+            PL_DISTI_TEXT := COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, ',')-1)
+                      + ',' + COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, ',')+1);
+          END;
+          IF STRPOS(PL_DISTI_TEXT, '.') <> 0 THEN BEGIN
+            PL_DISTI_TEXT := COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, '.')-1)
+                      + ',' + COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1);
+          END;
           IF PL_DISTI_TEXT = '' THEN PL_DISTI_TEXT := '0';
 
           // Wenn manuell das Dollar Zeichen in die Zeile geraten ist
-          IF STRPOS(PL_DISTI_TEXT,'$') <> 0 THEN
-            BEGIN
-              //PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','$');
-              hilfs_PL_DISTI_TEXT := PL_DISTI_TEXT;
-              hilfs_PL_DISTI_TEXT := DELCHR(hilfs_PL_DISTI_TEXT,'<>=',' ');
-              hilfs_PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=',DELCHR(PL_DISTI_TEXT,'=','.,0123456789'));
-              PL_DISTI_TEXT := hilfs_PL_DISTI_TEXT;
-            END;
+          IF STRPOS(PL_DISTI_TEXT,'$') <> 0 THEN BEGIN
+            //PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','$');
+            hilfs_PL_DISTI_TEXT := PL_DISTI_TEXT;
+            hilfs_PL_DISTI_TEXT := DELCHR(hilfs_PL_DISTI_TEXT,'<>=',' ');
+            hilfs_PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=',DELCHR(PL_DISTI_TEXT,'=','.,0123456789'));
+            PL_DISTI_TEXT := hilfs_PL_DISTI_TEXT;
+          END;
 
           EVALUATE(PL_DC,PL_DISTI_TEXT);
           PL_DC := ROUND(PL_DC,0.01);
         END ELSE
           PL_DC := 0;
 
-        IF Artikelname = '' THEN
-          BEGIN
-          END
-        ELSE
-          BEGIN
-            Artikel.RESET;
-            Artikel.SETFILTER("Manufacturer Code",'%1','40');
-            IF selection = 1 THEN
-              BEGIN
-                Artikel.SETFILTER("Item Tracking Code",'%1','DATECODE');
-                Artikel.SETFILTER(Artikelgruppe,'<>%1&<>%2','EVAL.BOARD','BOARDS');
-              END;
-            IF selection = 2 THEN
-              Artikel.SETFILTER("Item Tracking Code",'<>%1','DATECODE');
-            IF Artikel.FIND('-') THEN
-              REPEAT
+        IF Artikelname <> '' THEN BEGIN
+          Artikel.RESET;
+          Artikel.SETFILTER("Manufacturer Code",'%1','40');
+          IF selection = 1 THEN BEGIN
+            Artikel.SETFILTER("Item Tracking Code",'%1','DATECODE');
+            Artikel.SETFILTER(Artikelgruppe,'<>%1&<>%2','EVAL.BOARD','BOARDS');
+          END;
+          IF selection = 2 THEN
+            Artikel.SETFILTER("Item Tracking Code",'<>%1','DATECODE');
+          IF Artikel.FIND('-') THEN
+            REPEAT
 
-                artikel_gefunden := FALSE;
-                aenderung := FALSE;
+              artikel_gefunden := FALSE;
+              aenderung := FALSE;
 
-                //Automotive Ausnahmen - kein Preis Update durchfhren
-                IF (STRPOS(Artikel."No. 2",'-AE') <> 0) OR
-                   (STRPOS(Artikel."No. 2",'-JE') <> 0) OR
-                   (STRPOS(Artikel."No. 2",'-KE') <> 0) OR
-                   (STRPOS(Artikel."No. 2",'-HE') <> 0) OR
-                   (STRPOS(Artikel."No. 2",'-R8') <> 0) THEN
-                     kein_preis_update := TRUE
-                ELSE
-                  kein_preis_update := FALSE;
+              //Automotive Ausnahmen - kein Preis Update durchfhren
+              IF (STRPOS(Artikel."No. 2",'-AE') <> 0) OR
+                  (STRPOS(Artikel."No. 2",'-JE') <> 0) OR
+                  (STRPOS(Artikel."No. 2",'-KE') <> 0) OR
+                  (STRPOS(Artikel."No. 2",'-HE') <> 0) OR
+                  (STRPOS(Artikel."No. 2",'-R8') <> 0) THEN
+                    kein_preis_update := TRUE
+              ELSE
+                kein_preis_update := FALSE;
 
-                //*********************************************************************************************
-                //                                    EK-Preise updaten
-                //*********************************************************************************************
+              //*********************************************************************************************
+              //                                    EK-Preise updaten
+              //*********************************************************************************************
 
-                IF (STRPOS(Artikel."No. 2",Artikelname) <> 0) AND (STRPOS(Artikel."No. 2",'-Y') = 0)
-                AND (STRPOS(Artikelname,'-Y') = 0) THEN
+              IF (STRPOS(Artikel."No. 2",Artikelname) <> 0) AND (STRPOS(Artikel."No. 2",'-Y') = 0)
+              AND (STRPOS(Artikelname,'-Y') = 0) THEN
+                artikel_gefunden := TRUE;
+
+              IF STRPOS(Artikelname,'-Y') <> 0 THEN
+                IF (STRPOS(Artikel."No. 2",'-Y') <> 0)
+                AND (STRPOS(Artikel."No. 2",COPYSTR(Artikelname,1,STRPOS(Artikelname,'-Y')-1)) <> 0) THEN
                   artikel_gefunden := TRUE;
 
-                IF STRPOS(Artikelname,'-Y') <> 0 THEN
-                  IF (STRPOS(Artikel."No. 2",'-Y') <> 0)
-                  AND (STRPOS(Artikel."No. 2",COPYSTR(Artikelname,1,STRPOS(Artikelname,'-Y')-1)) <> 0) THEN
-                    artikel_gefunden := TRUE;
+              IF STRPOS(Artikelname,'**') <> 0 THEN
+                IF (STRPOS(Artikel."No. 2",COPYSTR(Artikelname,1,STRPOS(Artikelname,'**')-1)) <> 0)
+                AND (COPYSTR(Artikelname,STRPOS(Artikelname,'**')+2) = COPYSTR(Artikel."No. 2",STRLEN(Artikelname),
+                STRLEN(COPYSTR(Artikelname,STRPOS(Artikelname,'**')+2)))) THEN
+                  artikel_gefunden := TRUE;
 
-                IF STRPOS(Artikelname,'**') <> 0 THEN
-                  IF (STRPOS(Artikel."No. 2",COPYSTR(Artikelname,1,STRPOS(Artikelname,'**')-1)) <> 0)
-                  AND (COPYSTR(Artikelname,STRPOS(Artikelname,'**')+2) = COPYSTR(Artikel."No. 2",STRLEN(Artikelname),
-                  STRLEN(COPYSTR(Artikelname,STRPOS(Artikelname,'**')+2)))) THEN
-                    artikel_gefunden := TRUE;
+              IF artikel_gefunden THEN BEGIN
+                einkaufspreis.RESET;
+                einkaufspreis.SETFILTER(einkaufspreis."Item No.",'%1',Artikel."No.");
+                //einkaufspreis.SETFILTER(einkaufspreis."Vendor No.",'%1',Artikel."Vendor No.");
+                IF einkaufspreis.FINDFIRST THEN BEGIN
+                  IF (einkaufspreis."Direct Unit Cost" <> PL_DC) AND (PL_DC <> 0) AND (kein_preis_update = FALSE) THEN BEGIN
+                    Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikel."No. 2";
+                    Protokoll_Sheet.Range('B'+Protokoll_j).Value := FORMAT(einkaufspreis."Direct Unit Cost");
+                    Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
+                    Protokoll_Sheet.Range('D'+Protokoll_j).Value := FORMAT(PL_DC-einkaufspreis."Direct Unit Cost");
+                    IF einkaufspreis."Direct Unit Cost" > PL_DC THEN
+                      Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-11489280'; //grn
+                    IF einkaufspreis."Direct Unit Cost" < PL_DC THEN
+                      Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-16776961'; //rot
+                    Artikel.CALCFIELDS(Inventory,Artikel."Qty. on Purch. Order",Artikel."Qty. on Sales Order",
+                    Artikel."Menge in Angebot",Artikel."Menge im Rahmen");
+                    Protokoll_Sheet.Range('E'+Protokoll_j).Value := FORMAT(Artikel.Inventory);
+                    Protokoll_Sheet.Range('F'+Protokoll_j).Value := FORMAT(Artikel."Menge in Angebot");
+                    Protokoll_Sheet.Range('G'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Sales Order");
+                    Protokoll_Sheet.Range('H'+Protokoll_j).Value := FORMAT(Artikel."Menge im Rahmen");
+                    Protokoll_Sheet.Range('I'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Purch. Order");
+                    Protokoll_Sheet.Range('J'+Protokoll_j).Value := Artikelname;
+                    Protokoll_Sheet.Range('K'+Protokoll_j).Value := 'X';
 
-                IF artikel_gefunden THEN
-                  BEGIN
-                    einkaufspreis.RESET;
-                    einkaufspreis.SETFILTER(einkaufspreis."Item No.",'%1',Artikel."No.");
-                    //einkaufspreis.SETFILTER(einkaufspreis."Vendor No.",'%1',Artikel."Vendor No.");
-                    IF einkaufspreis.FINDFIRST THEN
-                      BEGIN
-                        IF (einkaufspreis."Direct Unit Cost" <> PL_DC) AND (PL_DC <> 0) AND (kein_preis_update = FALSE) THEN
-                          BEGIN
-                            Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikel."No. 2";
-                            Protokoll_Sheet.Range('B'+Protokoll_j).Value := FORMAT(einkaufspreis."Direct Unit Cost");
-                            Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
-                            Protokoll_Sheet.Range('D'+Protokoll_j).Value := FORMAT(PL_DC-einkaufspreis."Direct Unit Cost");
-                            IF einkaufspreis."Direct Unit Cost" > PL_DC THEN
-                              Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-11489280'; //grn
-                            IF einkaufspreis."Direct Unit Cost" < PL_DC THEN
-                              Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-16776961'; //rot
-                            Artikel.CALCFIELDS(Inventory,Artikel."Qty. on Purch. Order",Artikel."Qty. on Sales Order",
-                            Artikel."Menge in Angebot",Artikel."Menge im Rahmen");
-                            Protokoll_Sheet.Range('E'+Protokoll_j).Value := FORMAT(Artikel.Inventory);
-                            Protokoll_Sheet.Range('F'+Protokoll_j).Value := FORMAT(Artikel."Menge in Angebot");
-                            Protokoll_Sheet.Range('G'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Sales Order");
-                            Protokoll_Sheet.Range('H'+Protokoll_j).Value := FORMAT(Artikel."Menge im Rahmen");
-                            Protokoll_Sheet.Range('I'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Purch. Order");
-                            Protokoll_Sheet.Range('J'+Protokoll_j).Value := Artikelname;
-                            Protokoll_Sheet.Range('K'+Protokoll_j).Value := 'X';
+                    IF testlauf = FALSE THEN BEGIN
+                      einkaufspreis."Direct Unit Cost" := PL_DC;
+                      einkaufspreis.MODIFY(TRUE);
+                      Artikel.MODIFY(TRUE);
+                    END;
 
-                            IF testlauf = FALSE THEN
-                              BEGIN
-                                einkaufspreis."Direct Unit Cost" := PL_DC;
-                                einkaufspreis.MODIFY(TRUE);
-                                Artikel.MODIFY(TRUE);
-                              END;
-
-                            neuer_preis += 1;
-                            aenderung := TRUE;
-                          END;
-                      END;
-
-                    //*********************************************************************************************
-                    //                                2 reel Preis Info bertragen
-                    //*********************************************************************************************
-
-                    IF testlauf = FALSE THEN
-                      BEGIN
-                        IF PL_2reel <> 0 THEN
-                          BEGIN
-                            IF (Artikel.Preisinfo = '') OR (STRPOS(Artikel.Preisinfo,'2 reel price: ') = 1) THEN
-                              Artikel.Preisinfo := '2 reel price: ' + FORMAT(PL_2reel)
-                            ELSE
-                              BEGIN
-                                IF STRPOS(Artikel.Preisinfo,'2 reel price: ') > 1 THEN
-                                  Artikel.Preisinfo := COPYSTR(Artikel.Preisinfo,1,STRPOS(Artikel.Preisinfo,'2 reel price')-2)
-                                                       + ' 2 reel price: ' + FORMAT(PL_2reel)
-                                ELSE
-                                  IF (STRLEN(Artikel.Preisinfo) + STRLEN(' 2 reel price: ' + FORMAT(PL_2reel))) <= 60 THEN
-                                    Artikel.Preisinfo:= Artikel.Preisinfo + ' 2 reel price: ' + FORMAT(PL_2reel);
-                                Artikel.MODIFY(TRUE);
-                              END;
-                          END;
-                      END;
-
-                    //*********************************************************************************************
-                    //                                 Verpackungsmenge berprfen
-                    //*********************************************************************************************
-
-                    IF (Artikel.Verpackungsmenge <> PL_VPE) AND (PL_VPE <> 0) THEN
-                      BEGIN
-                        IF testlauf = FALSE THEN
-                          BEGIN
-                            Artikel.Verpackungsmenge := PL_VPE;
-                            Artikel.MODIFY(TRUE);
-                          END;
-                        sonstige_aenderungen += 1;
-                        aenderung := TRUE;
-                        Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikel."No. 2";
-                        Protokoll_Sheet.Range('L'+Protokoll_j).Value := 'X';
-                      END;
-
-                    //*********************************************************************************************
-                    //                                 Bezeichnung1_lang berprfen
-                    //*********************************************************************************************
-
-                    IF Artikel.Bezeichnung1_lang = '' THEN
-                      BEGIN
-                        IF testlauf = FALSE THEN
-                          BEGIN
-                            Artikel.Bezeichnung1_lang := PL_ALL_TEXT;
-                            Artikel.MODIFY(TRUE);
-                          END;
-                      END;
-
-                    //*********************************************************************************************
-                    //                                 Artikelnr. Preisliste
-                    //*********************************************************************************************
-
-                    IF Artikelname <> Artikel."Artikelnr. Preisliste" THEN
-                      BEGIN
-                        IF testlauf = FALSE THEN
-                          BEGIN
-                            Artikel."Artikelnr. Preisliste" := Artikelname;
-                            Artikel.MODIFY(TRUE);
-                          END;
-                      END;
-
-                    //*********************************************************************************************
-                    //                                    Update letzte Preisliste
-                    //*********************************************************************************************
-
-                    IF (PL_DC <> 0) AND (kein_preis_update =FALSE) THEN
-                      BEGIN
-                        IF testlauf = FALSE THEN
-                          BEGIN
-                            Artikel."Update letzte Preisliste":=TRUE;
-                            Artikel.MODIFY(TRUE);
-
-                          END;
-                      END;
-
-                    IF aenderung THEN
-                      Protokoll_j := INCSTR(Protokoll_j);
+                    neuer_preis += 1;
+                    aenderung := TRUE;
 
                   END;
+                END;
 
-              UNTIL Artikel.NEXT = 0;
-          END;
+                //*********************************************************************************************
+                //                                2 reel Preis Info bertragen
+                //*********************************************************************************************
+
+                IF testlauf = FALSE THEN BEGIN
+                  IF PL_2reel <> 0 THEN BEGIN
+                    IF (Artikel.Preisinfo = '') OR (STRPOS(Artikel.Preisinfo,'2 reel price: ') = 1) THEN
+                      Artikel.Preisinfo := '2 reel price: ' + FORMAT(PL_2reel)
+                    ELSE BEGIN
+                      IF STRPOS(Artikel.Preisinfo,'2 reel price: ') > 1 THEN
+                        Artikel.Preisinfo := COPYSTR(Artikel.Preisinfo,1,STRPOS(Artikel.Preisinfo,'2 reel price')-2)
+                                              + ' 2 reel price: ' + FORMAT(PL_2reel)
+                      ELSE
+                        IF (STRLEN(Artikel.Preisinfo) + STRLEN(' 2 reel price: ' + FORMAT(PL_2reel))) <= 60 THEN
+                          Artikel.Preisinfo:= Artikel.Preisinfo + ' 2 reel price: ' + FORMAT(PL_2reel);
+                      Artikel.MODIFY(TRUE);
+                    END;
+                  END;
+                END;
+
+                //*********************************************************************************************
+                //                                 Verpackungsmenge berprfen
+                //*********************************************************************************************
+
+                IF (Artikel.Verpackungsmenge <> PL_VPE) AND (PL_VPE <> 0) THEN BEGIN
+                  IF testlauf = FALSE THEN BEGIN
+                    Artikel.Verpackungsmenge := PL_VPE;
+                    Artikel.MODIFY(TRUE);
+                  END;
+                  sonstige_aenderungen += 1;
+                  aenderung := TRUE;
+                  Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikel."No. 2";
+                  Protokoll_Sheet.Range('L'+Protokoll_j).Value := 'X';
+                END;
+
+                //*********************************************************************************************
+                //                                 Bezeichnung1_lang berprfen
+                //*********************************************************************************************
+
+                IF Artikel.Bezeichnung1_lang = '' THEN BEGIN
+                  IF testlauf = FALSE THEN BEGIN
+                    Artikel.Bezeichnung1_lang := PL_ALL_TEXT;
+                    Artikel.MODIFY(TRUE);
+                  END;
+                END;
+
+                //*********************************************************************************************
+                //                                 Artikelnr. Preisliste
+                //*********************************************************************************************
+
+                IF Artikelname <> Artikel."Artikelnr. Preisliste" THEN BEGIN
+                  IF testlauf = FALSE THEN BEGIN
+                    Artikel."Artikelnr. Preisliste" := Artikelname;
+                    Artikel.MODIFY(TRUE);
+                  END;
+                END;
+
+                //*********************************************************************************************
+                //                                    Update letzte Preisliste
+                //*********************************************************************************************
+
+                IF (PL_DC <> 0) AND (kein_preis_update =FALSE) THEN BEGIN
+                  IF testlauf = FALSE THEN BEGIN
+                    Artikel."Update letzte Preisliste":=TRUE;
+                    Artikel.MODIFY(TRUE);
+                  END;
+                END;
+
+                IF aenderung THEN
+                  Protokoll_j := INCSTR(Protokoll_j);
+
+              END;
+
+            UNTIL Artikel.NEXT = 0;
+        END;
 
         //*********************************************************************************************
         //                                       Abbruchbedingung
@@ -2401,7 +2234,7 @@ OBJECT Page 50103 Preislisten Importe Excel
         ELSE
           leere_zeilen := 0;
 
-        Quelle_j:=INCSTR(Quelle_j);                              // n„chste Zeile Importdatei
+        Quelle_j := INCSTR(Quelle_j);                            // n„chste Zeile Importdatei
 
       UNTIL (Max_Datens„tze = Quelle_j) OR (leere_zeilen = 15);  // Nach 15 Zeilen ohne Artikel ist Schluss
 
@@ -2422,7 +2255,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       REPEAT
       UNTIL ISCLEAR(Protokoll_Excel) AND ISCLEAR(Protokoll_Book) AND ISCLEAR(Protokoll_Sheet);
 
-      MESSAGE('Import der Ricoh Artikel abgeschlossen.'+ '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\'+
+      MESSAGE('Import der Ricoh Artikel abgeschlossen.' + '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\' +
               'Excel Datens„tze: %3\',neuer_preis,sonstige_aenderungen,excel_datens„tze);
     END;
 
@@ -2475,7 +2308,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       //********************************************************************************************
 
       IF selection = 1 THEN BEGIN
-        Quelle_j:='6';
+        Quelle_j := '6';
         v_Spalte_PL_Part := Spalte_Part_Chips;
         v_Spalte_PL_DC := Spalte_DC_Chips;
         v_Spalte_PL_MOQ := Spalte_MOQ_Chips;
@@ -2494,7 +2327,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       END;
 
       IF selection = 2 THEN BEGIN
-        Quelle_j:='4';
+        Quelle_j := '4';
         v_Spalte_PL_Part := Spalte_Part_Kits;
         v_Spalte_PL_DC := Spalte_DC_Kits;
         v_Spalte_PL_MOQ := Spalte_MOQ_Kits;
@@ -2520,7 +2353,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       CREATE(Protokoll_Excel,FALSE,TRUE);                                    // erzeugt excel
       Protokoll_Book := Protokoll_Excel.Workbooks.Add(-4167);                // legt neue datei in excel an
       Protokoll_Sheet := Protokoll_Excel.ActiveSheet;                        // definiert aktives worksheet
-      Protokoll_j:='2';
+      Protokoll_j := '2';
 
       Protokoll_Sheet.Range('A'+'1').Value:= 'Artikelnr';                    // šberschriften der 2. Datei
       Protokoll_Sheet.Range('A:A').ColumnWidth := 20;
@@ -2585,35 +2418,31 @@ OBJECT Page 50103 Preislisten Importe Excel
           IF STRLEN(COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1)) > 2 THEN
             PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','.');
 
-          IF STRPOS(PL_DISTI_TEXT, ',') <> 0  THEN
-             BEGIN
-               PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, ',')-1)
-                          +',' +COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, ',')+1);
-             END;
-          IF STRPOS(PL_DISTI_TEXT, '.') <> 0  THEN
-             BEGIN
-               PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, '.')-1)
-                          +','+COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1);
-             END;
+          IF STRPOS(PL_DISTI_TEXT, ',') <> 0 THEN BEGIN
+            PL_DISTI_TEXT := COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, ',')-1)
+                      + ',' + COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, ',')+1);
+          END;
+          IF STRPOS(PL_DISTI_TEXT, '.') <> 0 THEN BEGIN
+            PL_DISTI_TEXT := COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, '.')-1)
+                      + ',' + COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1);
+          END;
           IF PL_DISTI_TEXT = '' THEN PL_DISTI_TEXT := '0';
 
           // Wenn manuell das Dollar Zeichen in die Zeile geraten ist
-          IF STRPOS(PL_DISTI_TEXT,'$') <> 0 THEN
-            BEGIN
-              //PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','$');
-              hilfs_PL_DISTI_TEXT := PL_DISTI_TEXT;
-              hilfs_PL_DISTI_TEXT := DELCHR(hilfs_PL_DISTI_TEXT,'<>=',' ');
-              hilfs_PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=',DELCHR(PL_DISTI_TEXT,'=','.,0123456789'));
-              PL_DISTI_TEXT := hilfs_PL_DISTI_TEXT;
-            END;
+          IF STRPOS(PL_DISTI_TEXT,'$') <> 0 THEN BEGIN
+            //PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','$');
+            hilfs_PL_DISTI_TEXT := PL_DISTI_TEXT;
+            hilfs_PL_DISTI_TEXT := DELCHR(hilfs_PL_DISTI_TEXT,'<>=',' ');
+            hilfs_PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=',DELCHR(PL_DISTI_TEXT,'=','.,0123456789'));
+            PL_DISTI_TEXT := hilfs_PL_DISTI_TEXT;
+          END;
 
           EVALUATE(PL_DC,PL_DISTI_TEXT);
           PL_DC := ROUND(PL_DC,0.01);
         END ELSE
           PL_DC := 0;
 
-        IF Artikelname = '' THEN BEGIN
-        END ELSE BEGIN
+        IF Artikelname <> '' THEN BEGIN
           Artikel.RESET;
           Artikel.SETFILTER("No. 2",'%1',Artikelname);
           IF Artikel.FIND('-') THEN BEGIN
@@ -2654,6 +2483,7 @@ OBJECT Page 50103 Preislisten Importe Excel
 
                 neuer_preis += 1;
                 aenderung := TRUE;
+
               END;
 
               //*********************************************************************************************
@@ -2700,7 +2530,7 @@ OBJECT Page 50103 Preislisten Importe Excel
         ELSE
           leere_zeilen := 0;
 
-        Quelle_j:=INCSTR(Quelle_j);                             // n„chste Zeile Importdatei
+        Quelle_j := INCSTR(Quelle_j);                           // n„chste Zeile Importdatei
 
       UNTIL (Max_Datens„tze = Quelle_j) OR (leere_zeilen = 3);  // Nach 3 Zeilen ohne Artikel ist Schluss
 
@@ -2721,7 +2551,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       REPEAT
       UNTIL ISCLEAR(Protokoll_Excel) AND ISCLEAR(Protokoll_Book) AND ISCLEAR(Protokoll_Sheet);
 
-      MESSAGE('Abgleich der XMOS Artikel abgeschlossen.'+ '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\'+
+      MESSAGE('Abgleich der XMOS Artikel abgeschlossen.' + '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\' +
               'Excel Datens„tze: %3\',neuer_preis,sonstige_aenderungen,excel_datens„tze);
     END;
 
@@ -2787,7 +2617,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       CREATE(Protokoll_Excel,FALSE,TRUE);                                    // erzeugt excel
       Protokoll_Book := Protokoll_Excel.Workbooks.Add(-4167);                // legt neue datei in excel an
       Protokoll_Sheet := Protokoll_Excel.ActiveSheet;                        // definiert aktives worksheet
-      Protokoll_j:='2';
+      Protokoll_j := '2';
 
       Protokoll_Sheet.Range('A'+'1').Value:= 'Artikelnr';                    // šberschriften der 2. Datei
       Protokoll_Sheet.Range('A:A').ColumnWidth := 20;
@@ -2846,35 +2676,31 @@ OBJECT Page 50103 Preislisten Importe Excel
           IF STRLEN(COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1)) > 2 THEN
             PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','.');
 
-          IF STRPOS(PL_DISTI_TEXT, ',') <> 0  THEN
-             BEGIN
-               PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, ',')-1)
-                          +',' +COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, ',')+1);
-             END;
-          IF STRPOS(PL_DISTI_TEXT, '.') <> 0  THEN
-             BEGIN
-               PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, '.')-1)
-                          +','+COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1);
-             END;
+          IF STRPOS(PL_DISTI_TEXT, ',') <> 0 THEN BEGIN
+            PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, ',')-1)
+                      + ',' + COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, ',')+1);
+          END;
+          IF STRPOS(PL_DISTI_TEXT, '.') <> 0 THEN BEGIN
+            PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, '.')-1)
+                      + ','+ COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1);
+          END;
           IF PL_DISTI_TEXT = '' THEN PL_DISTI_TEXT := '0';
 
           // Wenn manuell das Dollar Zeichen in die Zeile geraten ist
-          IF STRPOS(PL_DISTI_TEXT,'$') <> 0 THEN
-            BEGIN
-              //PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','$');
-              hilfs_PL_DISTI_TEXT := PL_DISTI_TEXT;
-              hilfs_PL_DISTI_TEXT := DELCHR(hilfs_PL_DISTI_TEXT,'<>=',' ');
-              hilfs_PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=',DELCHR(PL_DISTI_TEXT,'=','.,0123456789'));
-              PL_DISTI_TEXT := hilfs_PL_DISTI_TEXT;
-            END;
+          IF STRPOS(PL_DISTI_TEXT,'$') <> 0 THEN BEGIN
+            //PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','$');
+            hilfs_PL_DISTI_TEXT := PL_DISTI_TEXT;
+            hilfs_PL_DISTI_TEXT := DELCHR(hilfs_PL_DISTI_TEXT,'<>=',' ');
+            hilfs_PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=',DELCHR(PL_DISTI_TEXT,'=','.,0123456789'));
+            PL_DISTI_TEXT := hilfs_PL_DISTI_TEXT;
+          END;
 
           EVALUATE(PL_DC,PL_DISTI_TEXT);
           //PL_DC := ROUND(PL_DC,0.01);
         END ELSE
           PL_DC := 0;
 
-        IF Artikelname = '' THEN BEGIN
-        END ELSE BEGIN
+        IF Artikelname <> '' THEN BEGIN
           Artikel.RESET;
           Artikel.SETFILTER("No. 2",'%1',Artikelname);
           IF Artikel.FIND('-') THEN BEGIN
@@ -2938,7 +2764,7 @@ OBJECT Page 50103 Preislisten Importe Excel
 
               IF PL_DC <> 0 THEN BEGIN
                 IF testlauf = FALSE THEN BEGIN
-                  Artikel."Update letzte Preisliste":=TRUE;
+                  Artikel."Update letzte Preisliste" := TRUE;
                   Artikel.MODIFY(TRUE);
                 END;
               END;
@@ -2961,7 +2787,7 @@ OBJECT Page 50103 Preislisten Importe Excel
         ELSE
           leere_zeilen := 0;
 
-        Quelle_j:=INCSTR(Quelle_j);                             // n„chste Zeile Importdatei
+        Quelle_j := INCSTR(Quelle_j);                           // n„chste Zeile Importdatei
 
       UNTIL (Max_Datens„tze = Quelle_j) OR (leere_zeilen = 3);  // Nach 3 Zeilen ohne Artikel ist Schluss
 
@@ -2982,7 +2808,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       REPEAT
       UNTIL ISCLEAR(Protokoll_Excel) AND ISCLEAR(Protokoll_Book) AND ISCLEAR(Protokoll_Sheet);
 
-      MESSAGE('Abgleich der Silergy Artikel abgeschlossen.'+ '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\'+
+      MESSAGE('Abgleich der Silergy Artikel abgeschlossen.' + '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\' +
               'Excel Datens„tze: %3\',neuer_preis,sonstige_aenderungen,excel_datens„tze);
     END;
 
