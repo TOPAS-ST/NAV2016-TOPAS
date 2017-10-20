@@ -1,0 +1,1287 @@
+OBJECT Report 50078 TOPAS-Lieferschein
+{
+  OBJECT-PROPERTIES
+  {
+    Date=04.09.17;
+    Time=09:24:27;
+    Modified=Yes;
+    Version List=Beleg,FORNAV2.0.0.1168/1168;
+  }
+  PROPERTIES
+  {
+    OnInitReport=BEGIN
+                   ReportForNav:= ReportForNav.Report(CurrReport.OBJECTID,CurrReport.LANGUAGE,SERIALNUMBER,USERID,COMPANYNAME);ReportForNav.Init;
+                 END;
+
+    OnPreReport=BEGIN
+                  ReportForNav.OpenDesigner:=ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
+                END;
+
+    OnPostReport=BEGIN
+                   ReportForNav.Post;
+                 END;
+
+  }
+  DATASET
+  {
+    { 1   ;    ;DataItem;Sales Shipment Header;
+               DataItemTable=Table110;
+               DataItemTableView=SORTING(No.);
+               ReqFilterHeadingML=DEU=Geb. Verkaufslieferung;
+               OnPreDataItem=BEGIN
+                               Firmendaten.GET;
+                               Firmendaten.CALCFIELDS("ISO Logo");
+                               FormatAdr.Company(FirmaAdr,Firmendaten);
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  //25.04.2012-ST
+                                  CurrReport.LANGUAGE := language.GetLanguageID("Language Code");
+                                  IF "Salesperson Code" = '' THEN BEGIN
+                                    VerkEinkPerson.INIT;
+                                    Verk„uferText := '';
+                                  END ELSE BEGIN
+                                    VerkEinkPerson.GET("Salesperson Code");
+                                    Verk„uferText := 'Verk„ufer';
+                                  END;
+                                  FormatAdr.SalesShptShipTo(LieferAnAdr,"Sales Shipment Header");
+                                  FormatAdr.SalesShptBillTo(DebAdr,"Sales Shipment Header");
+                                  DebAdrZeigen := "Bill-to Customer No." <>  "Sell-to Customer No.";
+                                  FOR i := 1 TO ARRAYLEN(DebAdr) DO
+                                    IF DebAdr[i] <> LieferAnAdr[i] THEN
+                                      DebAdrZeigen := TRUE;
+                                  lead_free_text0 := '';
+                                  lead_free_text1 := '';
+                                  lead_free_text2 := '';
+                                  lead_text := '';
+                                  lief:= '';
+                                END;
+
+               ReqFilterFields=No.,Sell-to Customer No.,No. Printed }
+
+    { 2   ;1   ;DataItem;                    ;
+               DataItemTable=Table291;
+               OnAfterGetRecord=BEGIN
+                                  spedition:="Shipping Agent";
+                                END;
+
+               DataItemLink=Code=FIELD(Shipping Agent Code) }
+
+    { 3   ;1   ;DataItem;                    ;
+               DataItemTable=Table10;
+               DataItemLink=Code=FIELD(Shipment Method Code) }
+
+    { 4   ;1   ;DataItem;                    ;
+               DataItemTable=Table18;
+               OnAfterGetRecord=BEGIN
+                                  //Auskommentiert am 09.05.08 A
+                                  //gebiet_topas.SETFILTER(Code,'%1',Debitor.Gebietscode);
+                                  //gebiet_topas.FIND('-');
+                                  //Auskommentiert am 09.05.08 E
+                                  Verk_debitor:=Customer;
+                                  {
+                                  IF (("Country/Region Code" <> 'DE') AND("Country/Region Code" <>'AT') AND ("Country/Region Code" <>'CH'))THEN
+                                  BEGIN
+                                  CurrReport.LANGUAGE(1033); // Deutscher L„ndercode
+                                  END
+                                  ELSE
+                                  BEGIN
+                                  CurrReport.LANGUAGE(1031); // Englischer L„ndercode  (ENU Englisch(USA))
+                                  END;
+                                  }
+                                  IF CurrReport.LANGUAGE = 1031 THEN
+                                     BEGIN
+                                       IF "Sales Shipment Header"."Location Code" = 'MUST' THEN
+                                          BEGIN
+                                            titel := 'Musterlieferschein';
+                                          END
+                                         ELSE
+                                          BEGIN
+                                            titel := 'Lieferschein';
+                                          END;
+                                       IF "Sales Shipment Header"."Payment Terms Code" = 'BBL' THEN
+                                               BEGIN
+                                            lief := 'Lieferung per Nachnahme'
+                                          END;
+                                    END
+                                    ELSE
+                                    BEGIN
+                                       IF "Sales Shipment Header"."Location Code" = 'MUST' THEN
+                                          BEGIN
+                                            titel := 'Sample Delivery Note';
+                                          END
+                                         ELSE
+                                          BEGIN
+                                            titel := 'Delivery Note';
+                                          END;
+                                       IF "Sales Shipment Header"."Payment Terms Code" = 'BBL' THEN
+                                          BEGIN
+                                            lief := 'Cash on delivery'
+                                          END;
+                                    END;
+                                END;
+
+               DataItemLink=No.=FIELD(Sell-to Customer No.) }
+
+    { 5   ;1   ;DataItem;                    ;
+               DataItemTable=Table13;
+               OnAfterGetRecord=BEGIN
+                                    IF CurrReport.LANGUAGE = 1031 THEN
+                                      BEGIN
+                                         tel:="Salesperson/Purchaser"."Phone No.";
+                                         fax:="Salesperson/Purchaser"."Fax No.";
+                                         ansp:="Salesperson/Purchaser".Ansprech;
+                                      END
+                                     ELSE
+                                      BEGIN
+                                         tel:="Salesperson/Purchaser".Tel_international;
+                                         fax:="Salesperson/Purchaser".Fax_international;
+                                         ansp:="Salesperson/Purchaser".Ansprech_eng;
+                                      END;
+                                END;
+
+               DataItemLink=Code=FIELD(Betreuer Innendienst) }
+
+    { 6   ;1   ;DataItem;KopieSchleife       ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number);
+               OnPreDataItem=BEGIN
+                               AnzSchleifen := 1 + ABS(AnzKopien);
+                               KopieText := '';
+                               SETRANGE(Number,1,AnzSchleifen);
+                               ReportForNav.PrinterSettings.PaperSource(3);
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  ReportForNav.PrinterSettings.PaperSource(3);
+                                  IF Number > 1 THEN
+                                    KopieText := 'KOPIE';
+                                  ReportForNav.PageNo := 1;
+                                  IF (Number > 1) AND (titel = 'Musterlieferschein') THEN ReportForNav.PrinterSettings.PaperSource(2);
+                                  IF (("Sales Shipment Header"."Shipment Method Code"='ACCOUNT') OR ("Sales Shipment Header"."Shipment Method Code"='ACC-ENG'))
+                                   THEN
+                                    BEGIN
+                                      Account:="Shipping Agent".Name+' / '+"Sales Shipment Header".Spediteuraccount;
+                                      END ELSE
+                                        BEGIN
+                                      Account:="Shipping Agent".Name
+                                        END;
+                                END;
+
+               OnPostDataItem=BEGIN
+                                IF NOT CurrReport.PREVIEW THEN
+                                  LiefDruckZ„hler.RUN("Sales Shipment Header");
+                              END;
+                               }
+
+    { 7   ;2   ;DataItem;SeiteSchleife       ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=CONST(1)) }
+
+    { 8   ;3   ;Column  ;Picture_Firmendaten ;
+               SourceExpr=Firmendaten.Picture }
+
+    { 9   ;3   ;Column  ;ISOLogo_Firmendaten ;
+               SourceExpr=Firmendaten."ISO Logo" }
+
+    { 10  ;3   ;Column  ;E_Mail_Salesperson_Purchaser;
+               SourceExpr="Salesperson/Purchaser"."E-Mail" }
+
+    { 11  ;3   ;Column  ;tel                 ;
+               SourceExpr=tel }
+
+    { 12  ;3   ;Column  ;Salesperson_Purchaserfirstname__Salesperson_PurchaserName;
+               SourceExpr="Salesperson/Purchaser"."First name" +' ' + "Salesperson/Purchaser".Name }
+
+    { 13  ;3   ;Column  ;ansp                ;
+               SourceExpr=ansp }
+
+    { 14  ;3   ;Column  ;fax                 ;
+               SourceExpr=fax }
+
+    { 15  ;3   ;Column  ;titel               ;
+               SourceExpr=titel }
+
+    { 16  ;3   ;Column  ;No_SalesShipmentHeader;
+               SourceExpr="Sales Shipment Header"."No." }
+
+    { 17  ;3   ;Column  ;VATRegistrationNo_Verk_debitor;
+               SourceExpr=Verk_debitor."VAT Registration No." }
+
+    { 18  ;3   ;Column  ;Sell_toCustomerNo_SalesShipmentHeader;
+               SourceExpr="Sales Shipment Header"."Sell-to Customer No." }
+
+    { 19  ;3   ;Column  ;OurAccountNo_Verk_debitor;
+               SourceExpr=Verk_debitor."Our Account No." }
+
+    { 20  ;3   ;Column  ;SalesShipmentHeaderExternalDocumentNo__SalesShipmentHeaderYo;
+               SourceExpr="Sales Shipment Header"."External Document No."+' '+"Sales Shipment Header"."Your Reference" }
+
+    { 1000000000;3;Column;SalesShipmentHeaderExternalDocumentNo;
+               SourceExpr="Sales Shipment Header"."External Document No." }
+
+    { 21  ;3   ;Column  ;LieferAnAdr8        ;
+               SourceExpr=LieferAnAdr[8] }
+
+    { 22  ;3   ;Column  ;LieferAnAdr7        ;
+               SourceExpr=LieferAnAdr[7] }
+
+    { 25  ;3   ;Column  ;LieferAnAdr6        ;
+               SourceExpr=LieferAnAdr[6] }
+
+    { 26  ;3   ;Column  ;LieferAnAdr5        ;
+               SourceExpr=LieferAnAdr[5] }
+
+    { 27  ;3   ;Column  ;LieferAnAdr4        ;
+               SourceExpr=LieferAnAdr[4] }
+
+    { 28  ;3   ;Column  ;LieferAnAdr3        ;
+               SourceExpr=LieferAnAdr[3] }
+
+    { 29  ;3   ;Column  ;LieferAnAdr2        ;
+               SourceExpr=LieferAnAdr[2] }
+
+    { 30  ;3   ;Column  ;LieferAnAdr1        ;
+               SourceExpr=LieferAnAdr[1] }
+
+    { 23  ;3   ;Column  ;OrderNo_SalesShipmentHeader;
+               SourceExpr="Sales Shipment Header"."Order No." }
+
+    { 24  ;3   ;Column  ;PostingDate_SalesShipmentHeader;
+               SourceExpr="Sales Shipment Header"."Posting Date" }
+
+    { 31  ;3   ;Column  ;seite               ;
+               SourceExpr=seite }
+
+    { 36  ;3   ;DataItem;                    ;
+               DataItemTable=Table111;
+               DataItemTableView=SORTING(Document No.,Line No.);
+               OnPreDataItem=BEGIN
+                               MehrZeilen := FIND('+');
+                               WHILE MehrZeilen AND (Description = '') AND ("No." = '') AND (Quantity = 0) DO
+                                 MehrZeilen := NEXT(-1) <> 0;
+                                 IF NOT MehrZeilen THEN
+                                 CurrReport.BREAK;
+                               SETRANGE("Line No.",0,"Line No.");
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  IF CurrReport.LANGUAGE <> 1031 THEN
+                                     BEGIN
+                                       IF "Sales Shipment Line"."Unit of Measure Code" = 'STšCK' THEN
+                                          BEGIN
+                                            einheiten_text:= 'pcs.';
+                                          END
+                                          ELSE
+                                          BEGIN
+                                            einheiten_text:="Sales Shipment Line"."Unit of Measure Code";
+                                          END;
+                                       END
+                                       ELSE
+                                       BEGIN
+                                            einheiten_text:="Sales Shipment Line"."Unit of Measure Code";
+                                       END;
+                                  // Lead Free
+                                  {
+                                  leadfree_symbol:='';
+                                  leadfree_artikel.SETFILTER(leadfree_artikel."No.",'%1',"Sales Shipment Line"."No.");
+                                  IF leadfree_artikel.FIND('-') THEN
+                                     BEGIN
+                                       IF (leadfree_artikel."Lead Free" = TRUE) AND
+                                          (NOT(leadfree_artikel.Herstellerkurzname = 'HAL') AND
+                                           NOT(leadfree_artikel.Herstellerkurzname = 'SYN') AND
+                                           NOT(leadfree_artikel.Herstellerkurzname = 'IDT') AND
+                                           NOT(leadfree_artikel.Herstellerkurzname = 'PLX') AND
+                                           NOT(leadfree_artikel.Herstellerkurzname = 'TDK') AND
+                                           NOT(leadfree_artikel.Herstellerkurzname = 'TSC') AND
+                                           NOT(leadfree_artikel.Herstellerkurzname = 'JEL') AND
+                                           NOT(leadfree_artikel.Herstellerkurzname = 'SIM') AND
+                                           NOT(leadfree_artikel.Herstellerkurzname = 'NEX') AND
+                                           NOT(leadfree_artikel.Herstellerkurzname = 'LSI') AND
+                                           NOT(leadfree_artikel.Herstellerkurzname = 'WML') AND
+                                           NOT(leadfree_artikel.Herstellerkurzname = 'SIW') AND
+                                           NOT(leadfree_artikel.Herstellerkurzname = 'ACL') AND
+                                           NOT(leadfree_artikel.Herstellerkurzname = 'ICP') AND
+                                           NOT(leadfree_artikel.Herstellerkurzname = 'RIC') AND
+                                           NOT(leadfree_artikel.Herstellerkurzname = 'ICSA') AND
+                                           NOT(leadfree_artikel.Herstellerkurzname = 'ICS'))
+                                          THEN
+                                          BEGIN
+                                             leadfree_symbol:='ø';
+                                             IF CurrReport.LANGUAGE = 1031 THEN
+                                                BEGIN
+                                                  lead_free_text1 := ' ø Diese Bauteile sind nach Angabe des Herstellers bleifrei.';
+                                                  lead_free_text2 := 'Bitte beachten Sie gegebenenfalls die neue Bestellbezeichnung.';
+                                                END
+                                             ELSE
+                                                BEGIN
+                                                  lead_free_text1 := ' ø According to manufacturer these parts are leadfree.';
+                                                  lead_free_text2 := 'Please note the new part number where applicable.';
+                                               END;
+                                          END;
+                                       IF (leadfree_artikel."Lead Free" = TRUE) AND
+                                          ((leadfree_artikel.Herstellerkurzname = 'HAL') OR
+                                           (leadfree_artikel.Herstellerkurzname = 'SYN') OR
+                                           (leadfree_artikel.Herstellerkurzname = 'IDT') OR
+                                           (leadfree_artikel.Herstellerkurzname = 'PLX') OR
+                                           (leadfree_artikel.Herstellerkurzname = 'TDK') OR
+                                           (leadfree_artikel.Herstellerkurzname = 'TSC') OR
+                                           (leadfree_artikel.Herstellerkurzname = 'JEL') OR
+                                           (leadfree_artikel.Herstellerkurzname = 'SIM') OR
+                                           (leadfree_artikel.Herstellerkurzname = 'NEX') OR
+                                           (leadfree_artikel.Herstellerkurzname = 'LSI') OR
+                                           (leadfree_artikel.Herstellerkurzname = 'WML') OR
+                                           (leadfree_artikel.Herstellerkurzname = 'SIW') OR
+                                           (leadfree_artikel.Herstellerkurzname = 'ACL') OR
+                                           (leadfree_artikel.Herstellerkurzname = 'ICP') OR
+                                           (leadfree_artikel.Herstellerkurzname = 'RIC') OR
+                                           (leadfree_artikel.Herstellerkurzname = 'ICSA') OR
+                                           (leadfree_artikel.Herstellerkurzname = 'ICS'))
+                                          THEN
+                                          BEGIN
+                                             leadfree_symbol:='øø';
+                                             IF CurrReport.LANGUAGE = 1031 THEN
+                                                BEGIN
+                                                   lead_free_text0 := 'øø Diese Bauteile sind nach Angabe des Herstellers RoHS konform.';
+                                                   lead_free_text2 := 'Bitte beachten Sie gegebenenfalls die neue Bestellbezeichnung.';
+                                                END
+                                                ELSE
+                                                BEGIN
+                                                   lead_free_text0 := 'øø  According to manufacturer these parts are RoHS compliant.';
+                                                   lead_free_text2 := 'Please note the new part number where applicable.';
+                                                END;
+                                          END;
+                                     END;
+                                  }
+                                  //20.08.09-ST Andruck, wenn Artikel bleihaltig ist
+                                  IF "Sales Shipment Line".Type="Sales Shipment Line".Type::Item THEN
+                                    BEGIN
+                                      lead_symbol:='';
+                                      lead_artikel.SETFILTER(lead_artikel."No.",'%1',"Sales Shipment Line"."No.");
+                                      IF lead_artikel.FINDFIRST THEN
+                                        BEGIN
+                                          IF (lead_artikel."Lead Free" = FALSE) AND (lead_artikel."Item Tracking Code" = 'DATECODE')
+                                          AND ("Sales Shipment Line".Quantity > 0)THEN
+                                            BEGIN
+                                              lead_symbol := 'ø';
+                                              IF CurrReport.LANGUAGE = 1031 THEN
+                                                BEGIN
+                                                  lead_text := 'ø Diese Bauteile sind nach Angabe des Herstellers nicht RoHS konform bzw. nicht bleifrei.';
+                                                END
+                                              ELSE
+                                                BEGIN
+                                                  lead_text := 'ø According to manufacturer these parts are non-RoHS compliant respectively not leadfree.';
+                                                END;
+                                            END;
+                                        END;
+                                    END;
+                                END;
+
+               DataItemLinkReference=Sales Shipment Header;
+               DataItemLink=Document No.=FIELD(No.) }
+
+    { 37  ;4   ;Column  ;Description_SalesShipmentLine;
+               SourceExpr=Description }
+
+    { 38  ;4   ;Column  ;OrderLineNo_SalesShipmentLine;
+               SourceExpr="Order Line No." }
+
+    { 39  ;4   ;Column  ;Quantity_SalesShipmentLine;
+               SourceExpr=Quantity }
+
+    { 40  ;4   ;Column  ;No_SalesShipmentLine;
+               SourceExpr="No." }
+
+    { 41  ;4   ;Column  ;lead_free_text0     ;
+               SourceExpr=lead_free_text0 }
+
+    { 42  ;4   ;Column  ;lead_free_text1     ;
+               SourceExpr=lead_free_text1 }
+
+    { 43  ;4   ;Column  ;lead_free_text2     ;
+               SourceExpr=lead_free_text2 }
+
+    { 44  ;4   ;Column  ;lead_text           ;
+               SourceExpr=lead_text }
+
+    { 45  ;4   ;Column  ;lief                ;
+               SourceExpr=lief }
+
+    { 46  ;4   ;Column  ;Account             ;
+               SourceExpr=Account }
+
+    { 47  ;4   ;DataItem;                    ;
+               DataItemTable=Table27;
+               DataItemLink=No.=FIELD(No.) }
+
+    { 48  ;5   ;DataItem;                    ;
+               DataItemTable=Table9;
+               DataItemLink=Code=FIELD(Country/Region of Origin Code) }
+
+    { 49  ;6   ;Column  ;lead_symbol         ;
+               SourceExpr=lead_symbol }
+
+    { 50  ;6   ;Column  ;Quantity_SalesShipmentLine2;
+               SourceExpr="Sales Shipment Line".Quantity }
+
+    { 51  ;6   ;Column  ;Herstellerkurzname_Item;
+               SourceExpr=Item.Herstellerkurzname }
+
+    { 52  ;6   ;Column  ;Description_SalesShipmentLine5;
+               SourceExpr="Sales Shipment Line".Description }
+
+    { 53  ;6   ;Column  ;Artikelnr2_SalesShipmentLine;
+               SourceExpr="Sales Shipment Line"."Artikelnr. 2" }
+
+    { 54  ;6   ;Column  ;einheiten_text      ;
+               SourceExpr=einheiten_text }
+
+    { 55  ;6   ;Column  ;OrderLineNo_SalesShipmentLine2;
+               SourceExpr="Sales Shipment Line"."Order Line No." }
+
+    { 57  ;6   ;Column  ;Description2_SalesShipmentLine;
+               SourceExpr="Sales Shipment Line"."Description 2" }
+
+    { 58  ;6   ;Column  ;Cross_ReferenceNo_SalesShipmentLine;
+               SourceExpr="Sales Shipment Line"."Cross-Reference No." }
+
+    { 59  ;6   ;Column  ;TariffNo_Item       ;
+               SourceExpr=Item."Tariff No." }
+
+    { 61  ;4   ;DataItem;                    ;
+               DataItemTable=Table32;
+               DataItemTableView=WHERE(Item Tracking=FILTER(<>None));
+               DataItemLink=Document No.=FIELD(Document No.),
+                            Item No.=FIELD(No.),
+                            Document Line No.=FIELD(Line No.) }
+
+    { 62  ;5   ;Column  ;Ursprungsland_ItemLedgerEntry;
+               SourceExpr=Ursprungsland }
+
+    { 63  ;5   ;Column  ;LotNo_ItemLedgerEntry;
+               SourceExpr="Lot No." }
+
+    { 66  ;5   ;Column  ;ItemLedgerEntryQuantity_1;
+               DecimalPlaces=0:0;
+               SourceExpr="Item Ledger Entry".Quantity*(-1) }
+
+    { 67  ;5   ;Column  ;SerialNo_ItemLedgerEntry;
+               SourceExpr="Serial No." }
+
+    { 1000000001;5;Column;ProductKey_ItemLedgerEntry;
+               SourceExpr="Product Key" }
+
+    { 1000000002;5;Column;SerialNo2_ItemLedgerEntry;
+               SourceExpr="Serial No. 2" }
+
+    { 68  ;3   ;DataItem;                    ;
+               DataItemTable=Table44;
+               DataItemTableView=SORTING(Document Type,No.,Line No.);
+               DataItemLinkReference=Sales Shipment Header;
+               DataItemLink=No.=FIELD(No.) }
+
+    { 69  ;3   ;DataItem;Total               ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=CONST(1)) }
+
+    { 70  ;3   ;DataItem;Total2              ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=CONST(1));
+               OnPreDataItem=BEGIN
+                               IF NOT DebAdrZeigen THEN
+                                 CurrReport.BREAK;
+                             END;
+                              }
+
+    { 71  ;4   ;Column  ;Bill_toCustomerNo_SalesShipmentHeader;
+               SourceExpr="Sales Shipment Header"."Bill-to Customer No." }
+
+    { 73  ;4   ;Column  ;DebAdr8             ;
+               SourceExpr=DebAdr[8] }
+
+    { 74  ;4   ;Column  ;DebAdr7             ;
+               SourceExpr=DebAdr[7] }
+
+    { 75  ;4   ;Column  ;DebAdr6             ;
+               SourceExpr=DebAdr[6] }
+
+    { 76  ;4   ;Column  ;DebAdr5             ;
+               SourceExpr=DebAdr[5] }
+
+    { 77  ;4   ;Column  ;DebAdr4             ;
+               SourceExpr=DebAdr[4] }
+
+    { 78  ;4   ;Column  ;DebAdr3             ;
+               SourceExpr=DebAdr[3] }
+
+    { 79  ;4   ;Column  ;DebAdr2             ;
+               SourceExpr=DebAdr[2] }
+
+    { 72  ;4   ;Column  ;DebAdr1             ;
+               SourceExpr=DebAdr[1] }
+
+  }
+  REQUESTPAGE
+  {
+    PROPERTIES
+    {
+      SaveValues=Yes;
+    }
+    CONTROLS
+    {
+      { 1900000001;0;Container;
+                  ContainerType=ContentArea }
+
+      { 1900000002;1;Group  ;
+                  CaptionML=ENU=Options }
+
+      { 1   ;2   ;Field     ;
+                  CaptionML=DEU=Anzahl Kopien;
+                  SourceExpr=AnzKopien }
+
+      { 5000;2   ;Field     ;
+                  Name=ForNavOpenDesigner;
+                  CaptionML=ENU=Open Designer;
+                  SourceExpr=ReportForNavOpenDesigner;
+                  Visible=ReportForNavAllowDesign }
+
+    }
+  }
+  LABELS
+  {
+  }
+  CODE
+  {
+    VAR
+      titel@1140000 : Text[30];
+      lief@1140001 : Text[30];
+      vk_zeile@1140003 : Record 37;
+      spedition@1140004 : Record 291;
+      art1@1140005 : Record 27;
+      Verk_debitor@1140006 : Record 18;
+      VerkEinkPerson@1140007 : Record 13;
+      SalesShipLine@1140045 : Record 111;
+      Firmendaten@1140008 : Record 79;
+      language@1140002 : Record 8;
+      PrinterSelection@1140046 : Record 78;
+      LiefDruckZ„hler@1140009 : Codeunit 314;
+      DebAdr@1140010 : ARRAY [8] OF Text[50];
+      LieferAnAdr@1140011 : ARRAY [8] OF Text[50];
+      FirmaAdr@1140012 : ARRAY [8] OF Text[50];
+      Verk„uferText@1140013 : Text[20];
+      ReferenzText@1140014 : Text[30];
+      MehrZeilen@1140015 : Boolean;
+      AnzKopien@1140016 : Integer;
+      AnzSchleifen@1140017 : Integer;
+      KopieText@1140018 : Text[30];
+      DebAdrZeigen@1140019 : Boolean;
+      i@1140020 : Integer;
+      FormatAdr@1140021 : Codeunit 365;
+      lead_free_text0@1140022 : Text[80];
+      lead_free_text1@1140023 : Text[80];
+      leadfree_symbol@1140024 : Text[3];
+      leadfree_artikel@1140025 : Record 27;
+      lead_artikel@1140042 : Record 27;
+      lead_text@1140043 : Text[120];
+      lead_symbol@1140044 : Text[3];
+      lead_free_text2@1140026 : Text[80];
+      ansp@1140030 : Text[40];
+      tel@1140031 : Text[40];
+      fax@1140032 : Text[40];
+      seite@1140033 : Text[30];
+      einheiten_text@1140034 : Text[30];
+      Account@1140041 : Text[90];
+      ReportForNav@5000 : DotNet "'ForNav.Reports.2.0.0.1168, Version=2.0.0.1168, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
+      ReportForNavClient@5003 : DotNet "'ForNav.Reports.2.0.0.1168, Version=2.0.0.1168, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
+      ReportForNavDialog@5001 : Dialog;
+      ReportForNavOpenDesigner@5002 : Boolean;
+      ReportForNavAllowDesign@5004 : Boolean INDATASET;
+
+    LOCAL PROCEDURE OnPreSectionSeiteSchleife_Header1@5010(VAR SeiteSchleife@1000000000 : Record 2000000026);
+    BEGIN
+      WITH SeiteSchleife DO BEGIN
+        IF CurrReport.LANGUAGE = 1031 THEN
+          seite:=STRSUBSTNO('Seite %1',FORMAT(ReportForNav.PageNo))
+        ELSE
+          seite:=STRSUBSTNO('Page %1',FORMAT(ReportForNav.PageNo));
+        //TOPAS 29.06.15 ST - rendert das Firmenlogo fr Batch L„ufe, da das Logo beim normalen Druck vom Briefpapier bezogen wird
+        IF PrinterSelection.GET(USERID,50078) THEN BEGIN
+          IF (PrinterSelection."Printer Name" = 'PDFCreator')
+          OR (PrinterSelection."Printer Name" = 'Bullzip PDF Printer') THEN
+            Firmendaten.CALCFIELDS(Picture);
+        END;
+        //TOPAS Ende
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionSeiteSchleife_Header2@5011(VAR SeiteSchleife@1000000000 : Record 2000000026);
+    BEGIN
+      WITH SeiteSchleife DO BEGIN
+        ReportForNav.ShowOutput(Customer.Barcode_Lieferschein_erw = TRUE);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionSalesShipmentLine_Body5@5012(VAR "Sales Shipment Line"@1000000000 : Record 111);
+    BEGIN
+      WITH "Sales Shipment Line" DO BEGIN
+        ReportForNav.ShowOutput(((Type = 0) AND ("No." = 'LIEF_DRUCK')) OR ((Type = 0) AND ("No." = 'LIEF_DRU_A'))
+        OR ((Type = 0) AND ("No." = 'S-AU-SPARE')) OR ((Type = 0) AND ("No." = 'S-AN-SPARE')));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionSalesShipmentLine_Body6@5013(VAR "Sales Shipment Line"@1000000000 : Record 111);
+    BEGIN
+      WITH "Sales Shipment Line" DO BEGIN
+        ReportForNav.ShowOutput((Type = 0) AND ("Sales Shipment Header"."Location Code" = 'MUST'));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionSalesShipmentLine_Body7@5014(VAR "Sales Shipment Line"@1000000000 : Record 111);
+    BEGIN
+      WITH "Sales Shipment Line" DO BEGIN
+        ReportForNav.ShowOutput(("No." ='BECHTLE') OR ("No." = 'IP DYNAM'));
+        SalesShipLine.RESET;
+        SalesShipLine.SETFILTER("Document No.",'%1',"Document No.");
+        SalesShipLine.SETFILTER("Line No.",'%1',"Sales Shipment Line"."Attached to Line No.");
+        SalesShipLine.SETFILTER("No.",'%1|%2','BECHTLE','IP DYNAM');
+        IF SalesShipLine.FINDFIRST THEN
+          ReportForNav.ShowOutput(TRUE);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionSalesShipmentLine_Body8@5015(VAR "Sales Shipment Line"@1000000000 : Record 111);
+    BEGIN
+      WITH "Sales Shipment Line" DO BEGIN
+        ReportForNav.ShowOutput(Type = Type::Resource);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionSalesShipmentLine_Footer9@5016(VAR "Sales Shipment Line"@1000000000 : Record 111);
+    BEGIN
+      WITH "Sales Shipment Line" DO BEGIN
+        ReportForNav.ShowOutput(lead_free_text0 <>'');
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionSalesShipmentLine_Footer10@5017(VAR "Sales Shipment Line"@1000000000 : Record 111);
+    BEGIN
+      WITH "Sales Shipment Line" DO BEGIN
+        ReportForNav.ShowOutput(lead_free_text1 <>'');
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionSalesShipmentLine_Footer11@5018(VAR "Sales Shipment Line"@1000000000 : Record 111);
+    BEGIN
+      WITH "Sales Shipment Line" DO BEGIN
+        ReportForNav.ShowOutput((lead_free_text1 <>'')OR (lead_free_text0 <> ''));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionSalesShipmentLine_Footer12@5019(VAR "Sales Shipment Line"@1000000000 : Record 111);
+    BEGIN
+      WITH "Sales Shipment Line" DO BEGIN
+        ReportForNav.ShowOutput(lead_text <>'');
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionSalesShipmentLine_Footer14@5020(VAR "Sales Shipment Line"@1000000000 : Record 111);
+    BEGIN
+      WITH "Sales Shipment Line" DO BEGIN
+        ReportForNav.ShowOutput("Sales Shipment Line"."Location Code" = 'MUST');
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionCountry_Region_Body16@5021(VAR "Country/Region"@1000000000 : Record 9);
+    BEGIN
+      WITH "Country/Region" DO BEGIN
+        ReportForNav.ShowOutput(("Sales Shipment Line".Type = "Sales Shipment Line".Type::Item) AND ("Sales Shipment Line".Quantity<>0));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionCountry_Region_Body17@5022(VAR "Country/Region"@1000000000 : Record 9);
+    BEGIN
+      WITH "Country/Region" DO BEGIN
+        ReportForNav.ShowOutput(("Sales Shipment Line".Type = "Sales Shipment Line".Type::Item) AND ("Sales Shipment Line".Quantity<>0) AND
+        (Customer.Barcode_Lieferschein_erw = TRUE));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionCountry_Region_Body18@5023(VAR "Country/Region"@1000000000 : Record 9);
+    BEGIN
+      WITH "Country/Region" DO BEGIN
+        ReportForNav.ShowOutput(("Sales Shipment Line".Type = "Sales Shipment Line".Type::Item)
+         AND ("Sales Shipment Line"."Description 2">'')
+         AND ("Sales Shipment Line".Quantity<>0));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionCountry_Region_Body19@5024(VAR "Country/Region"@1000000000 : Record 9);
+    BEGIN
+      WITH "Country/Region" DO BEGIN
+        ReportForNav.ShowOutput(("Sales Shipment Line"."Cross-Reference No."<>'') AND ("Sales Shipment Line".Quantity > 0)
+        AND (Item."Tariff No." = '') );
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionCountry_Region_Body20@5025(VAR "Country/Region"@1000000000 : Record 9);
+    BEGIN
+      WITH "Country/Region" DO BEGIN
+        ReportForNav.ShowOutput(("Sales Shipment Line".Quantity > 0) AND
+        ("Sales Shipment Line"."Cross-Reference No."='') AND (Item."Tariff No." <> ''));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionCountry_Region_Body21@5026(VAR "Country/Region"@1000000000 : Record 9);
+    BEGIN
+      WITH "Country/Region" DO BEGIN
+        ReportForNav.ShowOutput(("Sales Shipment Line".Type ="Sales Shipment Line".Type::Item)
+         AND ("Sales Shipment Line".Quantity > 0) AND (Item."Tariff No." <> '')
+          AND ("Sales Shipment Line"."Cross-Reference No."<>''));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionCountry_Region_Body22@5027(VAR "Country/Region"@1000000000 : Record 9);
+    BEGIN
+      WITH "Country/Region" DO BEGIN
+        ReportForNav.ShowOutput(("Sales Shipment Line".Type = "Sales Shipment Line".Type::Item)
+        AND ("Sales Shipment Line"."Cross-Reference No." <> '') AND ("Sales Shipment Line".Quantity<>0)
+        AND (Customer.Barcode_Lieferschein_erw = TRUE));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionCountry_Region_Body23@5028(VAR "Country/Region"@1000000000 : Record 9);
+    BEGIN
+      WITH "Country/Region" DO BEGIN
+        ReportForNav.ShowOutput((Item."C of C" =TRUE) AND ("Sales Shipment Line".Quantity<>0));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionCountry_Region_Body24@5029(VAR "Country/Region"@1000000000 : Record 9);
+    BEGIN
+      WITH "Country/Region" DO BEGIN
+        ReportForNav.ShowOutput((Item.Abzugstest =TRUE) AND ("Sales Shipment Line".Quantity<>0));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionItemLedgerEntry_Body26@5030(VAR "Item Ledger Entry"@1000000000 : Record 32);
+    BEGIN
+      WITH "Item Ledger Entry" DO BEGIN
+        ReportForNav.ShowOutput(("Item Ledger Entry".Quantity <> 0) AND ("Item Ledger Entry"."Lot No." <> ''));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionItemLedgerEntry_Body27@5031(VAR "Item Ledger Entry"@1000000000 : Record 32);
+    BEGIN
+      WITH "Item Ledger Entry" DO BEGIN
+        IF Item.GET("Item Ledger Entry"."Item No.") THEN
+          ReportForNav.ShowOutput(("Item Ledger Entry".Quantity <> 0) AND ("Item Ledger Entry"."Serial No." <> '')
+          AND (STRPOS(Item."Item Tracking Code",'SERIEN') <> 0)  AND ("Item Ledger Entry"."Lot No." = ''))
+        ELSE
+          ReportForNav.ShowOutput(FALSE);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionItemLedgerEntry_Body31@1000000001(VAR "Item Ledger Entry"@1000000000 : Record 32);
+    BEGIN
+      WITH "Item Ledger Entry" DO BEGIN
+        IF Item.GET("Item Ledger Entry"."Item No.") THEN
+          ReportForNav.ShowOutput(("Item Ledger Entry".Quantity <> 0) AND ("Item Ledger Entry"."Product Key" <> '')
+          AND ((Item."Item Tracking Code" = 'PRODUCTKEY') OR (Item."Item Tracking Code" = 'SERIENNR+P')))
+        ELSE
+          ReportForNav.ShowOutput(FALSE);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionTotal2_Body28@5032(VAR Total2@1000000000 : Record 2000000026);
+    BEGIN
+      WITH Total2 DO BEGIN
+        ReportForNav.ShowOutput("Sales Shipment Header"."Location Code" <> 'MUST');
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionTotal2_Body29@5033(VAR Total2@1000000000 : Record 2000000026);
+    BEGIN
+      WITH Total2 DO BEGIN
+        ReportForNav.ShowOutput := "Sales Shipment Header"."Bill-to Customer No." <> "Sales Shipment Header"."Sell-to Customer No.";
+        ReportForNav.ShowOutput("Sales Shipment Header"."Location Code" <> 'MUST');
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionTotal2_Body30@5034(VAR Total2@1000000000 : Record 2000000026);
+    BEGIN
+      WITH Total2 DO BEGIN
+        ReportForNav.ShowOutput("Sales Shipment Header"."Location Code" <> 'MUST');
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnInit@5002();
+    VAR
+      ReportLayoutSelection@1000 : Record 9651;
+      CustomReportLayout@1001 : Record 9650;
+      CustomLayoutID@1002 : Variant;
+      InStream@1004 : InStream;
+      EmptyLayout@1003 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+      ReportForNav.OData := GETURL(CLIENTTYPE::OData, COMPANYNAME, OBJECTTYPE::Page, 7702);
+      IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN
+        CustomLayoutID := ReportLayoutSelection.GetTempLayoutSelected
+      ELSE
+        IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN
+          CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+
+      IF (FORMAT(CustomLayoutID) <> EmptyLayout) AND CustomReportLayout.GET(CustomLayoutID) THEN BEGIN
+        CustomReportLayout.TESTFIELD(Type,CustomReportLayout.Type::RDLC);
+        CustomReportLayout.CALCFIELDS(Layout);
+        CustomReportLayout.Layout.CREATEINSTREAM(InStream,TEXTENCODING::UTF8);
+        ReportForNav.IsCustomLayout := TRUE;
+      END ELSE
+        REPORT.RDLCLAYOUT(ReportForNav.ReportID,InStream);
+
+      ReportForNav.LoadRdlc(InStream);
+      IF COPYSTR(LOWERCASE(GETURL(CLIENTTYPE::Current, COMPANYNAME, OBJECTTYPE::Codeunit, 1)), 1, 14) = 'dynamicsnav://' THEN BEGIN
+        ReportForNav.CheckClientAddIn();
+        ReportForNavClient := ReportForNavClient.Report(ReportForNav.Definition);
+        ReportForNavAllowDesign := ReportForNavClient.HasDesigner AND NOT ReportForNav.ParameterMode;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnSave@5010(Base64Layout@1000 : Text);
+    VAR
+      CustomReportLayout@1002 : Record 9650;
+      ReportLayoutSelection@1003 : Record 9651;
+      LayoutId@1004 : Variant;
+      TempBlob@1007 : Record 99008535;
+      OutStream@1006 : OutStream;
+      Bstr@1005 : BigText;
+      EmptyLayout@1001 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+      IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN BEGIN
+        IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN BEGIN
+          LayoutId := ReportLayoutSelection.GetTempLayoutSelected;
+        END ELSE BEGIN
+          IF ReportLayoutSelection.GET(ReportForNav.ReportID, COMPANYNAME) THEN BEGIN
+          LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+          END;
+        END;
+      END ELSE BEGIN
+        IF CONFIRM('Default custom layout not found. Create one?') THEN;
+      END;
+      IF FORMAT(LayoutId) <> EmptyLayout THEN BEGIN
+        TempBlob.Blob.CREATEOUTSTREAM(OutStream);
+        Bstr.ADDTEXT(Base64Layout);
+        Bstr.WRITE(OutStream);
+        CustomReportLayout.GET(LayoutId);
+        CustomReportLayout.ImportLayoutBlob(TempBlob, 'RDL');
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnParameters@5008(Parameters@1000 : Text);
+    BEGIN
+      ReportForNav.Parameters := REPORT.RUNREQUESTPAGE(ReportForNav.ReportID, Parameters);
+    END;
+
+    EVENT ReportForNav@5000::OnPreview@5009(Parameters@1000 : Text;FileName@1005 : Text);
+    VAR
+      PdfFile@1002 : File;
+      InStream@1003 : InStream;
+      OutStream@1004 : OutStream;
+    BEGIN
+      COMMIT;
+      PdfFile.CREATETEMPFILE;
+      PdfFile.CREATEOUTSTREAM(OutStream);
+      REPORT.SAVEAS(ReportForNav.ReportID, Parameters, REPORTFORMAT::Pdf, OutStream);
+      PdfFile.CREATEINSTREAM(InStream);
+      ReportForNavClient.ShowDesigner;
+      IF ReportForNav.IsValidPdf(PdfFile.NAME) THEN DOWNLOADFROMSTREAM(InStream, '', '', '', FileName);
+      PdfFile.CLOSE;
+    END;
+
+    EVENT ReportForNav@5000::OnPreSection@5012(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+      CASE DataItemId OF
+        'SeiteSchleife': CASE SectionId OF
+          'Header1': OnPreSectionSeiteSchleife_Header1(SeiteSchleife);
+          'Header2': OnPreSectionSeiteSchleife_Header2(SeiteSchleife);
+        END;
+        'SalesShipmentLine': CASE SectionId OF
+          'Body5': OnPreSectionSalesShipmentLine_Body5("Sales Shipment Line");
+          'Body6': OnPreSectionSalesShipmentLine_Body6("Sales Shipment Line");
+          'Body7': OnPreSectionSalesShipmentLine_Body7("Sales Shipment Line");
+          'Body8': OnPreSectionSalesShipmentLine_Body8("Sales Shipment Line");
+          'Footer9': OnPreSectionSalesShipmentLine_Footer9("Sales Shipment Line");
+          'Footer10': OnPreSectionSalesShipmentLine_Footer10("Sales Shipment Line");
+          'Footer11': OnPreSectionSalesShipmentLine_Footer11("Sales Shipment Line");
+          'Footer12': OnPreSectionSalesShipmentLine_Footer12("Sales Shipment Line");
+          'Footer14': OnPreSectionSalesShipmentLine_Footer14("Sales Shipment Line");
+        END;
+        'Country_Region': CASE SectionId OF
+          'Body16': OnPreSectionCountry_Region_Body16("Country/Region");
+          'Body17': OnPreSectionCountry_Region_Body17("Country/Region");
+          'Body18': OnPreSectionCountry_Region_Body18("Country/Region");
+          'Body19': OnPreSectionCountry_Region_Body19("Country/Region");
+          'Body20': OnPreSectionCountry_Region_Body20("Country/Region");
+          'Body21': OnPreSectionCountry_Region_Body21("Country/Region");
+          'Body22': OnPreSectionCountry_Region_Body22("Country/Region");
+          'Body23': OnPreSectionCountry_Region_Body23("Country/Region");
+          'Body24': OnPreSectionCountry_Region_Body24("Country/Region");
+        END;
+        'ItemLedgerEntry': CASE SectionId OF
+          'Body26': OnPreSectionItemLedgerEntry_Body26("Item Ledger Entry");
+          'Body27': OnPreSectionItemLedgerEntry_Body27("Item Ledger Entry");
+          'Body31': OnPreSectionItemLedgerEntry_Body31("Item Ledger Entry");
+        END;
+        'Total2': CASE SectionId OF
+          'Body28': OnPreSectionTotal2_Body28(Total2);
+          'Body29': OnPreSectionTotal2_Body29(Total2);
+          'Body30': OnPreSectionTotal2_Body30(Total2);
+        END;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPostSection@50013(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+    END;
+
+    EVENT ReportForNav@5000::OnClientOperation@5008(Args@1000 : DotNet "'mscorlib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Array");
+    VAR
+      op@1001 : Text;
+      FileMgmt@1002 : Codeunit 419;
+      Process@1006 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.Process" RUNONCLIENT;
+      PathObj@1005 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Path" RUNONCLIENT;
+      FileVersionInfo@1003 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.FileVersionInfo" RUNONCLIENT;
+      DirectoryHelper@1004 : DotNet "'mscorlib'.System.IO.Directory" RUNONCLIENT;
+    BEGIN
+      op := Args.GetValue(0);
+      CASE op OF
+        'TempPath': ReportForNav.Result := PathObj.GetTempPath();
+        'FileExists': ReportForNav.Result := FileMgmt.ClientFileExists(Args.GetValue(1));
+        'DirectoryExists': ReportForNav.Result := FileMgmt.ClientDirectoryExists(Args.GetValue(1));
+        'ProcessLocation': ReportForNav.Result := Process.GetCurrentProcess().MainModule.FileName;
+        'FileVersion': ReportForNav.Result := FileVersionInfo.GetVersionInfo(Args.GetValue(1)).FileVersion;
+        'DeleteFile': FileMgmt.DeleteClientFile(Args.GetValue(1));
+        'DeleteDirectory': IF STRLEN(Args.GetValue(1)) > 20 THEN
+          IF FileMgmt.ClientDirectoryExists(Args.GetValue(1)) THEN
+            DirectoryHelper.Delete(FORMAT(Args.GetValue(1)), TRUE);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnCheckForNavClientVersion@5007();
+    BEGIN
+      ReportForNavClient := ReportForNavClient.Report();
+      IF ReportForNav.MyFileVersion <> ReportForNavClient.MyFileVersion THEN
+        ERROR('You have version %1 of the Reports ForNAV assembly here:\\%2\\Please close your NAV client and update it to version %3.',
+              ReportForNavClient.MyFileVersion, ReportForNavClient.MyFileName, ReportForNav.MyFileVersion);
+    END;
+
+    EVENT ReportForNav@5000::OnSelectPrinter@5006();
+    BEGIN
+      ReportForNav.PrinterSettings.PageSettings := ReportForNavClient.SelectPrinter(ReportForNav.PrinterSettings.PrinterName,ReportForNav.PrinterSettings.ShowPrinterDialog,ReportForNav.PrinterSettings.PageSettings);
+    END;
+
+    EVENT ReportForNav@5000::OnPrint@5005(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream");
+    VAR
+      ClientFileName@1000000001 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      ReportForNavClient.Print(ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnDesign@5007(Data@1001 : Text);
+    BEGIN
+      ReportForNavClient.Data := Data;
+      WHILE ReportForNavClient.DesignReport DO BEGIN
+        ReportForNav.HandleRequest(ReportForNavClient.GetRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnView@5008(ClientFileName@1000000000 : Text;Parameters@1000000001 : Text;ServerFileName@1000000002 : Text);
+    VAR
+      ServerFile@1000000003 : File;
+      ServerInStream@1000000004 : InStream;
+    BEGIN
+      ServerFile.OPEN(ServerFileName);
+      ServerFile.CREATEINSTREAM(ServerInStream);
+      DOWNLOADFROMSTREAM(ServerInStream,'','','',ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnMessage@5009(Operation@1000000000 : Text;Parameter@1000000001 : Text;ParameterNo@1000000002 : Integer);
+    BEGIN
+      CASE Operation OF
+        'Open'    : ReportForNavDialog.OPEN(Parameter);
+        'Update'  : ReportForNavDialog.UPDATE(ParameterNo,Parameter);
+        'Close'   : ReportForNavDialog.CLOSE();
+        'Message' : MESSAGE(Parameter);
+        'Error'   : ERROR(Parameter);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPrintPreview@5011(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream";Preview@1000000001 : Boolean);
+    VAR
+      ClientFileName@1000000002 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      WHILE ReportForNavClient.PrintPreviewDialog(ClientFileName,ReportForNav.PrinterSettings.PrinterName,Preview) DO BEGIN
+        ReportForNav.HandlePrintPreviewRequest(ReportForNavClient.GetPrintPreviewRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    BEGIN
+    {
+      230699 ug
+           Adressfeld auf Fensterkurvert-Norm gesetzt.
+      131099 al
+      c01  Verkaufsrechnungszeile, Body(5) eingefgt.
+           Bezeichnung 2 ausdrucken.
+
+      10.07.2017 Body(5) UB   ((Type = 0) AND ("No." = 'S-AU-SPARE') und  ((Type = 0) AND ("No." = 'S-AN-SPARE') hinzugefgt
+    }
+    END.
+  }
+  RDLDATA
+  {
+    <?xml version="1.0" encoding="utf-8"?>
+<Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
+  <Description>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</Description>
+  <AutoRefresh>0</AutoRefresh>
+  <DataSources>
+    <DataSource Name="DataSource">
+      <ConnectionProperties>
+        <DataProvider>SQL</DataProvider>
+        <ConnectString />
+      </ConnectionProperties>
+      <rd:SecurityType>None</rd:SecurityType>
+      <rd:DataSourceID>11083614-e037-4701-80a2-a09b6f1310b8</rd:DataSourceID>
+    </DataSource>
+  </DataSources>
+  <ReportSections>
+    <ReportSection>
+      <Body>
+        <Height>2in</Height>
+        <Style />
+      </Body>
+      <Width>6.5in</Width>
+      <Page>
+        <Style />
+      </Page>
+    </ReportSection>
+  </ReportSections>
+  <rd:ReportUnitType>Invalid</rd:ReportUnitType>
+  <rd:ReportID>cebde980-7985-48c9-a0a8-944342e9a711</rd:ReportID>
+  <DataSets>
+    <DataSet Name="DataSet_Result">
+      <Fields>
+        <Field Name="Picture_Firmendaten">
+          <DataField>Picture_Firmendaten</DataField>
+        </Field>
+        <Field Name="ISOLogo_Firmendaten">
+          <DataField>ISOLogo_Firmendaten</DataField>
+        </Field>
+        <Field Name="E_Mail_Salesperson_Purchaser">
+          <DataField>E_Mail_Salesperson_Purchaser</DataField>
+        </Field>
+        <Field Name="tel">
+          <DataField>tel</DataField>
+        </Field>
+        <Field Name="Salesperson_Purchaserfirstname__Salesperson_PurchaserName">
+          <DataField>Salesperson_Purchaserfirstname__Salesperson_PurchaserName</DataField>
+        </Field>
+        <Field Name="ansp">
+          <DataField>ansp</DataField>
+        </Field>
+        <Field Name="fax">
+          <DataField>fax</DataField>
+        </Field>
+        <Field Name="titel">
+          <DataField>titel</DataField>
+        </Field>
+        <Field Name="No_SalesShipmentHeader">
+          <DataField>No_SalesShipmentHeader</DataField>
+        </Field>
+        <Field Name="VATRegistrationNo_Verk_debitor">
+          <DataField>VATRegistrationNo_Verk_debitor</DataField>
+        </Field>
+        <Field Name="Sell_toCustomerNo_SalesShipmentHeader">
+          <DataField>Sell_toCustomerNo_SalesShipmentHeader</DataField>
+        </Field>
+        <Field Name="OurAccountNo_Verk_debitor">
+          <DataField>OurAccountNo_Verk_debitor</DataField>
+        </Field>
+        <Field Name="SalesShipmentHeaderExternalDocumentNo__SalesShipmentHeaderYo">
+          <DataField>SalesShipmentHeaderExternalDocumentNo__SalesShipmentHeaderYo</DataField>
+        </Field>
+        <Field Name="SalesShipmentHeaderExternalDocumentNo">
+          <DataField>SalesShipmentHeaderExternalDocumentNo</DataField>
+        </Field>
+        <Field Name="LieferAnAdr8">
+          <DataField>LieferAnAdr8</DataField>
+        </Field>
+        <Field Name="LieferAnAdr7">
+          <DataField>LieferAnAdr7</DataField>
+        </Field>
+        <Field Name="LieferAnAdr6">
+          <DataField>LieferAnAdr6</DataField>
+        </Field>
+        <Field Name="LieferAnAdr5">
+          <DataField>LieferAnAdr5</DataField>
+        </Field>
+        <Field Name="LieferAnAdr4">
+          <DataField>LieferAnAdr4</DataField>
+        </Field>
+        <Field Name="LieferAnAdr3">
+          <DataField>LieferAnAdr3</DataField>
+        </Field>
+        <Field Name="LieferAnAdr2">
+          <DataField>LieferAnAdr2</DataField>
+        </Field>
+        <Field Name="LieferAnAdr1">
+          <DataField>LieferAnAdr1</DataField>
+        </Field>
+        <Field Name="OrderNo_SalesShipmentHeader">
+          <DataField>OrderNo_SalesShipmentHeader</DataField>
+        </Field>
+        <Field Name="PostingDate_SalesShipmentHeader">
+          <DataField>PostingDate_SalesShipmentHeader</DataField>
+        </Field>
+        <Field Name="seite">
+          <DataField>seite</DataField>
+        </Field>
+        <Field Name="Description_SalesShipmentLine">
+          <DataField>Description_SalesShipmentLine</DataField>
+        </Field>
+        <Field Name="OrderLineNo_SalesShipmentLine">
+          <DataField>OrderLineNo_SalesShipmentLine</DataField>
+        </Field>
+        <Field Name="Quantity_SalesShipmentLine">
+          <DataField>Quantity_SalesShipmentLine</DataField>
+        </Field>
+        <Field Name="Quantity_SalesShipmentLineFormat">
+          <DataField>Quantity_SalesShipmentLineFormat</DataField>
+        </Field>
+        <Field Name="No_SalesShipmentLine">
+          <DataField>No_SalesShipmentLine</DataField>
+        </Field>
+        <Field Name="lead_free_text0">
+          <DataField>lead_free_text0</DataField>
+        </Field>
+        <Field Name="lead_free_text1">
+          <DataField>lead_free_text1</DataField>
+        </Field>
+        <Field Name="lead_free_text2">
+          <DataField>lead_free_text2</DataField>
+        </Field>
+        <Field Name="lead_text">
+          <DataField>lead_text</DataField>
+        </Field>
+        <Field Name="lief">
+          <DataField>lief</DataField>
+        </Field>
+        <Field Name="Account">
+          <DataField>Account</DataField>
+        </Field>
+        <Field Name="lead_symbol">
+          <DataField>lead_symbol</DataField>
+        </Field>
+        <Field Name="Quantity_SalesShipmentLine2">
+          <DataField>Quantity_SalesShipmentLine2</DataField>
+        </Field>
+        <Field Name="Quantity_SalesShipmentLine2Format">
+          <DataField>Quantity_SalesShipmentLine2Format</DataField>
+        </Field>
+        <Field Name="Herstellerkurzname_Item">
+          <DataField>Herstellerkurzname_Item</DataField>
+        </Field>
+        <Field Name="Description_SalesShipmentLine5">
+          <DataField>Description_SalesShipmentLine5</DataField>
+        </Field>
+        <Field Name="Artikelnr2_SalesShipmentLine">
+          <DataField>Artikelnr2_SalesShipmentLine</DataField>
+        </Field>
+        <Field Name="einheiten_text">
+          <DataField>einheiten_text</DataField>
+        </Field>
+        <Field Name="OrderLineNo_SalesShipmentLine2">
+          <DataField>OrderLineNo_SalesShipmentLine2</DataField>
+        </Field>
+        <Field Name="Description2_SalesShipmentLine">
+          <DataField>Description2_SalesShipmentLine</DataField>
+        </Field>
+        <Field Name="Cross_ReferenceNo_SalesShipmentLine">
+          <DataField>Cross_ReferenceNo_SalesShipmentLine</DataField>
+        </Field>
+        <Field Name="TariffNo_Item">
+          <DataField>TariffNo_Item</DataField>
+        </Field>
+        <Field Name="Ursprungsland_ItemLedgerEntry">
+          <DataField>Ursprungsland_ItemLedgerEntry</DataField>
+        </Field>
+        <Field Name="LotNo_ItemLedgerEntry">
+          <DataField>LotNo_ItemLedgerEntry</DataField>
+        </Field>
+        <Field Name="ItemLedgerEntryQuantity_1">
+          <DataField>ItemLedgerEntryQuantity_1</DataField>
+        </Field>
+        <Field Name="ItemLedgerEntryQuantity_1Format">
+          <DataField>ItemLedgerEntryQuantity_1Format</DataField>
+        </Field>
+        <Field Name="SerialNo_ItemLedgerEntry">
+          <DataField>SerialNo_ItemLedgerEntry</DataField>
+        </Field>
+        <Field Name="ProductKey_ItemLedgerEntry">
+          <DataField>ProductKey_ItemLedgerEntry</DataField>
+        </Field>
+        <Field Name="SerialNo2_ItemLedgerEntry">
+          <DataField>SerialNo2_ItemLedgerEntry</DataField>
+        </Field>
+        <Field Name="Bill_toCustomerNo_SalesShipmentHeader">
+          <DataField>Bill_toCustomerNo_SalesShipmentHeader</DataField>
+        </Field>
+        <Field Name="DebAdr8">
+          <DataField>DebAdr8</DataField>
+        </Field>
+        <Field Name="DebAdr7">
+          <DataField>DebAdr7</DataField>
+        </Field>
+        <Field Name="DebAdr6">
+          <DataField>DebAdr6</DataField>
+        </Field>
+        <Field Name="DebAdr5">
+          <DataField>DebAdr5</DataField>
+        </Field>
+        <Field Name="DebAdr4">
+          <DataField>DebAdr4</DataField>
+        </Field>
+        <Field Name="DebAdr3">
+          <DataField>DebAdr3</DataField>
+        </Field>
+        <Field Name="DebAdr2">
+          <DataField>DebAdr2</DataField>
+        </Field>
+        <Field Name="DebAdr1">
+          <DataField>DebAdr1</DataField>
+        </Field>
+      </Fields>
+      <Query>
+        <DataSourceName>DataSource</DataSourceName>
+        <CommandText />
+      </Query>
+      <rd:DataSetInfo>
+        <rd:DataSetName>DataSet</rd:DataSetName>
+        <rd:SchemaPath>Report.xsd</rd:SchemaPath>
+        <rd:TableName>Result</rd:TableName>
+      </rd:DataSetInfo>
+    </DataSet>
+  </DataSets>
+</Report>
+    END_OF_RDLDATA
+  }
+}
+
