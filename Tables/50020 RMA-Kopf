@@ -1,0 +1,176 @@
+OBJECT Table 50020 RMA-Kopf
+{
+  OBJECT-PROPERTIES
+  {
+    Date=28.06.17;
+    Time=12:22:37;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    OnInsert=BEGIN
+               IF "RMA-Nr." = '' THEN BEGIN
+                 //Probleme mit Table 5079 Einrichtung wegen Table 1261 Service Password
+                 //RMSetup.GET;
+                 //RMSetup.TESTFIELD("RMA Nos.");
+                 //NoSeriesMgt.InitSeries(RMSetup."RMA Nos.",xRec.Nummernserie,0D,"RMA-Nr.",Nummernserie);
+                 NoSeriesMgt.InitSeries('RMA',xRec.Nummernserie,0D,"RMA-Nr.",Nummernserie);
+                 "Angelegt von" := USERID;
+                 "Angelegt am"   := WORKDATE;
+                 Belegdatum := WORKDATE;
+               END;
+             END;
+
+    OnModify=BEGIN
+               "Korrigiert von" := USERID;
+               "Korrigiert am"  := WORKDATE;
+             END;
+
+    OnDelete=VAR
+               "RMA-Zeile"@1140000 : Record 50021;
+               "RMA-Beteiligte"@1140001 : Record 50022;
+               "RMA-Bemerkungen"@1140002 : Record 50023;
+             BEGIN
+               //Teil 1 šberprfen ob ein Status bereits abgeschlossen wurde ,dann Hinweisfenster bzw. L”sch-Abbruch m”glich
+               IF ("Status-RMA-Annahme" = TRUE) OR ("Status-Zurck vom Kunden" = TRUE) OR ("Status-An Hersteller" = TRUE)
+               OR ("Status-Zurck vom Hersteller" = TRUE) OR ("Status-An Kunden" = TRUE) THEN
+                 IF CONFIRM(Text004,FALSE) THEN BEGIN
+                 END ELSE
+                   ERROR(Text005);
+
+               //Teil 2 Zeilen l”schen
+               Counter := 0;
+               Window.OPEN(
+                 '#1#################################\\' +
+                 'RMA-Nr.: #2###### @3@@@@@@@@');
+
+               Factor := 9999 / 3;
+               Counter += 1;
+
+               Window.UPDATE(1,'RMA-Vorgang wird gel”scht.');
+
+               "RMA-Zeile".RESET;
+               "RMA-Zeile".SETFILTER("RMA-Zeile"."RMA-Nr.",'%1',"RMA-Nr.");
+               IF "RMA-Zeile".FINDFIRST THEN
+                 "RMA-Zeile".DELETEALL;
+
+               Window.UPDATE(2,"RMA-Nr.");
+               Window.UPDATE(3,(Counter * Factor) DIV 1);
+               SLEEP(300);
+
+               //Teil 3 Beteiligte l”schen
+
+               "RMA-Beteiligte".RESET;
+               "RMA-Beteiligte".SETFILTER("RMA-Beteiligte"."RMA-Nr.",'%1',"RMA-Nr.");
+               IF "RMA-Beteiligte".FINDFIRST THEN
+                 "RMA-Beteiligte".DELETEALL;
+
+               Counter += 1;
+               Window.UPDATE(3,(Counter * Factor) DIV 1);
+               SLEEP(300);
+
+               //Teil 4 Bemerkungen l”schen
+
+               "RMA-Bemerkungen".RESET;
+               "RMA-Bemerkungen".SETFILTER("RMA-Bemerkungen"."Nr.",'%1',"RMA-Nr.");
+               IF "RMA-Bemerkungen".FINDFIRST THEN
+                 "RMA-Bemerkungen".DELETEALL;
+
+               Counter += 1;
+               Window.UPDATE(3,(Counter * Factor) DIV 1);
+               SLEEP(300);
+
+               Window.CLOSE;
+             END;
+
+    OnRename=BEGIN
+               ERROR(Text000,FIELDCAPTION("RMA-Nr."));
+             END;
+
+  }
+  FIELDS
+  {
+    { 1   ;   ;RMA-Nr.             ;Code20        ;OnValidate=BEGIN
+                                                                IF "RMA-Nr." <> xRec."RMA-Nr." THEN BEGIN
+                                                                  //Probleme mit Table 5079 Einrichtung wegen Table 1261 Service Password
+                                                                  //RMSetup.GET;
+                                                                  //NoSeriesMgt.TestManual(RMSetup."RMA Nos.");
+                                                                  NoSeriesMgt.TestManual('RMA');
+                                                                END;
+                                                              END;
+                                                               }
+    { 2   ;   ;Belegdatum          ;Date           }
+    { 3   ;   ;Reklamationsgrund   ;Text50        ;OnValidate=BEGIN
+                                                                IF (xRec.Reklamationsgrund <> '') AND (Rec.Reklamationsgrund <> xRec.Reklamationsgrund) THEN
+                                                                  IF NOT CONFIRM(Text001,FALSE,FIELDCAPTION(Reklamationsgrund)) THEN
+                                                                    Reklamationsgrund := xRec.Reklamationsgrund;
+                                                              END;
+                                                               }
+    { 4   ;   ;Betreuer            ;Code20        ;TableRelation=Salesperson/Purchaser }
+    { 5   ;   ;Status-RMA-Annahme  ;Boolean        }
+    { 6   ;   ;Status-Zurck vom Kunden;Boolean    }
+    { 7   ;   ;Status-An Hersteller;Boolean        }
+    { 8   ;   ;Status-Zurck vom Hersteller;Boolean }
+    { 9   ;   ;Status-An Kunden    ;Boolean        }
+    { 10  ;   ;Status-Vorab        ;Boolean        }
+    { 11  ;   ;Status-Abgeschlossen;Boolean        }
+    { 13  ;   ;Angelegt am         ;Date           }
+    { 14  ;   ;Angelegt von        ;Code50         }
+    { 15  ;   ;Korrigiert am       ;Date           }
+    { 16  ;   ;Korrigiert von      ;Code50         }
+    { 17  ;   ;RMA-Wert            ;Decimal       ;OnValidate=BEGIN
+                                                                IF "RMA-Wert" <> xRec."RMA-Wert" THEN
+                                                                  "RMA-Wert aktuell" := FALSE;
+
+                                                                IF ("RMA-Wert" >= 250) AND ("Genehmigt von" = '') THEN
+                                                                  MESSAGE(Text002);
+                                                              END;
+                                                               }
+    { 18  ;   ;RMA-Wert aktuell    ;Boolean        }
+    { 19  ;   ;Genehmigt von       ;Code20        ;TableRelation=Salesperson/Purchaser }
+    { 20  ;   ;weitere MA          ;Text30         }
+    { 21  ;   ;Aufgabennr.         ;Code20        ;Description=Fr Wiedervorlage / šberwachung }
+    { 22  ;   ;8D Report           ;Boolean        }
+    { 23  ;   ;Einfache Archivierung;Boolean       }
+    { 99  ;   ;Nummernserie        ;Code10         }
+  }
+  KEYS
+  {
+    {    ;RMA-Nr.                                 ;Clustered=Yes }
+  }
+  FIELDGROUPS
+  {
+  }
+  CODE
+  {
+    VAR
+      RMSetup@1140000 : Record 5079;
+      NoSeriesMgt@1140001 : Codeunit 396;
+      Text000@1140002 : TextConst 'DEU=Sie k”nnen %1 nicht umbenennen.';
+      Text001@1140003 : TextConst 'DEU=M”chten Sie den %1 wirklich umbenennen?';
+      Text002@1140004 : TextConst 'DEU=Bitte lassen Sie diesen RMA-Vorgang genehmigen, da der RMA-Wert gr”áer 250 ° ist.';
+      Text004@1140006 : TextConst 'DEU=Es wurden ein oder mehrere Teilprozesse der RMA abgeschlossen.\M”chten Sie den L”schvorgang trotzdem fortsetzen?';
+      Text005@1140007 : TextConst 'DEU=Der L”schvorgang wurde abgebrochen.';
+      Window@1140008 : Dialog;
+      Factor@1140009 : Decimal;
+      Counter@1140010 : Decimal;
+
+    PROCEDURE CreateToDoRMA@1140000();
+    VAR
+      TempToDoRMA@1140000 : TEMPORARY Record 5080;
+    BEGIN
+      TempToDoRMA.CreateToDoFromRMA(Rec);
+    END;
+
+    BEGIN
+    {
+      Lfd.Nr. Version   Datum       User  Beschreibung
+      ===========================================================================
+      1       TOP1.00   24.08.09    ST    Funktion zum L”schen der gesamten RMA eingebaut
+      2       TOP1.00   30.11.16    ST    OnInsert Nummernserie Initiierung aus Tabelle 5079 deaktiviert (Rechte Probleme mit Table 1261)
+    }
+    END.
+  }
+}
+
