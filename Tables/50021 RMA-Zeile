@@ -1,0 +1,1632 @@
+OBJECT Table 50021 RMA-Zeile
+{
+  OBJECT-PROPERTIES
+  {
+    Date=17.02.17;
+    Time=14:09:59;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    OnInsert=BEGIN
+               PrfeEingabeM”glich;
+               RMAaktualisieren;
+               PrfeStatus;
+             END;
+
+    OnModify=BEGIN
+               PrfeEingabeM”glich;
+               RMAaktualisieren;
+               PrfeStatus;
+             END;
+
+    OnDelete=BEGIN
+               PrfeEingabeM”glich;
+               RMAaktualisieren;
+               BeteiligteArtikelL”schen;
+             END;
+
+    OnRename=BEGIN
+               PrfeEingabeM”glich;
+               RMAaktualisieren;
+               PrfeStatus;
+             END;
+
+  }
+  FIELDS
+  {
+    { 1   ;   ;RMA-Nr.             ;Code20         }
+    { 2   ;   ;Zeilennr.           ;Integer        }
+    { 3   ;   ;Belegart            ;Option        ;OptionString=Rechnung,,,vom Kunden,,,an Hersteller,,,vom Hersteller,,,an Kunden,,,Vorab;
+                                                   Description=Rechnung,vom Kunden,an Hersteller,vom Hersteller,an Kunden,Vorab }
+    { 4   ;   ;Belegnr.            ;Code20        ;OnValidate=BEGIN
+                                                                IF (xRec."Belegnr." <> "Belegnr.") AND ("Belegnr." = '') THEN ERROR(Text000);
+                                                              END;
+                                                               }
+    { 5   ;   ;Belegzeilennr.      ;Integer       ;OnValidate=BEGIN
+                                                                IF (xRec."Belegzeilennr." <> "Belegzeilennr.") AND ("Belegzeilennr." = 0) THEN ERROR(Text001);
+                                                              END;
+                                                               }
+    { 6   ;   ;Datum               ;Date           }
+    { 7   ;   ;Artikelnr.          ;Code20        ;TableRelation=Item;
+                                                   OnValidate=BEGIN
+                                                                CASE Belegart OF
+                                                                  Belegart::Rechnung:
+                                                                    BEGIN
+                                                                      IF (("Artikelnr." <> xRec."Artikelnr.") AND (xRec."Artikelnr." <> '') AND ("Belegnr." <> '' )) THEN ERROR(Text002);
+                                                                    END;
+                                                                  Belegart::"vom Kunden",Belegart::"an Hersteller",Belegart::"vom Hersteller",Belegart::"an Kunden":
+                                                                    BEGIN
+                                                                      IF "Artikelnr." <> xRec."Artikelnr." THEN
+                                                                        BEGIN
+                                                                          "Menge SN-Nr. / DC" := 0;
+                                                                          "SN-Nr. / DC" := '';
+                                                                        END;
+                                                                    END;
+                                                                END;
+
+                                                                CASE Belegart OF
+                                                                  Belegart :: Rechnung,Belegart :: "vom Kunden" :
+                                                                    BEGIN
+
+                                                                      //**************************************************************************************************************
+                                                                      //                        13.05.2011-ST  Hinzufgen der Artikelnr. in T50022 RMA-Beteiligte
+                                                                      //**************************************************************************************************************
+
+                                                                      "RMA-Beteiligte".RESET;
+                                                                      "RMA-Beteiligte".SETFILTER("RMA-Nr.",'%1',"RMA-Nr.");
+                                                                      "RMA-Beteiligte".SETFILTER(Art,'%1',"RMA-Beteiligte".Art :: Artikel);
+                                                                      "RMA-Beteiligte".SETFILTER("Nr.",'%1',"Artikelnr.");
+                                                                      IF (NOT "RMA-Beteiligte".FINDFIRST) AND ("Artikelnr." <> '') THEN
+                                                                        BEGIN
+                                                                          "RMA-Beteiligte".RESET;
+                                                                          "RMA-Beteiligte".INIT;
+                                                                            "RMA-Beteiligte"."RMA-Nr." := "RMA-Nr.";
+                                                                            "RMA-Beteiligte".Art := "RMA-Beteiligte".Art :: Artikel;
+                                                                            "RMA-Beteiligte".VALIDATE("Nr.","Artikelnr.");
+                                                                          "RMA-Beteiligte".INSERT(TRUE);
+                                                                        END;
+                                                                    END;
+                                                                END;
+
+                                                                IF Item.GET("Artikelnr.") THEN
+                                                                  Herstellercode := Item."Manufacturer Code";
+                                                              END;
+                                                               }
+    { 8   ;   ;Herstellercode      ;Code10        ;TableRelation=Manufacturer }
+    { 9   ;   ;Menge               ;Decimal        }
+    { 10  ;   ;VK-Preis            ;Decimal       ;Description=VK-Preis ohne MwSt., W„hrung }
+    { 11  ;   ;VK-Preis (MW)       ;Decimal        }
+    { 12  ;   ;Betrag              ;Decimal       ;Description=Betrag ohne MwSt., W„hrung }
+    { 13  ;   ;Betrag (MW)         ;Decimal        }
+    { 14  ;   ;W„hrung             ;Code10        ;TableRelation=Currency }
+    { 15  ;   ;W„hrungsfaktor      ;Decimal        }
+    { 16  ;   ;EK-W„hrung          ;Code10        ;TableRelation=Currency }
+    { 17  ;   ;EK-W„hrungsfaktor   ;Decimal        }
+    { 18  ;   ;Menge SN-Nr. / DC   ;Decimal        }
+    { 19  ;   ;SN-Nr. / DC         ;Code20        ;OnValidate=BEGIN
+                                                                CASE Belegart OF
+                                                                  Belegart::Rechnung:
+                                                                    BEGIN
+                                                                      IF ("Belegnr." <> 'REXXXXXX') THEN BEGIN
+                                                                        IF ("SN-Nr. / DC" <> xRec."SN-Nr. / DC") AND ("Belegnr." <> '') THEN ERROR(Text005,FIELDCAPTION("SN-Nr. / DC"));
+                                                                        IF ("SN-Nr. / DC" = xRec."SN-Nr. / DC") THEN EXIT;
+
+                                                                        selection := STRMENU(Text010,1);
+                                                                        IF selection = 0 THEN
+                                                                          BEGIN
+                                                                            "SN-Nr. / DC" := '';
+                                                                            EXIT;
+                                                                          END;
+
+                                                                        IF (selection = 1) OR (selection = 2) THEN
+                                                                          BEGIN
+                                                                            Artikelposten.RESET;
+                                                                            Artikelposten.SETFILTER(Artikelposten."Source No.",'%1',"Debitornr.");
+                                                                            Artikelposten.SETFILTER(Artikelposten."Item No.",'%1',"Artikelnr.");
+                                                                            Artikelposten.SETFILTER(Artikelposten."Document Type",'%1',Artikelposten."Document Type" :: "Sales Shipment");
+                                                                            IF selection = 1 THEN Artikelposten.SETFILTER(Artikelposten."Serial No.",'%1',"SN-Nr. / DC");
+                                                                            IF selection = 2 THEN Artikelposten.SETFILTER(Artikelposten."Lot No.",'%1',"SN-Nr. / DC");
+
+                                                                            IF Artikelposten.FINDFIRST THEN
+                                                                              BEGIN
+                                                                                "Menge SN-Nr. / DC" := Artikelposten.Quantity * (-1);
+                                                                                "Debitornr." := Artikelposten."Source No.";
+                                                                                CALCFIELDS(Debitorname);
+                                                                                "Artikelnr." := Artikelposten."Item No.";
+                                                                                "Datecode Pos." := Artikelposten."Entry No.";
+                                                                                //13.05.2011-ST
+                                                                                "urspr. Datecode Pos." := Artikelposten."Entry No.";
+                                                                                Ursprungsland := Artikelposten.Ursprungsland;
+                                                                                ValueEntry.RESET;
+                                                                                ValueEntry.SETFILTER(ValueEntry."Item Ledger Entry Type",'%1',ValueEntry."Item Ledger Entry Type" :: Sale);
+                                                                                ValueEntry.SETFILTER(ValueEntry."Invoiced Quantity",'<>%1',0);
+                                                                                ValueEntry.SETFILTER(ValueEntry."Item Ledger Entry No.",'%1',Artikelposten."Entry No.");
+                                                                                IF ValueEntry.FINDFIRST THEN
+                                                                                  BEGIN
+                                                                                  // Artikelausgleichsposten verbinden, um an Daten aus der EK-Lieferung zu bekommen
+                                                                                    ItemAppEntry.RESET;
+                                                                                    ItemAppEntry.SETFILTER(ItemAppEntry."Item Ledger Entry No.",'%1',Artikelposten."Entry No.");
+                                                                                    IF ItemAppEntry.FINDFIRST THEN
+                                                                                      BEGIN
+                                                                                        IF Artikelposten2.GET(ItemAppEntry."Inbound Item Entry No.") THEN
+                                                                                          BEGIN
+                                                                                            EkLiefzeile.RESET;
+                                                                                            EkLiefzeile.SETFILTER(EkLiefzeile."Document No.",'%1',Artikelposten2."Document No.");
+                                                                                            EkLiefzeile.SETFILTER(EkLiefzeile."Line No.",'%1',Artikelposten2."Document Line No.");
+                                                                                            EkLiefzeile.SETFILTER(EkLiefzeile.Quantity,'<>%1',0);
+                                                                                            IF EkLiefzeile.FINDFIRST THEN
+                                                                                              BEGIN
+                                                                                                "urspr. DC-Preis EK-Lieferung" := EkLiefzeile."Direct Unit Cost";
+                                                                                                "urspr. Lieferdatum SN-Nr. / DC" := EkLiefzeile."Posting Date";
+                                                                                                IF EkLiefKopf.GET(EkLiefzeile."Document No.") THEN
+                                                                                                  "urspr. Kred.-Bestellnr." := EkLiefKopf."Vendor Order No.";
+                                                                                              END
+                                                                                            ELSE MESSAGE(Text006);
+                                                                                            // Kred. Rechnungsnr. holen ber Artikelpostenverbindung => EK-Rechzeile => EK-Rechkopf
+                                                                                            ItemEntryRel.RESET;
+                                                                                            ItemEntryRel.SETFILTER(ItemEntryRel."Item Entry No.",'%1',Artikelposten2."Entry No.");
+                                                                                            IF ItemEntryRel.FINDFIRST THEN
+                                                                                              BEGIN
+                                                                                                EkRechZeile.RESET;
+                                                                                                EkRechZeile.SETFILTER(EkRechZeile."Order No.",'%1',ItemEntryRel."Order No.");
+                                                                                                EkRechZeile.SETFILTER(EkRechZeile."Order Line No.",'%1',ItemEntryRel."Order Line No.");
+                                                                                                EkRechZeile.SETFILTER(EkRechZeile.Quantity,'<>%1',0);
+                                                                                                IF (EkRechZeile.FINDFIRST) AND (ItemEntryRel."Source ID" = Artikelposten2."Document No.")
+                                                                                                AND (ItemEntryRel."Source Ref. No." = Artikelposten2."Document Line No.") THEN
+                                                                                                  BEGIN
+                                                                                                    EkRechKopf.RESET;
+                                                                                                    EkRechKopf.SETFILTER(EkRechKopf."No.",'%1',EkRechZeile."Document No.");
+                                                                                                    IF EkRechKopf.FINDFIRST THEN
+                                                                                                      "urspr. Kred.-Rechnungsnr." := EkRechKopf."Vendor Invoice No.";
+                                                                                                  END;
+                                                                                                IF "urspr. Kred.-Bestellnr." <> EkRechKopf."Vendor Order No." THEN MESSAGE(Text004);
+                                                                                              END;
+                                                                                          END;
+                                                                                      END;
+                                                                                    SalesInvLine.SETFILTER(SalesInvLine."Document No.",'%1',ValueEntry."Document No.");
+                                                                                    SalesInvLine.SETFILTER(SalesInvLine."Line No.",'%1',ValueEntry."Document Line No.");
+                                                                                    IF SalesInvLine.FINDFIRST THEN
+                                                                                      BEGIN
+                                                                                       "Zeile zum Kopieren" := TRUE;
+                                                                                        "Belegnr." := SalesInvLine."Document No.";
+                                                                                        "Belegzeilennr." := SalesInvLine."Line No.";
+                                                                                        Datum := SalesInvLine."Posting Date";
+                                                                                        Herstellercode := SalesInvLine."Manufacturer Code";
+                                                                                        Menge := SalesInvLine.Quantity;
+                                                                                        "VK-Preis" := SalesInvLine."Unit Price";
+                                                                                        "VK-Preis (MW)" := SalesInvLine."VK-Preis (MW)";
+                                                                                        Betrag := SalesInvLine.Amount;
+                                                                                        "Betrag (MW)" := SalesInvLine."VK-Preis (MW)" * SalesInvLine.Quantity;
+                                                                                        "EK-W„hrung" := SalesInvLine.Einkaufsw„hrungscode;
+                                                                                        "EK-W„hrungsfaktor" := SalesInvLine.Einkaufsw„hrungsfaktor;
+                                                                                        "Kampagnennr." := SalesInvLine."Kampagnennr.";
+                                                                                        SalesInvoiceHeader.RESET;
+                                                                                        SalesInvoiceHeader.SETFILTER(SalesInvoiceHeader."No.",'%1',SalesInvLine."Document No.");
+                                                                                        IF SalesInvoiceHeader.FINDFIRST THEN
+                                                                                          BEGIN
+                                                                                            W„hrung := SalesInvoiceHeader."Currency Code";
+                                                                                            W„hrungsfaktor := SalesInvoiceHeader."Currency Factor";
+                                                                                          END;
+                                                                                      END
+                                                                                    ELSE
+                                                                                      MESSAGE(Text012);
+                                                                                  END;
+                                                                              END
+                                                                            ELSE
+                                                                              ERROR(Text011);
+                                                                          END;
+
+                                                                       IF (selection = 3) OR (selection = 4) THEN
+                                                                          BEGIN
+                                                                            Artikelposten.RESET;
+                                                                            Artikelposten.SETFILTER(Artikelposten."Item No.",'%1',"Artikelnr.");
+                                                                            Artikelposten.SETFILTER(Artikelposten."Document Type",'%1',Artikelposten."Document Type" :: "Purchase Receipt");
+
+                                                                            IF selection = 3 THEN Artikelposten.SETFILTER(Artikelposten."Serial No.",'%1',"SN-Nr. / DC");
+                                                                            IF selection = 4 THEN Artikelposten.SETFILTER(Artikelposten."Lot No.",'%1',"SN-Nr. / DC");
+
+                                                                            IF Artikelposten.FINDFIRST THEN
+                                                                              BEGIN
+                                                                                "Menge SN-Nr. / DC" := Artikelposten.Quantity;
+                                                                                //"Debitornr." := Artikelposten."Source No.";
+                                                                                //CALCFIELDS(Debitorname);
+                                                                                "Artikelnr." := Artikelposten."Item No.";
+                                                                                "Datecode Pos." := Artikelposten."Entry No.";
+                                                                                //13.05.2011-ST
+                                                                                "urspr. Datecode Pos." := Artikelposten."Entry No.";
+                                                                                Ursprungsland := Artikelposten.Ursprungsland;
+                                                                                ValueEntry.RESET;
+                                                                                ValueEntry.SETFILTER(ValueEntry."Item Ledger Entry Type",'%1',ValueEntry."Item Ledger Entry Type" :: Purchase);
+                                                                                ValueEntry.SETFILTER(ValueEntry."Invoiced Quantity",'<>%1',0);
+                                                                                ValueEntry.SETFILTER(ValueEntry."Item Ledger Entry No.",'%1',Artikelposten."Entry No.");
+                                                                                IF ValueEntry.FINDFIRST THEN
+                                                                                  BEGIN
+                                                                                  // Artikelausgleichsposten verbinden, um an Daten aus der EK-Lieferung zu bekommen
+                                                                                    ItemAppEntry.RESET;
+                                                                                    ItemAppEntry.SETFILTER(ItemAppEntry."Item Ledger Entry No.",'%1',Artikelposten."Entry No.");
+                                                                                    IF ItemAppEntry.FINDFIRST THEN
+                                                                                      BEGIN
+                                                                                        IF Artikelposten2.GET(ItemAppEntry."Inbound Item Entry No.") THEN
+                                                                                          BEGIN
+                                                                                            EkLiefzeile.RESET;
+                                                                                            EkLiefzeile.SETFILTER(EkLiefzeile."Document No.",'%1',Artikelposten2."Document No.");
+                                                                                            EkLiefzeile.SETFILTER(EkLiefzeile."Line No.",'%1',Artikelposten2."Document Line No.");
+                                                                                            EkLiefzeile.SETFILTER(EkLiefzeile.Quantity,'<>%1',0);
+                                                                                            IF EkLiefzeile.FINDFIRST THEN
+                                                                                              BEGIN
+                                                                                                "urspr. DC-Preis EK-Lieferung" := EkLiefzeile."Direct Unit Cost";
+                                                                                                "urspr. Lieferdatum SN-Nr. / DC" := EkLiefzeile."Posting Date";
+                                                                                                IF EkLiefKopf.GET(EkLiefzeile."Document No.") THEN
+                                                                                                  "urspr. Kred.-Bestellnr." := EkLiefKopf."Vendor Order No.";
+                                                                                              END
+                                                                                            ELSE MESSAGE(Text006);
+                                                                                            // Kred. Rechnungsnr. holen ber Artikelpostenverbindung => EK-Rechzeile => EK-Rechkopf
+                                                                                            ItemEntryRel.RESET;
+                                                                                            ItemEntryRel.SETFILTER(ItemEntryRel."Item Entry No.",'%1',Artikelposten2."Entry No.");
+                                                                                            IF ItemEntryRel.FINDFIRST THEN
+                                                                                              BEGIN
+                                                                                                EkRechZeile.RESET;
+                                                                                                EkRechZeile.SETFILTER(EkRechZeile."Order No.",'%1',ItemEntryRel."Order No.");
+                                                                                                EkRechZeile.SETFILTER(EkRechZeile."Order Line No.",'%1',ItemEntryRel."Order Line No.");
+                                                                                                EkRechZeile.SETFILTER(EkRechZeile.Quantity,'<>%1',0);
+                                                                                                IF (EkRechZeile.FINDFIRST) AND (ItemEntryRel."Source ID" = Artikelposten2."Document No.")
+                                                                                                AND (ItemEntryRel."Source Ref. No." = Artikelposten2."Document Line No.") THEN
+                                                                                                  BEGIN
+                                                                                                    EkRechKopf.RESET;
+                                                                                                    EkRechKopf.SETFILTER(EkRechKopf."No.",'%1',EkRechZeile."Document No.");
+                                                                                                    IF EkRechKopf.FINDFIRST THEN
+                                                                                                      "urspr. Kred.-Rechnungsnr." := EkRechKopf."Vendor Invoice No.";
+
+                                                                                                    Menge := EkRechZeile.Quantity;
+                                                                                                    "Belegnr." := EkRechZeile."Document No.";
+                                                                                                    "Belegzeilennr." := EkRechZeile."Line No.";
+                                                                                                    Datum := EkRechKopf."Posting Date";
+
+                                                                                                  END;
+                                                                                                IF "urspr. Kred.-Bestellnr." <> EkRechKopf."Vendor Order No." THEN MESSAGE(Text004);
+                                                                                              END;
+                                                                                          END;
+                                                                                      END;
+
+                                                                                    "Zeile zum Kopieren" := TRUE;
+
+                                                                                  END;
+                                                                              END
+                                                                            ELSE
+                                                                              ERROR(Text011);
+                                                                          END;
+                                                                      END;
+                                                                    END;
+
+                                                                  // Prfung der Seriennr., ob ein Ersatz vorliegt und fhrt autom. Umbuchungen in den Servicevertr„gen durch
+                                                                  Belegart::"an Kunden":
+                                                                    BEGIN
+                                                                      "RMA-Zeilen".RESET;
+                                                                      "RMA-Zeilen".SETFILTER("RMA-Nr.",'%1',"RMA-Nr.");
+                                                                      "RMA-Zeilen".SETFILTER(Belegart,'%1',"RMA-Zeilen".Belegart :: "vom Kunden");
+                                                                      "RMA-Zeilen".SETFILTER("Datecode Pos.",'%1',"Datecode Pos.");
+                                                                      "RMA-Zeilen".SETFILTER("Artikelnr.",'%1',"Artikelnr.");
+                                                                      IF "RMA-Zeilen".FINDFIRST THEN
+                                                                        BEGIN
+                                                                          IF ("RMA-Zeilen"."SN-Nr. / DC" <> "SN-Nr. / DC") AND (xRec."SN-Nr. / DC" <> "SN-Nr. / DC")
+                                                                          AND ("SN-Nr. / DC" <> '') THEN
+                                                                            BEGIN
+
+                                                                              // SICHERHEITSSPERRE
+                                                                              // Wenn fr eine bereits ersetzte Seriennr. die Seriennr. nachtr„glich wieder ge„ndert wird,
+                                                                              // muss das System die Žnderung abbrechen, da es sonst zu Inkonsistenzen im System kommt,
+                                                                              // die Seriennr. muss manuell in der neuen RMA Pos. auf die neue Seriennr. vorbereitet werden
+                                                                              // bevor die alte RMA Pos. ge„ndert werden kann
+
+                                                                              Artikel.GET("RMA-Zeilen"."Artikelnr.");
+                                                                              IF Artikel."Item Tracking Code" = 'SERIENNR' THEN
+                                                                               BEGIN
+                                                                                 IF xRec."SN-Nr. / DC" <> '' THEN
+                                                                                   BEGIN
+                                                                                     RMA_pruefung.RESET;
+                                                                                     RMA_pruefung.SETFILTER(RMA_pruefung.Belegart,'%1|%2',RMA_pruefung.Belegart :: Rechnung,
+                                                                                     RMA_pruefung.Belegart :: "vom Kunden");
+                                                                                     RMA_pruefung.SETFILTER("Artikelnr.",'%1',"RMA-Zeilen"."Artikelnr.");
+                                                                                     RMA_pruefung.SETFILTER("SN-Nr. / DC",'%1',xRec."SN-Nr. / DC");
+                                                                                     RMA_pruefung.SETFILTER("Datecode Pos.",'<>%1',xRec."Datecode Pos.");
+                                                                                     IF RMA_pruefung.FINDFIRST THEN
+                                                                                       ERROR(Text104,RMA_pruefung."SN-Nr. / DC","RMA-Zeilen"."SN-Nr. / DC",RMA_pruefung."RMA-Nr.",
+                                                                                       RMA_pruefung."Belegnr.",RMA_pruefung."Belegnr.",RMA_pruefung."Datecode Pos.",Rec."SN-Nr. / DC",
+                                                                                       "RMA-Zeilen"."Belegnr.","RMA-Zeilen"."Datecode Pos.");
+                                                                                   END;
+                                                                               END;
+
+                                                                              // Beginn der eigentlichen Buchungs- bzw. Aktualisierungroutinen im Servicesystem
+
+                                                                              // Fhrt Umbuchungen der Seriennr. im System durch, wenn diese noch nicht gekennzeichnet sind
+                                                                              ServicePos.RESET;
+                                                                              ServicePos.SETFILTER(Art,'%1|%2',ServicePos.Art :: System,ServicePos.Art :: Service);
+                                                                              //ServicePos.SETFILTER("Debitornr.",'%1',"RMA-Zeilen"."Debitornr.");
+                                                                              ServicePos.SETFILTER("Artikelnr.",'%1',"RMA-Zeilen"."Artikelnr.");
+                                                                              ServicePos.SETFILTER("Seriennr.",'%1',"RMA-Zeilen"."SN-Nr. / DC");
+                                                                              ServicePos.SETFILTER(Reklamiert,'%1',FALSE);
+                                                                              IF ServicePos.FINDFIRST THEN
+                                                                                BEGIN
+
+                                                                                  selection := STRMENU(Text013,1);
+
+                                                                                  IF selection = 1 THEN
+                                                                                  IF CONFIRM(Text106,FALSE,xRec."SN-Nr. / DC","SN-Nr. / DC") THEN
+                                                                                    REPEAT
+                                                                                      ServicePos.NewPosFromRMA(ServicePos."Lfd. Nr.","RMA-Zeilen"."SN-Nr. / DC","SN-Nr. / DC",
+                                                                                      "RMA-Nr.",ServicePos,FALSE,'');
+                                                                                      MESSAGE(Text100,"RMA-Zeilen"."SN-Nr. / DC","SN-Nr. / DC",ServicePos."Wartungsvertragsnr.",
+                                                                                      ServicePos."Lfd. Nr.");
+                                                                                    UNTIL ServicePos.NEXT = 0
+                                                                                  ELSE ERROR('Abbruch');
+
+                                                                                END
+                                                                              ELSE
+                                                                                BEGIN
+                                                                                  // Bereits neue gebuchte Pos. mit neuer SN wird nochmals ge„ndert, z.B. aufgrund von Tippfehler etc.
+                                                                                  ServicePosRekl.RESET;
+                                                                                  ServicePosRekl.SETFILTER(Art,'%1|%2',ServicePosRekl.Art :: System,ServicePosRekl.Art :: Service);
+                                                                                  //ServicePosRekl.SETFILTER("Debitornr.",'%1',"RMA-Zeilen"."Debitornr.");
+                                                                                  ServicePosRekl.SETFILTER("Artikelnr.",'%1',"RMA-Zeilen"."Artikelnr.");
+                                                                                  ServicePosRekl.SETFILTER("Seriennr.",'%1',"RMA-Zeilen"."SN-Nr. / DC");
+                                                                                  ServicePosRekl.SETFILTER(Reklamiert,'%1',TRUE);
+                                                                                  ServicePosRekl.SETFILTER("RMA-Nr.",'%1',"RMA-Zeilen"."RMA-Nr.");
+                                                                                  ServicePosRekl.SETFILTER(Ersatzverfahren,'%1',TRUE);
+                                                                                  IF ServicePosRekl.FINDFIRST THEN
+                                                                                    BEGIN
+                                                                                      ServicePos.RESET;
+                                                                                      ServicePos.SETFILTER(Art,'%1|%2',ServicePos.Art :: System,ServicePos.Art :: Service);
+                                                                                      //ServicePos.SETFILTER("Debitornr.",'%1',"RMA-Zeilen"."Debitornr.");
+                                                                                      ServicePos.SETFILTER("Artikelnr.",'%1',"RMA-Zeilen"."Artikelnr.");
+                                                                                      ServicePos.SETFILTER("Urspr. Seriennr.",'%1',"RMA-Zeilen"."SN-Nr. / DC");
+                                                                                      ServicePos.SETFILTER("Ersatz fr Lfd. Nr.",'%1',ServicePosRekl."Lfd. Nr.");
+                                                                                      ServicePos.SETFILTER(Ersatzverfahren,'%1',TRUE);
+                                                                                      IF ServicePos.FINDFIRST THEN
+                                                                                        BEGIN
+                                                                                          IF CONFIRM(Text106,FALSE,xRec."SN-Nr. / DC","SN-Nr. / DC") THEN
+                                                                                          REPEAT
+                                                                                            ServicePos."Seriennr." := "SN-Nr. / DC";
+                                                                                            ServicePos.MODIFY(TRUE);
+                                                                                            MESSAGE(Text102, ServicePos."Wartungsvertragsnr.", ServicePosRekl."Seriennr.",
+                                                                                                    ServicePosRekl."Lfd. Nr.", xRec."SN-Nr. / DC", ServicePos."Lfd. Nr.", ServicePos."Seriennr.");
+                                                                                          UNTIL ServicePos.NEXT = 0
+                                                                                          ELSE ERROR('Abbruch');
+                                                                                        END;
+                                                                                    END;
+
+                                                                                  // Nachlauf - vorherige, bereits ge„nderte Seriennr. hat keinen Vorg„nger in den Servicepositionen
+                                                                                  // wird immer dann auftreten, wenn die Systemposition ge„ndert wurde durch eine RMA, aber Champs erst danach
+                                                                                  // abgeschlossen wird
+
+                                                                                  ServicePos.RESET;
+                                                                                  ServicePos.SETFILTER(Art,'%1',ServicePos.Art :: Service);
+                                                                                  //ServicePos.SETFILTER("Debitornr.",'%1',"RMA-Zeilen"."Debitornr.");
+                                                                                  ServicePos.SETFILTER("Artikelnr.",'%1',"RMA-Zeilen"."Artikelnr.");
+                                                                                  ServicePos.SETFILTER("Urspr. Seriennr.",'%1',"RMA-Zeilen"."SN-Nr. / DC");
+                                                                                  ServicePos.SETFILTER(Ersatzverfahren,'%1',TRUE);
+                                                                                  IF ServicePos.FINDFIRST THEN
+                                                                                    BEGIN
+                                                                                      IF CONFIRM(Text106,FALSE,xRec."SN-Nr. / DC","SN-Nr. / DC") THEN
+                                                                                      REPEAT
+                                                                                        ServicePos."Seriennr." := "SN-Nr. / DC";
+                                                                                        ServicePos.MODIFY(TRUE);
+                                                                                        MESSAGE(Text102, ServicePos."Wartungsvertragsnr.", 'Kein Vorg„nger (CHAMPS)','',
+                                                                                                         xRec."SN-Nr. / DC", ServicePos."Lfd. Nr.", ServicePos."Seriennr.");
+                                                                                      UNTIL ServicePos.NEXT = 0
+                                                                                      ELSE ERROR('Abbruch');
+                                                                                    END;
+
+                                                                                  // Wenn fr eine bereits ersetzte Seriennr. die Seriennr. nachtr„glich wieder ge„ndert wird, dann muss
+                                                                                  // die urspr. Seriennr. in der Nachfolge Position aktualisiert werden, auch tempor„re
+
+                                                                                  ServicePos.RESET;
+                                                                                  //ServicePos.SETFILTER("Debitornr.",'%1',"RMA-Zeilen"."Debitornr.");
+                                                                                  ServicePos.SETFILTER("Artikelnr.",'%1',"RMA-Zeilen"."Artikelnr.");
+                                                                                  ServicePos.SETFILTER("Urspr. Seriennr.",'%1',xRec."SN-Nr. / DC");
+                                                                                  ServicePos.SETFILTER(Ersatzverfahren,'%1',TRUE);
+                                                                                  IF ServicePos.FINDFIRST THEN
+                                                                                    BEGIN
+                                                                                      REPEAT
+                                                                                        ServicePos."Urspr. Seriennr." := "SN-Nr. / DC";
+                                                                                        ServicePos.MODIFY(TRUE);
+                                                                                        MESSAGE(Text103,ServicePos."Seriennr.",ServicePos."Lfd. Nr.");
+                                                                                      UNTIL ServicePos.NEXT = 0;
+                                                                                    END;
+
+                                                                                END;
+
+                                                                              // Durchsucht nun auch die Temp Datens„tze
+
+                                                                              // Žndert bereits vorhandene temp. Datens„tze, die noch nicht reklamiert bzw. ersetzt wurden
+                                                                              // auf die neue Seriennr. und definiert Ersatzverfahren
+                                                                              ServicePos.RESET;
+                                                                              ServicePos.SETFILTER(Art,'%1',ServicePos.Art :: Tempor„r);
+                                                                              //ServicePos.SETFILTER("Debitornr.",'%1',"RMA-Zeilen"."Debitornr.");
+                                                                              ServicePos.SETFILTER("Artikelnr.",'%1',"RMA-Zeilen"."Artikelnr.");
+                                                                              ServicePos.SETFILTER("Seriennr.",'%1',"RMA-Zeilen"."SN-Nr. / DC");
+                                                                              ServicePos.SETFILTER(Ersatzverfahren,'%1',FALSE);
+                                                                              IF ServicePos.FINDFIRST THEN
+                                                                                BEGIN
+                                                                                  REPEAT
+                                                                                    ServicePos."Seriennr." := "SN-Nr. / DC";
+                                                                                    ServicePos.Ersatzverfahren := TRUE;
+                                                                                    ServicePos."Urspr. Seriennr." := "RMA-Zeilen"."SN-Nr. / DC";
+                                                                                    ServicePos.MODIFY(TRUE);
+                                                                                    MESSAGE(Text101,ServicePos."Auftragsnr.",ServicePos."Auftragszeilennr.");
+                                                                                  UNTIL ServicePos.NEXT = 0;
+                                                                                END
+                                                                              ELSE
+                                                                                // Bereits ersetzte, tempor„re angelegte Seriennr. wird lediglich aktualisiert
+                                                                                BEGIN
+                                                                                  ServicePos.RESET;
+                                                                                  ServicePos.SETFILTER(Art,'%1',ServicePos.Art :: Tempor„r);
+                                                                                  //ServicePos.SETFILTER("Debitornr.",'%1',"RMA-Zeilen"."Debitornr.");
+                                                                                  ServicePos.SETFILTER("Artikelnr.",'%1',"RMA-Zeilen"."Artikelnr.");
+                                                                                  ServicePos.SETFILTER("Seriennr.",'%1',xRec."SN-Nr. / DC");
+                                                                                  ServicePos.SETFILTER("Urspr. Seriennr.",'%1',"RMA-Zeilen"."SN-Nr. / DC");
+                                                                                  ServicePos.SETFILTER(Ersatzverfahren,'%1',TRUE);
+                                                                                  IF ServicePos.FINDFIRST THEN
+                                                                                    REPEAT
+                                                                                      ServicePos."Seriennr." := "SN-Nr. / DC";
+                                                                                      ServicePos.MODIFY(TRUE);
+                                                                                      MESSAGE(Text101,ServicePos."Auftragsnr.",ServicePos."Auftragszeilennr.");
+                                                                                    UNTIL ServicePos.NEXT = 0;
+                                                                                END;
+
+                                                                              ServicePos.RESET;
+                                                                              ServicePos.SETFILTER(Art,'%1',ServicePos.Art :: Tempor„r);
+                                                                              //ServicePos.SETFILTER("Debitornr.",'%1',"RMA-Zeilen"."Debitornr.");
+                                                                              ServicePos.SETFILTER("Artikelnr.",'%1',"RMA-Zeilen"."Artikelnr.");
+                                                                              ServicePos.SETFILTER("Seriennr.",'%1',"RMA-Zeilen"."SN-Nr. / DC");
+                                                                              ServicePos.SETFILTER(Ersatzverfahren,'%1',TRUE);
+                                                                              ServicePos.SETFILTER("Urspr. Seriennr.",'<>%1','');
+                                                                              IF ServicePos.FINDFIRST THEN
+                                                                                REPEAT
+                                                                                  ServicePos."Seriennr." := "SN-Nr. / DC";
+                                                                                  ServicePos."Urspr. Seriennr." := "RMA-Zeilen"."SN-Nr. / DC";
+                                                                                  ServicePos.MODIFY(TRUE);
+                                                                                  MESSAGE(Text105,"RMA-Zeilen"."SN-Nr. / DC",ServicePos."Auftragsnr.",ServicePos."Auftragszeilennr.");
+                                                                                UNTIL ServicePos.NEXT = 0;
+
+                                                                            END;
+                                                                        END;
+                                                                    END;
+
+                                                                  Belegart:: Vorab:
+                                                                    BEGIN
+                                                                      "RMA-Zeilen".RESET;
+                                                                      "RMA-Zeilen".SETFILTER("RMA-Nr.",'%1',"RMA-Nr.");
+                                                                      "RMA-Zeilen".SETFILTER(Belegart,'%1',"RMA-Zeilen".Belegart :: "vom Kunden");
+                                                                      "RMA-Zeilen".SETFILTER("Datecode Pos.",'%1',"Datecode Pos.");
+                                                                      "RMA-Zeilen".SETFILTER("Artikelnr.",'%1',"Artikelnr.");
+                                                                      IF "RMA-Zeilen".FINDFIRST THEN
+                                                                        BEGIN
+                                                                          IF ("RMA-Zeilen"."SN-Nr. / DC" <> "SN-Nr. / DC") AND (xRec."SN-Nr. / DC" <> "SN-Nr. / DC")
+                                                                          AND ("SN-Nr. / DC" <> '') THEN
+                                                                            BEGIN
+
+                                                                              // SICHERHEITSSPERRE
+                                                                              // Wenn fr eine bereits ersetzte Seriennr. die Seriennr. nachtr„glich wieder ge„ndert wird,
+                                                                              // muss das System die Žnderung abbrechen, da es sonst zu Inkonsistenzen im System kommt,
+                                                                              // die Seriennr. muss manuell in der neuen RMA Pos. auf die neue Seriennr. vorbereitet werden
+                                                                              // bevor die alte RMA Pos. ge„ndert werden kann
+
+                                                                              Artikel.GET("RMA-Zeilen"."Artikelnr.");
+                                                                              IF Artikel."Item Tracking Code" = 'SERIENNR' THEN
+                                                                               BEGIN
+                                                                                 IF xRec."SN-Nr. / DC" <> '' THEN
+                                                                                   BEGIN
+                                                                                     RMA_pruefung.RESET;
+                                                                                     RMA_pruefung.SETFILTER(RMA_pruefung.Belegart,'%1|%2',RMA_pruefung.Belegart :: Rechnung,
+                                                                                     RMA_pruefung.Belegart :: "vom Kunden");
+                                                                                     RMA_pruefung.SETFILTER("Artikelnr.",'%1',"RMA-Zeilen"."Artikelnr.");
+                                                                                     RMA_pruefung.SETFILTER("SN-Nr. / DC",'%1',xRec."SN-Nr. / DC");
+                                                                                     RMA_pruefung.SETFILTER("Datecode Pos.",'<>%1',xRec."Datecode Pos.");
+                                                                                     IF RMA_pruefung.FINDFIRST THEN
+                                                                                       ERROR(Text104,RMA_pruefung."SN-Nr. / DC","RMA-Zeilen"."SN-Nr. / DC",RMA_pruefung."RMA-Nr.",
+                                                                                       RMA_pruefung."Belegnr.",RMA_pruefung."Belegnr.",RMA_pruefung."Datecode Pos.",Rec."SN-Nr. / DC",
+                                                                                       "RMA-Zeilen"."Belegnr.","RMA-Zeilen"."Datecode Pos.");
+                                                                                   END;
+                                                                               END;
+
+                                                                              // Beginn der eigentlichen Buchungs- bzw. Aktualisierungroutinen im Servicesystem
+
+                                                                              // Prft, ob Umbuchungen m”glich sind und fhrt dann Buchungen der Seriennr. im System durch
+                                                                              // Hier auch nur Service prfen und buchen, da Systempos. vorher verschoben wird
+                                                                              ServicePos.RESET;
+                                                                              ServicePos.SETFILTER(Art,'%1',ServicePos.Art :: Service);
+                                                                              //ServicePos.SETFILTER("Debitornr.",'%1',"RMA-Zeilen"."Debitornr.");
+                                                                              ServicePos.SETFILTER("Artikelnr.",'%1',"RMA-Zeilen"."Artikelnr.");
+                                                                              ServicePos.SETFILTER("Seriennr.",'%1',"RMA-Zeilen"."SN-Nr. / DC");
+                                                                              ServicePos.SETFILTER(Reklamiert,'%1',FALSE);
+                                                                              IF ServicePos.FINDFIRST THEN
+                                                                                BEGIN
+                                                                                  selection := STRMENU(Text014,1);
+                                                                                  IF selection = 1 THEN
+                                                                                      BEGIN
+                                                                                      IF PrfeSeriennrAustausch("Artikelnr.","RMA-Zeilen"."SN-Nr. / DC","SN-Nr. / DC","RMA-Nr.") = TRUE THEN
+                                                                                        BEGIN
+                                                                                          REPEAT
+                                                                                            ServicePos.NewPosFromRMA(ServicePos."Lfd. Nr.","RMA-Zeilen"."SN-Nr. / DC","SN-Nr. / DC",
+                                                                                            "RMA-Nr.",ServicePos,TRUE,"Artikelnr.");
+                                                                                            MESSAGE(Text100,"RMA-Zeilen"."SN-Nr. / DC","SN-Nr. / DC",ServicePos."Wartungsvertragsnr.",
+                                                                                            ServicePos."Lfd. Nr.");
+                                                                                          UNTIL ServicePos.NEXT = 0;
+                                                                                          IF Herstellercode ='59' THEN
+                                                                                            IF CONFIRM(Text109,TRUE) THEN
+                                                                                              BEGIN
+                                                                                                EmailVorbereiten('ACS',"Artikelnr.","RMA-Zeilen"."Debitornr.","RMA-Zeilen"."SN-Nr. / DC",
+                                                                                                "SN-Nr. / DC",ServicePos."ACO Nr.");
+                                                                                              END;
+                                                                                        END;
+                                                                                    END
+                                                                                  ELSE ERROR('Abbruch');
+                                                                                END;
+                                                                            END;
+                                                                        END;
+                                                                    END;
+                                                                END;
+                                                              END;
+
+                                                   OnLookup=BEGIN
+                                                              CASE Belegart OF
+
+                                                              Belegart::Rechnung:
+                                                                BEGIN
+                                                                  Artikelposten.RESET;
+                                                                  Artikelposten.SETFILTER(Artikelposten."Source No.","Debitornr.");
+                                                                  Artikelposten.SETFILTER(Artikelposten."Item No.","Artikelnr.");
+                                                                  Artikelposten.SETFILTER(Artikelposten."Document Type",'%1',Artikelposten."Document Type" :: "Sales Shipment");
+                                                                  IF PAGE.RUNMODAL(50025,Artikelposten) = ACTION::LookupOK THEN
+                                                                    BEGIN
+                                                                      "Menge SN-Nr. / DC" := Artikelposten.Quantity * (-1);
+                                                                      "Debitornr." := Artikelposten."Source No.";
+                                                                      CALCFIELDS(Debitorname);
+                                                                      "Artikelnr." := Artikelposten."Item No.";
+                                                                      "Datecode Pos." := Artikelposten."Entry No.";
+                                                                      //13.05.2011-ST
+                                                                      "urspr. Datecode Pos." := Artikelposten."Entry No.";
+                                                                      Ursprungsland := Artikelposten.Ursprungsland;
+                                                                      CASE Artikelposten."Item Tracking" OF
+                                                                        Artikelposten."Item Tracking"::"Lot No.":      "SN-Nr. / DC" := Artikelposten."Lot No.";
+                                                                        Artikelposten."Item Tracking"::"Serial No.":   "SN-Nr. / DC" := Artikelposten."Serial No.";
+                                                                      END;
+
+                                                                      ValueEntry.RESET;
+                                                                      ValueEntry.SETFILTER(ValueEntry."Item Ledger Entry Type",'%1',ValueEntry."Item Ledger Entry Type" :: Sale);
+                                                                      ValueEntry.SETFILTER(ValueEntry."Invoiced Quantity",'<>%1',0);
+                                                                      ValueEntry.SETFILTER(ValueEntry."Item Ledger Entry No.",'%1',Artikelposten."Entry No.");
+                                                                      IF ValueEntry.FINDFIRST THEN
+                                                                        BEGIN
+                                                                          // Artikelausgleichsposten verbinden, um an Daten aus der EK-Lieferung zu bekommen
+                                                                          ItemAppEntry.RESET;
+                                                                          ItemAppEntry.SETFILTER(ItemAppEntry."Item Ledger Entry No.",'%1',Artikelposten."Entry No.");
+                                                                          IF ItemAppEntry.FINDFIRST THEN
+                                                                            BEGIN
+                                                                               IF Artikelposten2.GET(ItemAppEntry."Inbound Item Entry No.") THEN
+                                                                                 BEGIN
+                                                                                       EkLiefzeile.RESET;
+                                                                                       EkLiefzeile.SETFILTER(EkLiefzeile."Document No.",'%1',Artikelposten2."Document No.");
+                                                                                       EkLiefzeile.SETFILTER(EkLiefzeile."Line No.",'%1',Artikelposten2."Document Line No.");
+                                                                                       EkLiefzeile.SETFILTER(EkLiefzeile.Quantity,'<>%1',0);
+                                                                                       IF EkLiefzeile.FINDFIRST THEN
+                                                                                         BEGIN
+                                                                                           "urspr. DC-Preis EK-Lieferung" := EkLiefzeile."Direct Unit Cost";
+                                                                                           "urspr. Lieferdatum SN-Nr. / DC" := EkLiefzeile."Posting Date";
+                                                                                            IF EkLiefKopf.GET(EkLiefzeile."Document No.") THEN
+                                                                                                "urspr. Kred.-Bestellnr." := EkLiefKopf."Vendor Order No.";
+                                                                                         END
+                                                                                       ELSE MESSAGE(Text006);
+                                                                                       // Kred. Rechnungsnr. holen ber Artikelpostenverbindung => EK-Rechzeile => EK-Rechkopf
+                                                                                       ItemEntryRel.RESET;
+                                                                                       ItemEntryRel.SETFILTER(ItemEntryRel."Item Entry No.",'%1',Artikelposten2."Entry No.");
+                                                                                       IF ItemEntryRel.FINDFIRST THEN
+                                                                                         BEGIN
+                                                                                           EkRechZeile.RESET;
+                                                                                           EkRechZeile.SETFILTER(EkRechZeile."Order No.",'%1',ItemEntryRel."Order No.");
+                                                                                           EkRechZeile.SETFILTER(EkRechZeile."Order Line No.",'%1',ItemEntryRel."Order Line No.");
+                                                                                           EkRechZeile.SETFILTER(EkRechZeile.Quantity,'<>%1',0);
+                                                                                           IF (EkRechZeile.FINDFIRST) AND (ItemEntryRel."Source ID" = Artikelposten2."Document No.")
+                                                                                           AND (ItemEntryRel."Source Ref. No." = Artikelposten2."Document Line No.") THEN
+                                                                                             BEGIN
+                                                                                               EkRechKopf.RESET;
+                                                                                               EkRechKopf.SETFILTER(EkRechKopf."No.",'%1',EkRechZeile."Document No.");
+                                                                                               IF EkRechKopf.FINDFIRST THEN
+                                                                                                  "urspr. Kred.-Rechnungsnr." := EkRechKopf."Vendor Invoice No.";
+                                                                                             END;
+                                                                                             IF "urspr. Kred.-Bestellnr." <> EkRechKopf."Vendor Order No." THEN MESSAGE(Text004);
+                                                                                         END;
+                                                                                 END;
+                                                                            END;
+                                                                          SalesInvLine.SETFILTER(SalesInvLine."Document No.",'%1',ValueEntry."Document No.");
+                                                                          SalesInvLine.SETFILTER(SalesInvLine."Line No.",'%1',ValueEntry."Document Line No.");
+                                                                          IF SalesInvLine.FINDFIRST THEN
+                                                                            BEGIN
+                                                                              "Zeile zum Kopieren" := TRUE;
+                                                                              "Belegnr." := SalesInvLine."Document No.";
+                                                                              "Belegzeilennr." := SalesInvLine."Line No.";
+                                                                              Datum := SalesInvLine."Posting Date";
+                                                                              Herstellercode := SalesInvLine."Manufacturer Code";
+                                                                              Menge := SalesInvLine.Quantity;
+                                                                              "VK-Preis" := SalesInvLine."Unit Price";
+                                                                              "VK-Preis (MW)" := SalesInvLine."VK-Preis (MW)";
+                                                                              Betrag := SalesInvLine.Amount;
+                                                                              "Betrag (MW)" := SalesInvLine."VK-Preis (MW)" * SalesInvLine.Quantity;
+                                                                              "EK-W„hrung" := SalesInvLine.Einkaufsw„hrungscode;
+                                                                              "EK-W„hrungsfaktor" := SalesInvLine.Einkaufsw„hrungsfaktor;
+                                                                              "Kampagnennr." := SalesInvLine."Kampagnennr.";
+                                                                              SalesInvoiceHeader.RESET;
+                                                                              SalesInvoiceHeader.SETFILTER(SalesInvoiceHeader."No.",'%1',SalesInvLine."Document No.");
+                                                                              IF SalesInvoiceHeader.FINDFIRST THEN
+                                                                                BEGIN
+                                                                                  W„hrung := SalesInvoiceHeader."Currency Code";
+                                                                                  W„hrungsfaktor := SalesInvoiceHeader."Currency Factor";
+                                                                                END;
+                                                                            END
+                                                                          ELSE
+                                                                            MESSAGE(Text012);
+                                                                        END;
+                                                                    END;
+                                                                END;
+
+                                                              Belegart::Vorab:
+                                                                BEGIN
+                                                                  Artikelposten.RESET;
+                                                                  Artikelposten.SETFILTER(Artikelposten."Source No.",'%1',"Debitornr.");
+                                                                  Artikelposten.SETFILTER(Artikelposten."Item No.",'%1',"Artikelnr.");
+                                                                  Artikelposten.SETFILTER(Artikelposten."Document Type",'%1',Artikelposten."Document Type" :: "Sales Shipment");
+                                                                  IF PAGE.RUNMODAL(50025,Artikelposten) = ACTION::LookupOK THEN
+                                                                    BEGIN
+                                                                      "Debitornr." := Artikelposten."Source No.";
+                                                                      CALCFIELDS(Debitorname);
+                                                                      "Artikelnr." := Artikelposten."Item No.";
+                                                                      "Datecode Pos." := Artikelposten."Entry No.";
+                                                                      //13.05.2011-ST
+                                                                      "urspr. Datecode Pos." := Artikelposten."Entry No.";
+                                                                      Ursprungsland := Artikelposten.Ursprungsland;
+
+                                                                      ValueEntry.RESET;
+                                                                      ValueEntry.SETFILTER(ValueEntry."Item Ledger Entry No.",'%1',Artikelposten."Entry No.");
+                                                                      IF ValueEntry.FINDFIRST THEN
+                                                                        BEGIN
+                                                                          SalesInvLine.SETFILTER(SalesInvLine."Document No.",'%1',ValueEntry."Document No.");
+                                                                          SalesInvLine.SETFILTER(SalesInvLine."Line No.",'%1',ValueEntry."Document Line No.");
+                                                                          IF SalesInvLine.FINDFIRST THEN
+                                                                            BEGIN
+                                                                              "Belegnr." := SalesInvLine."Document No.";
+                                                                              "Belegzeilennr." := SalesInvLine."Line No.";
+                                                                              Herstellercode := SalesInvLine."Manufacturer Code";
+                                                                            END;
+                                                                        END;
+                                                                    END;
+                                                              END;
+
+                                                              END;
+                                                            END;
+
+                                                   Description=Seriennr. / Datecode }
+    { 20  ;   ;Reklamationsgrund   ;Option        ;OptionString=[ ,,,Kulanz,,,Gew„hrleistung,,,Transportschaden,,,Falscher Artikel,,,Falsche Menge,,,Reparatur gegen Berechnung,,,siehe Bemerkung] }
+    { 21  ;   ;Vorgehensweise      ;Option        ;OptionString=[ ,,,Reparatur,,,Rcknahme,,,Verschrottung & Neulieferung,,,Neulieferung,,,Fehleranalyse] }
+    { 22  ;   ;Datecode Pos.       ;Integer        }
+    { 24  ;   ;Debitornr.          ;Code20        ;TableRelation=Customer;
+                                                   OnValidate=BEGIN
+                                                                IF (("Debitornr." <> xRec."Debitornr.") AND (xRec."Debitornr." <> '') AND ("Belegnr." <> '')) THEN ERROR(Text003);
+                                                                CALCFIELDS(Debitorname);
+                                                              END;
+
+                                                   Description=Aus Beleg bernommen }
+    { 25  ;   ;Debitorname         ;Text50        ;FieldClass=FlowField;
+                                                   CalcFormula=Lookup(Customer.Name WHERE (No.=FIELD(Debitornr.)));
+                                                   Editable=No }
+    { 26  ;   ;RMA-Nr. Hersteller  ;Code20         }
+    { 27  ;   ;Beantragung         ;Option        ;OptionString=[ ,,,Ersatz,,,Reparatur,,,šberprfung,,,Im Ermessen des Herstellers];
+                                                   Description=Ersatz/Reparatur/šberprfung/Im Ermessen des Herstellers }
+    { 28  ;   ;Repair Order        ;Boolean        }
+    { 29  ;   ;Maánahme Hersteller ;Option        ;OptionString=[ ,,,Ersatz,,,Reparatur,,,šberprfung,,,Gutschrift];
+                                                   Description=Zurck vom Hersteller }
+    { 30  ;   ;Verursacher         ;Option        ;OptionString=[ ,,,Hersteller,,,Kunde,,,Topas,,Transporteur,,,ungekl„rt] }
+    { 31  ;   ;urspr. Lieferdatum SN-Nr. / DC;Date }
+    { 32  ;   ;urspr. DC-Preis EK-Lieferung;Decimal;
+                                                   Description=aus EK-Lieferschein }
+    { 33  ;   ;urspr. Kred.-Bestellnr.;Code20     ;Description=Belegnr. von Scantec oder anderen Lieferanten aus EK-Lieferschein }
+    { 34  ;   ;urspr. Kred.-Rechnungsnr.;Code20   ;Description=Rechnungsnr. des Lieferanten aus EK-Lieferschein }
+    { 35  ;   ;Zugesagtes Wareneingangsdatum;Date ;Description=Vom Hersteller zurckgeschickte Ware }
+    { 36  ;   ;Kred.-LS / RE-Nr.   ;Code20        ;Description=Vom Hersteller zurckgeschickte Ware }
+    { 37  ;   ;Gutschriftsnr.      ;Code20        ;TableRelation="Sales Cr.Memo Header";
+                                                   Description=unsere GU-Nr. }
+    { 38  ;   ;Rechnungsnr.        ;Code20        ;TableRelation="Sales Invoice Header";
+                                                   Description=unsere RE-Nr. }
+    { 39  ;   ;Beantragungsdatum   ;Date          ;Description=an Hersteller }
+    { 40  ;   ;Kampagnennr.        ;Code20        ;TableRelation=Campaign }
+    { 41  ;   ;Zusteller           ;Code10        ;TableRelation="Shipping Agent" }
+    { 42  ;   ;Paketverfolgungsnr. ;Text30         }
+    { 43  ;   ;Versand an          ;Code20        ;OnValidate=BEGIN
+                                                                IF "Versand an" <> '' THEN
+                                                                BEGIN
+                                                                  CASE Belegart OF
+                                                                    Belegart::"an Kunden",Belegart::Vorab:
+                                                                      BEGIN
+                                                                        "RMA-Beteiligte".RESET;
+                                                                        "RMA-Beteiligte".SETFILTER("RMA-Beteiligte"."RMA-Nr.",'%1',"RMA-Nr.");
+                                                                        "RMA-Beteiligte".SETFILTER("RMA-Beteiligte".Art,'%1',"RMA-Beteiligte".Art::Kunde);
+                                                                        "RMA-Beteiligte".SETFILTER("RMA-Beteiligte"."Nr.",'%1',"Versand an");
+                                                                        IF NOT "RMA-Beteiligte".FINDFIRST THEN ERROR(Text007);
+                                                                      END;
+                                                                    Belegart::"an Hersteller":
+                                                                      BEGIN
+                                                                        "RMA-Beteiligte".RESET;
+                                                                        "RMA-Beteiligte".SETFILTER("RMA-Beteiligte"."RMA-Nr.",'%1',"RMA-Nr.");
+                                                                        "RMA-Beteiligte".SETFILTER("RMA-Beteiligte".Art,'%1',"RMA-Beteiligte".Art::Hersteller);
+                                                                        "RMA-Beteiligte".SETFILTER("RMA-Beteiligte"."Nr.",'%1',"Versand an");
+                                                                        IF NOT "RMA-Beteiligte".FINDFIRST THEN ERROR(Text008);
+                                                                      END;
+
+                                                                  END;
+                                                                END;
+                                                              END;
+                                                               }
+    { 44  ;   ;Ursprungsland       ;Code4         ;TableRelation=Country/Region }
+    { 45  ;   ;Externe Belegnummmer;Code20         }
+    { 46  ;   ;Fehlerbeschreibung  ;Text100        }
+    { 47  ;   ;Zurck erhalten am  ;Date          ;Description=Vorab }
+    { 48  ;   ;Abweichende Artikelbez.;Text40      }
+    { 49  ;   ;urspr. Datecode Pos.;Integer       ;Description=13.05.2011-ST Beh„lt die urspr. Artikelpostennr. bei, wichtig fr weitere Abfragen }
+    { 98  ;   ;Ausblenden          ;Boolean       ;Description=Steuert, ob eine Zeile beim Andruck ausgeblendet werden soll }
+    { 99  ;   ;Zeile zum Kopieren  ;Boolean       ;Description=Steuert, ob eine Zeile kopiert werden soll }
+  }
+  KEYS
+  {
+    {    ;RMA-Nr.,Belegart,Belegnr.,Belegzeilennr.,Datecode Pos.;
+                                                   Clustered=Yes }
+    {    ;Belegnr.,Belegzeilennr.,Belegart         }
+  }
+  FIELDGROUPS
+  {
+  }
+  CODE
+  {
+    VAR
+      SalesInvLine@1140000 : Record 113;
+      SalesInvoiceHeader@1140001 : Record 112;
+      Text000@1140004 : TextConst 'DEU=Belegnr. darf nicht leer sein.';
+      Text001@1140005 : TextConst 'DEU=Belegzeilenr. darf nicht leer sein.';
+      ValueEntry@1140009 : Record 5802;
+      ValueEntry2@1140021 : Record 5802;
+      ItemLedgerEntry@1140010 : Record 32;
+      Artikel@1140039 : Record 27;
+      Debitor@1140057 : Record 18;
+      Artikelposten@1140014 : Record 32;
+      Artikelposten2@1140018 : Record 32;
+      ItemAppEntry@1140017 : Record 339;
+      ItemEntryRel@1140023 : Record 6507;
+      EkRechKopf@1140022 : Record 122;
+      EkRechZeile@1140024 : Record 123;
+      EkLiefKopf@1140020 : Record 120;
+      EkLiefzeile@1140019 : Record 121;
+      "RMA-Kopf"@1140002 : Record 50020;
+      "RMA-Zeilen"@1140008 : Record 50021;
+      RMA_pruefung@1140040 : Record 50021;
+      "RMA-Beteiligte"@1140028 : Record 50022;
+      ChampPos@1140038 : Record 50024;
+      ServicePos@1140036 : Record 50024;
+      ServicePosRekl@1140045 : Record 50024;
+      Item@1140006 : Record 27;
+      ShippingAgent@1140012 : Record 291;
+      TOPAS_API@1140058 : Codeunit 50001;
+      TrackingInternetAddr@1140013 : Text[250];
+      InvoiceRowID@1140007 : Text[100];
+      DateCodePos@1140011 : Integer;
+      Text002@1140015 : TextConst 'DEU=Artikelnr. kann nicht mehr ge„ndert werden.';
+      Text003@1140016 : TextConst 'DEU=Debitornr. kann nicht mehr ge„ndert werden.';
+      prfsumme@1140003 : Integer;
+      Text004@1140025 : TextConst 'DEU=Kred. Bestellnr. aus EK-Lieferschein und EK-Rechnungen weichen voneinander ab.';
+      Text005@1140026 : TextConst 'DEU=%1 kann nicht mehr ge„ndert werden.';
+      Text006@1140027 : TextConst 'DEU=Es konnte keine Verbindung zur EK-Lieferung hergestellt werden, da es sich bei dieser Artikelverfolgungspos. entweder um eine šbernahme aus dem alten System oder um eine Umlagerungskorrekturbuchung handelt. Die Felder DC-Preis, Kred. Bestellnr., Kred. Rechnungsnr. und Lieferdatum konnten nicht gefllt werden.Bitte wenden Sie sich an Ihren Systemadministrator.';
+      Text007@1140029 : TextConst 'DEU=Es konnte keine Kunden-Versandadresse mit dieser Kontaktnr. gefunden werden.';
+      Text008@1140030 : TextConst 'DEU=Es konnte keine Hersteller-Versandadresse mit dieser Kontaktnr. gefunden werden.';
+      Text009@1140031 : TextConst 'DEU=Der RMA-Vorgang wurde bereits abgeschlossen. Žnderungen sind nicht mehr m”glich.';
+      Text010@1140032 : TextConst 'DEU=Verkauf u. Seriennr.,Verkauf u. Datecode,Einkauf u. Seriennr.,Einkauf u. Datecode';
+      Text011@1140033 : TextConst 'DEU=Seriennr. oder Datecode konnte nicht gefunden werden.';
+      selection@1140034 : Integer;
+      Text012@1140035 : TextConst 'DEU=Es konnte kein Rechnungsposten gefunden werden.';
+      Text013@1140051 : TextConst 'DEU=Seriennr. im Servicevertrag umbuchen,Keine Buchung';
+      Text014@1140052 : TextConst 'DEU=Debitor Ersatz Pool umbuchen,Keine Buchung';
+      Text100@1140043 : TextConst 'DEU="Die reklamierte Seriennr. %1 wurde durch Seriennr. %2 ersetzt. Der dazugeh”rige Wartungsvertrag %3 wurde entsprechend umgestellt. Alte Pos. %4 => Inaktiv"';
+      Text101@1140042 : TextConst 'DEU=Es konnte eine tempor„re Seriennr. Vorbelegung fr die Kalkulation im Beleg %1, Zeilennr. %2 gefunden werden, diese wurde entsprechend im Servicesystem angepasst.';
+      Text102@1140041 : TextConst 'DEU=Eine bereits durchgefhrte Service Umbuchung konnte aktualisiert werden.Wartungsvertragnr.: %1\Urspr. Seriennr.: %2 (%3)\ALT: %4 (%5)\NEU: %6 (%5)';
+      Text103@1140037 : TextConst 'DEU=Aktualisierung der urspr. Seriennr. fr %1 (Pos. %2) durchgefhrt.';
+      Text104@1140044 : TextConst 'DEU=Warnung vor Inkonsistenz:\\Die Seriennr. Žnderung konnte nicht durchgefhrt werden, da die Seriennr. %1 bereits als Ersatz fr Seriennr. %2 verbucht und anschlieáend wieder in %3 fr Belegnr. %4 aufgenommen wurde. Um der Inkonsistenz entgegen zu wirken, „ndern Sie bitte zun„chst die Seriennr. fr den neuen Vorgang %5 (Datecode Pos. %6), auf den Reitern RMA Annahme & vom Kunden, auf die gewnschte Seriennr. %7 ab.\Danach k”nnen Sie die Žnderung der Seriennr. fr %8 (Datecode POs. %9) erneut durchfhren.';
+      Text105@1140046 : TextConst 'DEU=Die tempor„r vorbelegte Seriennr. %1 konnte fr die Kalkulation im Beleg %2, Zeilennr. %3 ge„ndert werden.';
+      Text106@1140047 : TextConst 'DEU=Die Seriennr. wurde von %1 auf %2 abge„ndert und sind dabei einen Ersatz zu generieren. Wenn Sie jetzt best„tigen werden s„mtliche System bzw. Servicevertragspositionen umgebucht und auf die neue Seriennr. korrigiert.\Wollen Sie Aktion jetzt durchfhren?';
+      Text107@1140056 : TextConst 'DEU=Die %1 %2 und %3 stehen beide in verschiedenen Servicevertr„gen und jeweils unter Service. Sie mssen zun„chst s„mtliche Servicepositionen fr %3 auf inaktiv setzen.';
+      Text108@1140055 : TextConst 'DEU=Die Funktion Austausch aus Kundenpool ist nicht fr Basisger„te gestattet.';
+      Text109@1140054 : TextConst 'DEU=M”chten Sie nun eine E-Mail an den AudioCodes Customerservices vorbereiten lassen?!';
+      Text110@1140048 : TextConst 'DEU=Die von Ihnen eingegebene %1 %2 konnte nicht in den Systemvertr„gen gefunden werden. M”chten Sie nun eine Pseudo Position erzeugen lassen?';
+      Text999@1140053 : TextConst 'DEU=Hello %1,%2Due to a failed module our customer %3 decided to replace the component to keep the gateway running.%4Now we need to update the serial number of the %5 from %6 to %7 under CHAMPS CONTRACT# %8 please.%9Can you please amend the SN as mentioned above and send me the revised certificate? Thanks for your help and look forward to hearing from you.%10Best regards,';
+
+    PROCEDURE RMAaktualisieren@1140001();
+    VAR
+      "RMA-Kopf"@1140000 : Record 50020;
+    BEGIN
+      "RMA-Kopf".RESET;
+      "RMA-Kopf".SETFILTER("RMA-Kopf"."RMA-Nr.",'%1',"RMA-Nr.");
+      IF "RMA-Kopf".FINDFIRST THEN
+        BEGIN
+          IF Belegart = Belegart::Rechnung THEN
+            "RMA-Kopf"."RMA-Wert aktuell" := FALSE;
+          "RMA-Kopf"."Korrigiert von" := USERID;
+          "RMA-Kopf"."Korrigiert am" := WORKDATE;
+          "RMA-Kopf".MODIFY;
+        END;
+    END;
+
+    PROCEDURE PrfeStatus@1140000();
+    BEGIN
+      prfsumme := 0;
+      CASE Belegart OF
+        Belegart::Rechnung:
+          BEGIN
+            IF (Reklamationsgrund = Reklamationsgrund::" ") OR (Vorgehensweise = Vorgehensweise::" ") OR ("Artikelnr." = '')
+            OR (Verursacher = Verursacher::" ") OR ("Belegnr." = '')
+            OR (Pruefe_SN_DC_Artverfolg("Artikelnr.","Datecode Pos.","SN-Nr. / DC") = FALSE)
+            OR ("Menge SN-Nr. / DC" = 0) THEN
+                prfsumme := prfsumme + 1;
+            "RMA-Zeilen".RESET;
+            "RMA-Zeilen".SETFILTER("RMA-Zeilen"."RMA-Nr.",'%1',"RMA-Nr.");
+            "RMA-Zeilen".SETFILTER("RMA-Zeilen".Belegart,'%1',"RMA-Zeilen".Belegart::Rechnung);
+            IF "RMA-Zeilen".FINDFIRST THEN
+              BEGIN
+                REPEAT
+                  IF ("RMA-Zeilen"."Belegnr." = "Belegnr.") AND ("RMA-Zeilen"."Belegzeilennr." = "Belegzeilennr.") AND
+                   ("RMA-Zeilen"."Datecode Pos." = "Datecode Pos.") THEN BEGIN END
+                  ELSE
+                    BEGIN
+                      IF ("RMA-Zeilen".Reklamationsgrund = "RMA-Zeilen".Reklamationsgrund::" ")
+                      OR ("RMA-Zeilen".Vorgehensweise = "RMA-Zeilen".Vorgehensweise::" ")
+                      OR ("RMA-Zeilen".Verursacher = "RMA-Zeilen".Verursacher ::" ")
+                      OR ("RMA-Zeilen"."Artikelnr." = '')
+                      OR ("RMA-Zeilen"."Belegnr." = '' )
+                      OR (Pruefe_SN_DC_Artverfolg("RMA-Zeilen"."Artikelnr.","RMA-Zeilen"."Datecode Pos.",
+                      "RMA-Zeilen"."SN-Nr. / DC") = FALSE)
+                      OR ("RMA-Zeilen"."Menge SN-Nr. / DC" = 0) THEN
+                        BEGIN
+                          prfsumme := prfsumme + 1;
+                        END;
+                   END;
+                UNTIL "RMA-Zeilen".NEXT = 0;
+              END
+            ELSE
+              prfsumme := 1;
+
+            IF prfsumme = 0 THEN
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-RMA-Annahme" := TRUE;
+                "RMA-Kopf".MODIFY;
+              END
+            ELSE
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-RMA-Annahme" := FALSE;
+                "RMA-Kopf".MODIFY;
+              END;
+          END;
+
+
+        Belegart::"vom Kunden":
+        BEGIN
+          IF (Datum = 0D) OR ("Belegnr." = '') OR ("Artikelnr." = '')
+          OR (Pruefe_SN_DC_Artverfolg("Artikelnr.","Datecode Pos.","SN-Nr. / DC") = FALSE)
+          OR ("Menge SN-Nr. / DC" = 0) THEN
+            prfsumme := prfsumme + 1;
+          "RMA-Zeilen".RESET;
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen"."RMA-Nr.",'%1',"RMA-Nr.");
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen".Belegart,'%1',"RMA-Zeilen".Belegart::"vom Kunden");
+          IF "RMA-Zeilen".FINDFIRST THEN
+            BEGIN
+              REPEAT
+                IF ("RMA-Zeilen"."Belegnr." = "Belegnr.") AND ("RMA-Zeilen"."Belegzeilennr." = "Belegzeilennr.") AND
+                   ("RMA-Zeilen"."Datecode Pos." = "Datecode Pos.") THEN BEGIN END
+                  ELSE
+                    BEGIN
+                      IF ("RMA-Zeilen".Datum = 0D) OR ("RMA-Zeilen"."Artikelnr." = '') OR ("RMA-Zeilen"."Belegnr." = '' )
+                      OR (Pruefe_SN_DC_Artverfolg("RMA-Zeilen"."Artikelnr.","RMA-Zeilen"."Datecode Pos.",
+                      "RMA-Zeilen"."SN-Nr. / DC") = FALSE) OR ("RMA-Zeilen"."Menge SN-Nr. / DC" = 0) THEN
+                        BEGIN
+                          prfsumme := prfsumme + 1;
+                        END;
+                   END;
+                UNTIL "RMA-Zeilen".NEXT = 0;
+              END
+            ELSE
+              prfsumme := 1;
+
+            IF prfsumme = 0 THEN
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-Zurck vom Kunden" := TRUE;
+                "RMA-Kopf".MODIFY;
+              END
+            ELSE
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-Zurck vom Kunden" := FALSE;
+                "RMA-Kopf".MODIFY;
+              END;
+        END;
+
+
+        Belegart::"an Hersteller":
+        BEGIN
+          IF (Datum = 0D) OR ("Artikelnr." = '') OR ("Belegnr." = '')
+          OR (Pruefe_SN_DC_Artverfolg("Artikelnr.","Datecode Pos.","SN-Nr. / DC") = FALSE)
+          OR ("Menge SN-Nr. / DC" = 0) OR ("RMA-Nr. Hersteller" = '') OR (Beantragung=Beantragung:: " ") OR (Beantragungsdatum = 0D) THEN
+            prfsumme := prfsumme + 1;
+          "RMA-Zeilen".RESET;
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen"."RMA-Nr.",'%1',"RMA-Nr.");
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen".Belegart,'%1',"RMA-Zeilen".Belegart::"an Hersteller");
+          IF "RMA-Zeilen".FINDFIRST THEN
+            BEGIN
+              REPEAT
+                IF ("RMA-Zeilen"."Belegnr." = "Belegnr.") AND ("RMA-Zeilen"."Belegzeilennr." = "Belegzeilennr.") AND
+                   ("RMA-Zeilen"."Datecode Pos." = "Datecode Pos.") THEN BEGIN END
+                  ELSE
+                    BEGIN
+                      IF ("RMA-Zeilen".Datum = 0D) OR ("RMA-Zeilen"."Artikelnr." = '') OR ("RMA-Zeilen"."Belegnr." = '' )
+                      OR (Pruefe_SN_DC_Artverfolg("RMA-Zeilen"."Artikelnr.","RMA-Zeilen"."Datecode Pos.",
+                      "RMA-Zeilen"."SN-Nr. / DC") = FALSE) OR ("RMA-Zeilen"."Menge SN-Nr. / DC" = 0)
+                      OR ("RMA-Zeilen"."RMA-Nr. Hersteller" = '') OR ("RMA-Zeilen".Beantragung = "RMA-Zeilen".Beantragung::" ")
+                      OR ("RMA-Zeilen".Beantragungsdatum=0D) THEN
+                        BEGIN
+                          prfsumme := prfsumme + 1;
+                        END;
+                   END;
+                UNTIL "RMA-Zeilen".NEXT = 0;
+              END
+            ELSE
+              prfsumme := 1;
+
+            IF prfsumme = 0 THEN
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-An Hersteller" := TRUE;
+                "RMA-Kopf".MODIFY;
+              END
+            ELSE
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-An Hersteller" := FALSE;
+                "RMA-Kopf".MODIFY;
+              END;
+        END;
+
+
+        Belegart::"vom Hersteller":
+        BEGIN
+          IF (Datum = 0D) OR ("Artikelnr." = '') OR ("Belegnr." = '')
+          OR (Pruefe_SN_DC_Artverfolg("Artikelnr.","Datecode Pos.","SN-Nr. / DC") = FALSE)
+          OR ("Menge SN-Nr. / DC" = 0) OR ("Maánahme Hersteller" = "Maánahme Hersteller"::" ") THEN
+            prfsumme := prfsumme + 1;
+          "RMA-Zeilen".RESET;
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen"."RMA-Nr.",'%1',"RMA-Nr.");
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen".Belegart,'%1',"RMA-Zeilen".Belegart::"vom Hersteller");
+          IF "RMA-Zeilen".FINDFIRST THEN
+            BEGIN
+              REPEAT
+                IF ("RMA-Zeilen"."Belegnr." = "Belegnr.") AND ("RMA-Zeilen"."Belegzeilennr." = "Belegzeilennr.") AND
+                   ("RMA-Zeilen"."Datecode Pos." = "Datecode Pos.") THEN BEGIN END
+                  ELSE
+                    BEGIN
+                      IF ("RMA-Zeilen".Datum = 0D) OR ("RMA-Zeilen"."Artikelnr." = '') OR ("RMA-Zeilen"."Belegnr." = '' )
+                      OR (Pruefe_SN_DC_Artverfolg("RMA-Zeilen"."Artikelnr.","RMA-Zeilen"."Datecode Pos.",
+                      "RMA-Zeilen"."SN-Nr. / DC") = FALSE) OR ("RMA-Zeilen"."Menge SN-Nr. / DC" = 0)
+                      OR ("RMA-Zeilen"."Maánahme Hersteller" = "RMA-Zeilen"."Maánahme Hersteller"::" ") THEN
+                        BEGIN
+                          prfsumme := prfsumme + 1;
+                        END;
+                   END;
+                UNTIL "RMA-Zeilen".NEXT = 0;
+              END
+            ELSE
+              prfsumme := 1;
+
+            IF prfsumme = 0 THEN
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-Zurck vom Hersteller" := TRUE;
+                "RMA-Kopf".MODIFY;
+              END
+            ELSE
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-Zurck vom Hersteller" := FALSE;
+                "RMA-Kopf".MODIFY;
+              END;
+        END;
+
+
+        Belegart::"an Kunden":
+        BEGIN
+          IF (Datum = 0D) OR ("Artikelnr." = '') OR ("Belegnr." = '')
+          OR (Pruefe_SN_DC_Artverfolg("Artikelnr.","Datecode Pos.","SN-Nr. / DC") = FALSE) OR ("Menge SN-Nr. / DC" = 0)
+          OR ("Maánahme Hersteller" = "Maánahme Hersteller"::" ") THEN
+            prfsumme := prfsumme + 1;
+          "RMA-Zeilen".RESET;
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen"."RMA-Nr.",'%1',"RMA-Nr.");
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen".Belegart,'%1',"RMA-Zeilen".Belegart::"an Kunden");
+          IF "RMA-Zeilen".FINDFIRST THEN
+            BEGIN
+              REPEAT
+                IF ("RMA-Zeilen"."Belegnr." = "Belegnr.") AND ("RMA-Zeilen"."Belegzeilennr." = "Belegzeilennr.") AND
+                   ("RMA-Zeilen"."Datecode Pos." = "Datecode Pos.") THEN BEGIN END
+                  ELSE
+                    BEGIN
+                      IF ("RMA-Zeilen".Datum = 0D) OR ("RMA-Zeilen"."Artikelnr." = '') OR ("RMA-Zeilen"."Belegnr." = '' )
+                      OR (Pruefe_SN_DC_Artverfolg("RMA-Zeilen"."Artikelnr.","RMA-Zeilen"."Datecode Pos.",
+                      "RMA-Zeilen"."SN-Nr. / DC") = FALSE) OR ("RMA-Zeilen"."Menge SN-Nr. / DC" = 0)
+                      OR ("RMA-Zeilen"."Maánahme Hersteller" = "RMA-Zeilen"."Maánahme Hersteller"::" ") THEN
+                        BEGIN
+                          prfsumme := prfsumme + 1;
+                        END;
+                   END;
+                UNTIL "RMA-Zeilen".NEXT = 0;
+              END
+            ELSE
+              prfsumme := 1;
+
+            IF prfsumme = 0 THEN
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-An Kunden" := TRUE;
+                "RMA-Kopf".MODIFY;
+              END
+            ELSE
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-An Kunden" := FALSE;
+                "RMA-Kopf".MODIFY;
+              END;
+        END;
+
+
+        Belegart::Vorab:
+        BEGIN
+          IF (Datum = 0D) OR ("Artikelnr." = '') OR ("Belegnr." = '')
+          OR (Pruefe_SN_DC_Artverfolg("Artikelnr.","Datecode Pos.","SN-Nr. / DC") = FALSE) OR ("Menge SN-Nr. / DC" = 0) THEN
+            prfsumme := prfsumme + 1;
+          "RMA-Zeilen".RESET;
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen"."RMA-Nr.",'%1',"RMA-Nr.");
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen".Belegart,'%1',"RMA-Zeilen".Belegart::Vorab);
+          IF "RMA-Zeilen".FINDFIRST THEN
+            BEGIN
+              REPEAT
+                IF ("RMA-Zeilen"."Belegnr." = "Belegnr.") AND ("RMA-Zeilen"."Belegzeilennr." = "Belegzeilennr.") AND
+                   ("RMA-Zeilen"."Datecode Pos." = "Datecode Pos.") THEN BEGIN END
+                  ELSE
+                    BEGIN
+                      IF ("RMA-Zeilen".Datum = 0D) OR ("RMA-Zeilen"."Artikelnr." = '') OR ("RMA-Zeilen"."Belegnr." = '' )
+                      OR (Pruefe_SN_DC_Artverfolg("RMA-Zeilen"."Artikelnr.","RMA-Zeilen"."Datecode Pos.",
+                      "RMA-Zeilen"."SN-Nr. / DC") = FALSE) OR ("RMA-Zeilen"."Menge SN-Nr. / DC" = 0) THEN
+                        BEGIN
+                          prfsumme := prfsumme + 1;
+                        END;
+                   END;
+                UNTIL "RMA-Zeilen".NEXT = 0;
+              END
+            ELSE
+              prfsumme := 1;
+
+            IF prfsumme = 0 THEN
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-Vorab" := TRUE;
+                "RMA-Kopf".MODIFY;
+              END
+            ELSE
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-Vorab" := FALSE;
+                "RMA-Kopf".MODIFY;
+              END;
+        END;
+
+      END;
+    END;
+
+    PROCEDURE PrfeStatusOnDelete@1140004();
+    BEGIN
+      prfsumme := 0;
+      CASE Belegart OF
+        Belegart::Rechnung:
+          BEGIN
+            "RMA-Zeilen".RESET;
+            "RMA-Zeilen".SETFILTER("RMA-Zeilen"."RMA-Nr.",'%1',"RMA-Nr.");
+            "RMA-Zeilen".SETFILTER("RMA-Zeilen".Belegart,'%1',"RMA-Zeilen".Belegart::Rechnung);
+            IF "RMA-Zeilen".FINDFIRST THEN
+              BEGIN
+                REPEAT
+                  IF ("RMA-Zeilen"."Belegnr." = "Belegnr.") AND ("RMA-Zeilen"."Belegzeilennr." = "Belegzeilennr.") AND
+                   ("RMA-Zeilen"."Datecode Pos." = "Datecode Pos.") THEN BEGIN END
+                  ELSE
+                    BEGIN
+                      IF ("RMA-Zeilen".Reklamationsgrund = "RMA-Zeilen".Reklamationsgrund::" ")
+                      OR ("RMA-Zeilen".Vorgehensweise = "RMA-Zeilen".Vorgehensweise::" ")
+                      OR ("RMA-Zeilen".Verursacher = "RMA-Zeilen".Verursacher ::" ")
+                      OR ("RMA-Zeilen"."Artikelnr." = '')
+                      OR ("RMA-Zeilen"."Belegnr." = '' )
+                      OR (Pruefe_SN_DC_Artverfolg("RMA-Zeilen"."Artikelnr.","RMA-Zeilen"."Datecode Pos.",
+                      "RMA-Zeilen"."SN-Nr. / DC") = FALSE)
+                      OR ("RMA-Zeilen"."Menge SN-Nr. / DC" = 0) THEN
+                        BEGIN
+                          prfsumme := prfsumme + 1;
+                        END;
+                   END;
+                UNTIL "RMA-Zeilen".NEXT = 0;
+              END
+            ELSE
+              prfsumme := 1;
+
+            IF prfsumme = 0 THEN
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-RMA-Annahme" := TRUE;
+                "RMA-Kopf".MODIFY;
+              END
+            ELSE
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-RMA-Annahme" := FALSE;
+                "RMA-Kopf".MODIFY;
+              END;
+          END;
+
+
+        Belegart::"vom Kunden":
+        BEGIN
+          "RMA-Zeilen".RESET;
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen"."RMA-Nr.",'%1',"RMA-Nr.");
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen".Belegart,'%1',"RMA-Zeilen".Belegart::"vom Kunden");
+          IF "RMA-Zeilen".FINDFIRST THEN
+            BEGIN
+              REPEAT
+                IF ("RMA-Zeilen"."Belegnr." = "Belegnr.") AND ("RMA-Zeilen"."Belegzeilennr." = "Belegzeilennr.") AND
+                   ("RMA-Zeilen"."Datecode Pos." = "Datecode Pos.") THEN BEGIN END
+                  ELSE
+                    BEGIN
+                      IF ("RMA-Zeilen".Datum = 0D) OR ("RMA-Zeilen"."Artikelnr." = '') OR ("RMA-Zeilen"."Belegnr." = '' )
+                      OR (Pruefe_SN_DC_Artverfolg("RMA-Zeilen"."Artikelnr.","RMA-Zeilen"."Datecode Pos.",
+                      "RMA-Zeilen"."SN-Nr. / DC") = FALSE) OR ("RMA-Zeilen"."Menge SN-Nr. / DC" = 0) THEN
+                        BEGIN
+                          prfsumme := prfsumme + 1;
+                        END;
+                   END;
+                UNTIL "RMA-Zeilen".NEXT = 0;
+              END
+            ELSE
+              prfsumme := 1;
+
+            IF prfsumme = 0 THEN
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-Zurck vom Kunden" := TRUE;
+                "RMA-Kopf".MODIFY;
+              END
+            ELSE
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-Zurck vom Kunden" := FALSE;
+                "RMA-Kopf".MODIFY;
+              END;
+        END;
+
+
+        Belegart::"an Hersteller":
+        BEGIN
+          "RMA-Zeilen".RESET;
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen"."RMA-Nr.",'%1',"RMA-Nr.");
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen".Belegart,'%1',"RMA-Zeilen".Belegart::"an Hersteller");
+          IF "RMA-Zeilen".FINDFIRST THEN
+            BEGIN
+              REPEAT
+                IF ("RMA-Zeilen"."Belegnr." = "Belegnr.") AND ("RMA-Zeilen"."Belegzeilennr." = "Belegzeilennr.") AND
+                   ("RMA-Zeilen"."Datecode Pos." = "Datecode Pos.") THEN BEGIN END
+                  ELSE
+                    BEGIN
+                      IF ("RMA-Zeilen".Datum = 0D) OR ("RMA-Zeilen"."Artikelnr." = '') OR ("RMA-Zeilen"."Belegnr." = '' )
+                      OR (Pruefe_SN_DC_Artverfolg("RMA-Zeilen"."Artikelnr.","RMA-Zeilen"."Datecode Pos.",
+                      "RMA-Zeilen"."SN-Nr. / DC") = FALSE)
+                      OR ("RMA-Zeilen"."Menge SN-Nr. / DC" = 0) OR ("RMA-Zeilen"."RMA-Nr. Hersteller" = '')
+                      OR ("RMA-Zeilen".Beantragungsdatum=0D) OR ("RMA-Zeilen".Beantragung = "RMA-Zeilen".Beantragung::" ") THEN
+                        BEGIN
+                          prfsumme := prfsumme + 1;
+                        END;
+                   END;
+                UNTIL "RMA-Zeilen".NEXT = 0;
+            END
+          ELSE
+            prfsumme := 1;
+
+            IF prfsumme = 0 THEN
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-An Hersteller" := TRUE;
+                "RMA-Kopf".MODIFY;
+              END
+            ELSE
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-An Hersteller" := FALSE;
+                "RMA-Kopf".MODIFY;
+              END;
+        END;
+
+
+        Belegart::"vom Hersteller":
+        BEGIN
+          "RMA-Zeilen".RESET;
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen"."RMA-Nr.",'%1',"RMA-Nr.");
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen".Belegart,'%1',"RMA-Zeilen".Belegart::"vom Hersteller");
+          IF "RMA-Zeilen".FINDFIRST THEN
+            BEGIN
+              REPEAT
+                IF ("RMA-Zeilen"."Belegnr." = "Belegnr.") AND ("RMA-Zeilen"."Belegzeilennr." = "Belegzeilennr.") AND
+                   ("RMA-Zeilen"."Datecode Pos." = "Datecode Pos.") THEN BEGIN END
+                  ELSE
+                    BEGIN
+                      IF ("RMA-Zeilen".Datum = 0D) OR ("RMA-Zeilen"."Artikelnr." = '') OR ("RMA-Zeilen"."Belegnr." = '' )
+                      OR (Pruefe_SN_DC_Artverfolg("RMA-Zeilen"."Artikelnr.","RMA-Zeilen"."Datecode Pos.",
+                      "RMA-Zeilen"."SN-Nr. / DC") = FALSE)
+                      OR ("RMA-Zeilen"."Menge SN-Nr. / DC" = 0)
+                      OR ("RMA-Zeilen"."Maánahme Hersteller" = "RMA-Zeilen"."Maánahme Hersteller"::" ") THEN
+                        BEGIN
+                          prfsumme := prfsumme + 1;
+                        END;
+                   END;
+                UNTIL "RMA-Zeilen".NEXT = 0;
+              END
+            ELSE
+              prfsumme := 1;
+
+            IF prfsumme = 0 THEN
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-Zurck vom Hersteller" := TRUE;
+                "RMA-Kopf".MODIFY;
+              END
+            ELSE
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-Zurck vom Hersteller" := FALSE;
+                "RMA-Kopf".MODIFY;
+              END;
+        END;
+
+
+        Belegart::"an Kunden":
+        BEGIN
+          "RMA-Zeilen".RESET;
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen"."RMA-Nr.",'%1',"RMA-Nr.");
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen".Belegart,'%1',"RMA-Zeilen".Belegart::"an Kunden");
+          IF "RMA-Zeilen".FINDFIRST THEN
+            BEGIN
+              REPEAT
+                IF ("RMA-Zeilen"."Belegnr." = "Belegnr.") AND ("RMA-Zeilen"."Belegzeilennr." = "Belegzeilennr.") AND
+                   ("RMA-Zeilen"."Datecode Pos." = "Datecode Pos.") THEN BEGIN END
+                  ELSE
+                    BEGIN
+                      IF ("RMA-Zeilen".Datum = 0D) OR ("RMA-Zeilen"."Artikelnr." = '') OR ("RMA-Zeilen"."Belegnr." = '' )
+                      OR (Pruefe_SN_DC_Artverfolg("RMA-Zeilen"."Artikelnr.","RMA-Zeilen"."Datecode Pos.",
+                      "RMA-Zeilen"."SN-Nr. / DC") = FALSE)
+                      OR ("RMA-Zeilen"."Menge SN-Nr. / DC" = 0) OR
+                      ("RMA-Zeilen"."Maánahme Hersteller" = "RMA-Zeilen"."Maánahme Hersteller"::" ") THEN
+                        BEGIN
+                          prfsumme := prfsumme + 1;
+                        END;
+                   END;
+                UNTIL "RMA-Zeilen".NEXT = 0;
+              END
+            ELSE
+              prfsumme := 1;
+
+            IF prfsumme = 0 THEN
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-An Kunden" := TRUE;
+                "RMA-Kopf".MODIFY;
+              END
+            ELSE
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-An Kunden" := FALSE;
+                "RMA-Kopf".MODIFY;
+              END;
+        END;
+
+
+        Belegart::Vorab:
+        BEGIN
+          "RMA-Zeilen".RESET;
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen"."RMA-Nr.",'%1',"RMA-Nr.");
+          "RMA-Zeilen".SETFILTER("RMA-Zeilen".Belegart,'%1',"RMA-Zeilen".Belegart::Vorab);
+          IF "RMA-Zeilen".FINDFIRST THEN
+            BEGIN
+              REPEAT
+                IF ("RMA-Zeilen"."Belegnr." = "Belegnr.") AND ("RMA-Zeilen"."Belegzeilennr." = "Belegzeilennr.") AND
+                   ("RMA-Zeilen"."Datecode Pos." = "Datecode Pos.") THEN BEGIN END
+                  ELSE
+                    BEGIN
+                      IF ("RMA-Zeilen".Datum = 0D) OR ("RMA-Zeilen"."Artikelnr." = '') OR ("RMA-Zeilen"."Belegnr." = '' )
+                      OR (Pruefe_SN_DC_Artverfolg("RMA-Zeilen"."Artikelnr.","RMA-Zeilen"."Datecode Pos.",
+                      "RMA-Zeilen"."SN-Nr. / DC") = FALSE)
+                      OR ("RMA-Zeilen"."Menge SN-Nr. / DC" = 0) THEN
+                        BEGIN
+                          prfsumme := prfsumme + 1;
+                        END;
+                   END;
+                UNTIL "RMA-Zeilen".NEXT = 0;
+              END
+            ELSE
+              prfsumme := 1;
+
+            IF prfsumme = 0 THEN
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-Vorab" := TRUE;
+                "RMA-Kopf".MODIFY;
+              END
+            ELSE
+              BEGIN
+                "RMA-Kopf".GET("RMA-Nr.");
+                "RMA-Kopf"."Status-Vorab" := FALSE;
+                "RMA-Kopf".MODIFY;
+              END;
+        END;
+
+      END;
+    END;
+
+    PROCEDURE BeteiligteArtikelL”schen@1140008();
+    BEGIN
+      //************************************************************************************************************
+      //           13.05.2011-ST RMA-Beteiligte aktualisieren und ggf. Artikelnr. herausnehmen
+      //************************************************************************************************************
+
+      CASE Belegart OF
+        Belegart :: Rechnung, Belegart :: "vom Kunden":
+          BEGIN
+            "RMA-Zeilen".RESET;
+            "RMA-Zeilen".SETFILTER("RMA-Nr.",'%1',"RMA-Nr.");
+            "RMA-Zeilen".SETFILTER("Artikelnr.",'%1',"Artikelnr.");
+            "RMA-Zeilen".SETFILTER(Belegart,'%1|%2',"RMA-Zeilen".Belegart :: Rechnung, "RMA-Zeilen".Belegart :: "vom Kunden");
+            IF (NOT "RMA-Zeilen".FINDFIRST) OR ("RMA-Zeilen".COUNT <= 1) THEN
+              BEGIN
+                "RMA-Beteiligte".RESET;
+                "RMA-Beteiligte".SETFILTER("RMA-Nr.",'%1',"RMA-Nr.");
+                "RMA-Beteiligte".SETFILTER(Art,'%1',"RMA-Beteiligte".Art :: Artikel);
+                "RMA-Beteiligte".SETFILTER("Nr.",'%1',"Artikelnr.");
+                IF ("RMA-Beteiligte".FINDFIRST) AND ("Artikelnr." <> '') THEN
+                   "RMA-Beteiligte".DELETE;
+              END;
+          END;
+      END;
+    END;
+
+    PROCEDURE PrfeEingabeM”glich@1140005();
+    BEGIN
+      "RMA-Kopf".RESET;
+      "RMA-Kopf".SETFILTER("RMA-Kopf"."RMA-Nr.",'%1',"RMA-Nr.");
+      IF ("RMA-Kopf".FINDFIRST) AND ("RMA-Kopf"."Status-Abgeschlossen" = TRUE) THEN
+        ERROR(Text009);
+    END;
+
+    PROCEDURE Pruefe_SN_DC_Artverfolg@1140007(Artnr@1140004 : Code[20];EntryNo@1140000 : Integer;"SN/DC"@1140002 : Code[20]) : Boolean;
+    VAR
+      ItemLedgerEntry@1140001 : Record 32;
+      Art@1140003 : Record 27;
+    BEGIN
+      IF Artnr = '' THEN
+        EXIT(FALSE);
+      IF "SN/DC" <> '' THEN
+        EXIT(TRUE);
+      IF "SN/DC" = '' THEN
+        BEGIN
+          //IF EntryNo = 0 THEN
+          //  EXIT(FALSE)
+          //ELSE
+          //  BEGIN
+            IF Art.GET(Artnr) THEN
+              BEGIN
+                IF (Art."Item Tracking Code" = 'KEINE') THEN
+                  EXIT(TRUE)
+                ELSE
+                  EXIT(FALSE)
+              END
+            ELSE
+              EXIT(FALSE);
+          //  END;
+        END;
+    END;
+
+    PROCEDURE ZeilenL”schen@1140003();
+    VAR
+      "RMA-Zeilen"@1140000 : Record 50021;
+    BEGIN
+      // **** Mit dieser Funktion werden s„mtliche Zeilen aus der RMA-Nr. gel”scht, die die gleiche Belegnr.,Zeilennr. und Datecode Pos.#
+      // **** besitzen => Vorteil: der Beleg kann mit einem L”schvorgang aus allen Reitern gel”scht werden
+      //"RMA-Zeilen".RESET;
+      //"RMA-Zeilen".SETFILTER("RMA-Zeilen"."RMA-Nr.",'%1',"RMA-Nr.");
+      //"RMA-Zeilen".SETFILTER("RMA-Zeilen"."Belegnr.",'%1',"Belegnr.");
+      //"RMA-Zeilen".SETFILTER("RMA-Zeilen"."Belegzeilennr.",'%1',"Belegzeilennr.");
+      //"RMA-Zeilen".SETFILTER("RMA-Zeilen"."Datecode Pos.",'%1',"Datecode Pos.");
+      //IF "RMA-Zeilen".FINDFIRST THEN
+      ///  "RMA-Zeilen".DELETEALL;
+    END;
+
+    PROCEDURE TrackingSite@1140002();
+    BEGIN
+      ShippingAgent.GET(Zusteller);
+      TrackingInternetAddr :=
+        STRSUBSTNO(
+          ShippingAgent."Internet Address","Paketverfolgungsnr.",'',
+          Datum,ShippingAgent."Account No.");
+      HYPERLINK(TrackingInternetAddr);
+    END;
+
+    PROCEDURE PrfeSeriennrAustausch@1140011(Artikelnr@1140005 : Code[20];Alte_SN@1140000 : Code[20];Neue_SN@1140001 : Code[20];"RMA-Nr"@1140009 : Code[20]) : Boolean;
+    VAR
+      Wartungsvertrag@1140004 : Record 50011;
+      Servicezeilen@1140003 : Record 50024;
+      Systemzeilen@1140002 : Record 50024;
+      TempSystemzeilen@1140006 : Record 50024;
+      Artikel@1140008 : Record 27;
+      status@1140007 : Boolean;
+    BEGIN
+      status := FALSE;
+
+      IF (Alte_SN = '') OR (Neue_SN = '') THEN
+        EXIT(status);
+
+      IF (Artikel.GET(Artikelnr)) AND (Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS')
+      OR (Artikel.Serviceklassifizierung = 'SYSTEM FLAT') THEN
+        ERROR(Text108);
+
+      Servicezeilen.RESET;
+      Servicezeilen.SETRANGE("Artikelnr.",Artikelnr);
+      Servicezeilen.SETRANGE("Seriennr.",Alte_SN);
+      Servicezeilen.SETRANGE(Art,Servicezeilen.Art :: Service);
+      IF Servicezeilen.FINDLAST THEN
+         BEGIN
+           TempSystemzeilen.RESET;
+           TempSystemzeilen.SETRANGE("Artikelnr.",Artikelnr);
+           TempSystemzeilen.SETRANGE("Seriennr.",Neue_SN);
+           TempSystemzeilen.SETRANGE(Art,TempSystemzeilen.Art :: Service);
+           TempSystemzeilen.SETRANGE(Inaktiv,FALSE);
+           IF TempSystemzeilen.FINDLAST THEN
+             ERROR(Text107,TempSystemzeilen.FIELDCAPTION("Seriennr."),Alte_SN,Neue_SN)
+           ELSE
+             BEGIN
+                TempSystemzeilen.SETRANGE(Art,TempSystemzeilen.Art :: System);
+                IF TempSystemzeilen.FINDLAST THEN
+                  BEGIN
+                    TempSystemzeilen."Zum Verschieben markieren" := TRUE;
+                    TempSystemzeilen.MODIFY;
+                    status := TempSystemzeilen.SystemPos_verschieben
+                              (TempSystemzeilen."Wartungsvertragsnr.",Servicezeilen."Wartungsvertragsnr.");
+                  END
+                ELSE
+                  BEGIN
+                    //Hier muss nun eine Pseudo Position angelegt werden, da keine Systemposition dazu gebucht ist
+                    IF CONFIRM(Text110,TRUE,Servicezeilen.FIELDCAPTION("Seriennr."),Neue_SN) THEN
+                      BEGIN
+                        SystemPseudoPositionAnlegen(Artikelnr,Alte_SN,Neue_SN,Servicezeilen."Wartungsvertragsnr.");
+                        TempSystemzeilen.SETRANGE(Art,TempSystemzeilen.Art :: System);
+                        TempSystemzeilen.FINDLAST;
+                        TempSystemzeilen."Zum Verschieben markieren" := TRUE;
+                        TempSystemzeilen.MODIFY;
+                        status := TempSystemzeilen.SystemPos_verschieben
+                                  (TempSystemzeilen."Wartungsvertragsnr.",Servicezeilen."Wartungsvertragsnr.");
+                      END
+                    ELSE ERROR('Abbruch');
+                  END;
+               SystemPositionDeaktivieren(Artikelnr,Alte_SN,Neue_SN,Servicezeilen."Wartungsvertragsnr.","RMA-Nr");
+             END;
+         END;
+
+      EXIT(status);
+    END;
+
+    PROCEDURE SystemPseudoPositionAnlegen@1140006(Artikelnr@1140006 : Code[20];Alte_SN@1140009 : Code[20];Neue_SN@1140007 : Code[20];Wartungsnr@1140008 : Code[20]);
+    VAR
+      SystemPos@1140000 : Record 50024;
+      TempSystemPos@1140001 : Record 50024;
+      NoSeriesMgt@1140005 : Codeunit 396;
+      laufende_nummer@1140004 : Code[20];
+      eingabe@1140003 : Code[10];
+      ok@1140002 : Boolean;
+    BEGIN
+      TempSystemPos.RESET;
+      TempSystemPos.SETFILTER(Art,'%1',TempSystemPos.Art :: System);
+      TempSystemPos.SETFILTER("Artikelnr.",'%1',Artikelnr);
+      TempSystemPos.SETFILTER("Seriennr.",'%1',Alte_SN);
+      TempSystemPos.SETFILTER("Wartungsvertragsnr.",Wartungsnr);
+      TempSystemPos.FINDFIRST;
+
+      SystemPos.RESET;
+      SystemPos.INIT;
+      SystemPos.Art := SystemPos.Art :: System;
+      ok := EVALUATE(eingabe,'TOPAS-PSEU');
+      laufende_nummer:='';
+      NoSeriesMgt.InitSeries(eingabe,eingabe,TODAY,laufende_nummer,eingabe);
+      SystemPos."Nr." := 'LS_' + laufende_nummer;
+      SystemPos.INSERT(TRUE);
+      SystemPos.Belegdatum := TempSystemPos.Belegdatum;
+      SystemPos."Belegzeilennr." := 11111;
+      SystemPos.VALIDATE("Artikelnr.",Artikelnr);
+      SystemPos."Seriennr." := Neue_SN;
+      SystemPos."Debitornr." := TempSystemPos."Debitornr.";
+      SystemPos.Debitorname := TempSystemPos.Debitorname;
+      SystemPos.Menge := TempSystemPos.Menge;
+      SystemPos.Kontakt := TempSystemPos.Kontakt;
+      SystemPos."Name 2" := TempSystemPos."Name 2";
+      SystemPos.Adresse := TempSystemPos.Adresse;
+      SystemPos."Adresse 2" := TempSystemPos."Adresse 2";
+      SystemPos."PLZ-Code" := TempSystemPos."PLZ-Code";
+      SystemPos.Ort := TempSystemPos.Ort;
+      SystemPos."System Projektinfos" := TempSystemPos."System Projektinfos";
+      SystemPos."Auftragsnr." := 'AU_' + laufende_nummer;
+      SystemPos."Auftragszeilennr." := SystemPos."Belegzeilennr.";
+      Artikel.GET("Artikelnr.");
+      SystemPos.Ursprungsland := Artikel."Country/Region of Origin Code";;
+      SystemPos.Fremderwerb := TRUE;
+      SystemPos."Wartungsvertragsnr." := Wartungsnr;
+      SystemPos."Hauptwartungsvertragsnr." := Wartungsnr;
+      IF (Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS') OR (Artikel.Serviceklassifizierung = 'SYSTEM FLAT') THEN
+        SystemPos.Basisger„t := TRUE;
+      SystemPos."Geh”rt zu Lfd. Nr." := TempSystemPos."Geh”rt zu Lfd. Nr.";
+      SystemPos.MODIFY;
+    END;
+
+    PROCEDURE SystemPositionDeaktivieren@1140010(Artikelnr@1140000 : Code[20];Alte_SN@1140001 : Code[20];Neue_SN@1140002 : Code[20];Wartungsnr@1140003 : Code[20];"RMA-Nr"@1140006 : Code[20]);
+    VAR
+      SystemPos@1140004 : Record 50024;
+    BEGIN
+      SystemPos.RESET;
+      SystemPos.SETFILTER(Art,'%1',SystemPos.Art :: System);
+      SystemPos.SETFILTER("Artikelnr.",'%1',Artikelnr);
+      SystemPos.SETFILTER("Seriennr.",'%1',Alte_SN);
+      SystemPos.SETFILTER("Wartungsvertragsnr.",Wartungsnr);
+      SystemPos.FINDFIRST;
+
+      SystemPos.Reklamiert := TRUE;
+      SystemPos."RMA-Nr." := "RMA-Nr";
+      SystemPos.Ersatzverfahren := TRUE;
+      SystemPos.Inaktiv := TRUE;
+      SystemPos.MODIFY(TRUE);
+    END;
+
+    PROCEDURE EmailVorbereiten@1140009(Hersteller@1140001 : Code[20];Artikelnr@1140005 : Code[20];Debnr@1140000 : Code[20];Alte_SN@1140002 : Code[20];Neue_SN@1140003 : Code[20];ACO@1140004 : Code[20]);
+    VAR
+      body@1140008 : Text[1024];
+      subject@1140007 : Text[80];
+      chr@1140006 : Char;
+    BEGIN
+      CASE Hersteller OF
+        'ACS' :
+          BEGIN
+            chr := 10;
+            Debitor.GET(Debnr);
+            subject := 'Please amend customer contract';
+            body := STRSUBSTNO(Text999,'Carmit',FORMAT(chr)+FORMAT(chr),Debitor.Name,FORMAT(chr),
+                    Artikelnr,Alte_SN,Neue_SN,ACO,FORMAT(chr)+FORMAT(chr),FORMAT(chr)+FORMAT(chr));
+            TOPAS_API.NewMail('EMEAPurchasing@audiocodes.com','jm@topas.de;systeme@topas.de','',subject,body,'','');
+          END;
+      END;
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
