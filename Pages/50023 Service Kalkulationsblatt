@@ -2,8 +2,8 @@ OBJECT Page 50023 Service Kalkulationsblatt
 {
   OBJECT-PROPERTIES
   {
-    Date=15.08.17;
-    Time=16:18:59;
+    Date=08.11.17;
+    Time=14:32:54;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -168,17 +168,17 @@ OBJECT Page 50023 Service Kalkulationsblatt
                                 }
       { 1000000010;1 ;ActionGroup;
                       CaptionML=DEU=Admin Tools;
-                      Visible=FALSE }
+                      Visible=FALSE;
+                      Enabled=FALSE }
       { 1140064 ;2   ;Action    ;
                       CaptionML=DEU=TEMP_Alle Pos. holen;
-                      Visible=FALSE;
                       OnAction=BEGIN
-                                 HoleArtikelPos_TEMP;
+                                 IF lieferscheinnr = '' THEN ERROR('TEMP Funktion nur mit Lieferscheinnr. ausfhrbar.');
+                                 HoleArtikelPos;
                                END;
                                 }
       { 1140065 ;2   ;Action    ;
                       CaptionML=DEU=TEMP_Auswahl Seriennr.;
-                      Visible=FALSE;
                       OnAction=BEGIN
                                  TempSeriennrhinzu_TEMP;
                                END;
@@ -490,7 +490,9 @@ OBJECT Page 50023 Service Kalkulationsblatt
   {
     VAR
       SalesLine@1140000 : Record 37;
+      SalesLineArchive@1000000006 : Record 5108;
       SalesLine_Service@1140042 : Record 37;
+      SalesLineArchive_Service@1000000007 : Record 5108;
       ShipLine@1140047 : Record 111;
       Beleghistorie@1000000005 : Record 50008;
       ServRelaDoc@1140045 : Record 50027;
@@ -767,95 +769,38 @@ OBJECT Page 50023 Service Kalkulationsblatt
                 ERROR(Text000);
             END;
           END;
-        END ELSE
-          ERROR(Text000);
-      END;
-    END;
-
-    PROCEDURE HoleArtikelPos_TEMP@1140014();
-    BEGIN
-      IF lieferscheinnr = '' THEN ERROR('TEMP Funktion nur mit Lieferscheinnr. ausfhrbar.');
-
-      IF (lieferscheinnr <> '') AND (wartungsnr <> '') THEN
-        ERROR(Text012);
-
-      IF Rec.HASFILTER THEN BEGIN
-        ////Service bezieht sich auf Auftrag
-        EVALUATE(zeilennr,GETFILTER("Zeilennr."));
-        SalesLine_Service.RESET;
-        SalesLine_Service.SETRANGE("Document No.",GETFILTER("Nr."));
-        SalesLine_Service.SETRANGE("Line No.",zeilennr);
-        IF SalesLine_Service.FINDFIRST THEN BEGIN
-          IF (lieferscheinnr = '') AND (wartungsnr = '') THEN BEGIN
-            SalesLine.RESET;
-            SalesLine.SETRANGE("Document No.",GETFILTER("Nr."));
-            SalesLine.SETRANGE("Manufacturer Code",'59');
-            IF SalesLine.FINDFIRST THEN BEGIN
-              REPEAT
-                Artikel.GET(SalesLine."No.");
-                IF Artikel."Software Upgrade Protection" = FALSE THEN BEGIN
-                  TempServRelaDoc.RESET;
-                  TempServRelaDoc.SETRANGE(Art,TempServRelaDoc.Art :: "SUP-AU");
-                  TempServRelaDoc.SETRANGE("Nr.",SalesLine."Document No.");
-                  TempServRelaDoc.SETRANGE("Zeilennr.",zeilennr);
-                  TempServRelaDoc.SETRANGE("Belegnr.",SalesLine."Document No.");
-                  TempServRelaDoc.SETRANGE("Belegzeilennr.",SalesLine."Line No.");
-                  IF NOT TempServRelaDoc.FINDFIRST THEN BEGIN
-                    ServRelaDoc.INIT;
-                    ServRelaDoc.Art := Art :: "SUP-AU";
-                    ServRelaDoc."Nr." := SalesLine."Document No.";
-                    ServRelaDoc."Zeilennr." := zeilennr;
-                    ServRelaDoc."Belegnr." := SalesLine."Document No.";
-                    ServRelaDoc."Belegzeilennr." := SalesLine."Line No.";
-                    ServRelaDoc."Debitornr." := SalesLine."Sell-to Customer No.";
-                    ServRelaDoc."SUP Artikelnr." := SalesLine_Service."No.";
-                    ServRelaDoc.VALIDATE("Ger„te Artikelnr.",SalesLine."No.");
-                    ServRelaDoc."Menge kalk." := SalesLine."Outstanding Quantity";
-                    //Laufzeit vorbelegen
-                    Opt.RESET;
-                    Opt.SETRANGE("Tabellen ID",50024);
-                    Opt.SETRANGE("Feld ID",44);
-                    Opt.SETRANGE("Nr.",ServRelaDoc."SUP Artikelnr.");
-                    IF Opt.FINDFIRST THEN
-                      ServRelaDoc.Laufzeit := Opt.Code;
-                    ServRelaDoc.VALIDATE("Quotenr.",quotenr);
-                    ServRelaDoc.Gruppierung := Gruppieren(ServRelaDoc."Belegnr.",
-                    ServRelaDoc."Belegzeilennr.",ServRelaDoc.Basisger„t);
-                    ServRelaDoc.INSERT(TRUE);
-                  END;
-                END;
-              UNTIL SalesLine.NEXT = 0;
-              CurrPage.UPDATE;
-            END;
-          END ELSE BEGIN
-            ////Service bezieht sich auf Lieferschein
-            IF (lieferscheinnr <> '') AND (lieferscheinnr <> GETFILTER("Nr.")) THEN BEGIN
-              ShipLine.RESET;
-              ShipLine.SETRANGE("Document No.",lieferscheinnr);
-              ShipLine.SETRANGE("Manufacturer Code",'59');
-              ShipLine.SETFILTER(Quantity,'>%1',0);
-              IF ShipLine.FINDFIRST THEN BEGIN
+        END ELSE BEGIN
+          ////Service bezieht sich auf archivierten Auftrag
+          EVALUATE(zeilennr,GETFILTER("Zeilennr."));
+          SalesLineArchive_Service.RESET;
+          SalesLineArchive_Service.SETRANGE("Document No.",GETFILTER("Nr."));
+          SalesLineArchive_Service.SETRANGE("Line No.",zeilennr);
+          IF SalesLineArchive_Service.FINDFIRST THEN BEGIN
+            IF (lieferscheinnr = '') AND (wartungsnr = '') THEN BEGIN
+              SalesLineArchive.RESET;
+              SalesLineArchive.SETRANGE("Document No.",GETFILTER("Nr."));
+              SalesLineArchive.SETRANGE("Manufacturer Code",'59');
+              IF SalesLineArchive.FINDFIRST THEN BEGIN
                 REPEAT
-                  Artikel.GET(ShipLine."No.");
+                  Artikel.GET(SalesLineArchive."No.");
                   IF Artikel."Software Upgrade Protection" = FALSE THEN BEGIN
                     TempServRelaDoc.RESET;
                     TempServRelaDoc.SETRANGE(Art,TempServRelaDoc.Art :: "SUP-AU");
-                    TempServRelaDoc.SETRANGE("Nr.",GETFILTER("Nr."));
+                    TempServRelaDoc.SETRANGE("Nr.",SalesLineArchive."Document No.");
                     TempServRelaDoc.SETRANGE("Zeilennr.",zeilennr);
-                    TempServRelaDoc.SETRANGE("Belegnr.",ShipLine."Document No.");
-                    TempServRelaDoc.SETRANGE("Belegzeilennr.",ShipLine."Line No.");
+                    TempServRelaDoc.SETRANGE("Belegnr.",SalesLineArchive."Document No.");
+                    TempServRelaDoc.SETRANGE("Belegzeilennr.",SalesLineArchive."Line No.");
                     IF NOT TempServRelaDoc.FINDFIRST THEN BEGIN
                       ServRelaDoc.INIT;
                       ServRelaDoc.Art := Art :: "SUP-AU";
-                      ServRelaDoc."Nr." := SalesLine_Service."Document No.";
+                      ServRelaDoc."Nr." := SalesLineArchive."Document No.";
                       ServRelaDoc."Zeilennr." := zeilennr;
-                      ServRelaDoc."Belegnr." := ShipLine."Document No.";
-                      ServRelaDoc."Belegzeilennr." := ShipLine."Line No.";
-                      ServRelaDoc."Debitornr." := SalesLine_Service."Sell-to Customer No.";
-                      ServRelaDoc."SUP Artikelnr." := SalesLine_Service."No.";
-                      ServRelaDoc.VALIDATE("Ger„te Artikelnr.",ShipLine."No.");
-                      ServRelaDoc."Menge kalk." := ShipLine.Quantity;
-                      ServRelaDoc."Nachtr„gliche Service Order" := TRUE;
+                      ServRelaDoc."Belegnr." := SalesLineArchive."Document No.";
+                      ServRelaDoc."Belegzeilennr." := SalesLineArchive."Line No.";
+                      ServRelaDoc."Debitornr." := SalesLineArchive."Sell-to Customer No.";
+                      ServRelaDoc."SUP Artikelnr." := SalesLineArchive."No.";
+                      ServRelaDoc.VALIDATE("Ger„te Artikelnr.",SalesLineArchive."No.");
+                      ServRelaDoc."Menge kalk." := SalesLineArchive."Outstanding Quantity";
                       //Laufzeit vorbelegen
                       Opt.RESET;
                       Opt.SETRANGE("Tabellen ID",50024);
@@ -869,49 +814,38 @@ OBJECT Page 50023 Service Kalkulationsblatt
                       ServRelaDoc.INSERT(TRUE);
                     END;
                   END;
-                UNTIL ShipLine.NEXT = 0;
+                UNTIL SalesLineArchive.NEXT = 0;
                 CurrPage.UPDATE;
-              END ELSE
-                ERROR(Text000);
+              END;
             END ELSE BEGIN
-              ////Service bezieht sich auf einen Wartungsvertrag
-              IF (wartungsnr <> '') THEN BEGIN
-                ServicePos.RESET;
-                ServicePos.SETRANGE(Art,ServicePos.Art :: Service);
-                ServicePos.SETRANGE("Wartungsvertragsnr.",wartungsnr);
-                //ServicePos.SETRANGE(Verl„ngerung,FALSE);
-                ServicePos.SETRANGE(Inaktiv,FALSE);
-                IF ServicePos.FINDFIRST THEN BEGIN
+              ////Service bezieht sich auf Lieferschein
+              IF (lieferscheinnr <> '') AND (lieferscheinnr <> GETFILTER("Nr.")) THEN BEGIN
+                ShipLine.RESET;
+                ShipLine.SETRANGE("Document No.",lieferscheinnr);
+                ShipLine.SETRANGE("Manufacturer Code",'59');
+                ShipLine.SETFILTER(Quantity,'>%1',0);
+                IF ShipLine.FINDFIRST THEN BEGIN
                   REPEAT
-                    CompareSystemPos.RESET;
-                    CompareSystemPos.SETRANGE(Art,CompareSystemPos.Art :: System);
-                    CompareSystemPos.SETRANGE(Inaktiv,FALSE);
-                    CompareSystemPos.SETRANGE("Wartungsvertragsnr.",wartungsnr);
-                    CompareSystemPos.SETRANGE("Nr.",ServicePos."Urspr. Lieferscheinnr.");
-                    CompareSystemPos.SETRANGE("Belegzeilennr.",ServicePos."Urspr. Lieferscheinzeilennr.");
-                    IF CompareSystemPos.FINDFIRST THEN BEGIN
+                    Artikel.GET(ShipLine."No.");
+                    IF Artikel."Software Upgrade Protection" = FALSE THEN BEGIN
                       TempServRelaDoc.RESET;
                       TempServRelaDoc.SETRANGE(Art,TempServRelaDoc.Art :: "SUP-AU");
                       TempServRelaDoc.SETRANGE("Nr.",GETFILTER("Nr."));
                       TempServRelaDoc.SETRANGE("Zeilennr.",zeilennr);
-                      TempServRelaDoc.SETRANGE("Belegnr.",ServicePos."Urspr. Lieferscheinnr.");
-                      TempServRelaDoc.SETRANGE("Belegzeilennr.",ServicePos."Urspr. Lieferscheinzeilennr.");
+                      TempServRelaDoc.SETRANGE("Belegnr.",ShipLine."Document No.");
+                      TempServRelaDoc.SETRANGE("Belegzeilennr.",ShipLine."Line No.");
                       IF NOT TempServRelaDoc.FINDFIRST THEN BEGIN
                         ServRelaDoc.INIT;
                         ServRelaDoc.Art := Art :: "SUP-AU";
-                        ServRelaDoc."Nr." := SalesLine_Service."Document No.";
+                        ServRelaDoc."Nr." := SalesLineArchive_Service."Document No.";
                         ServRelaDoc."Zeilennr." := zeilennr;
-                        ServRelaDoc."Belegnr." := ServicePos."Urspr. Lieferscheinnr.";
-                        ServRelaDoc."Belegzeilennr." := ServicePos."Urspr. Lieferscheinzeilennr.";
-                        ServRelaDoc."Debitornr." := SalesLine_Service."Sell-to Customer No.";
-                        ServRelaDoc."SUP Artikelnr." := SalesLine_Service."No.";
-                        ServRelaDoc.VALIDATE("Ger„te Artikelnr.",ServicePos."Artikelnr.");
-                        ServRelaDoc.VALIDATE("Menge kalk.",ServicePos.Menge);
-                        //gibt es so nicht mehr in NAV 2016
-                        //CurrPAGE."Menge kalk.".UPDATE;
-                        ServRelaDoc."Vertragsnr. bernommen" := wartungsnr;
+                        ServRelaDoc."Belegnr." := ShipLine."Document No.";
+                        ServRelaDoc."Belegzeilennr." := ShipLine."Line No.";
+                        ServRelaDoc."Debitornr." := SalesLineArchive_Service."Sell-to Customer No.";
+                        ServRelaDoc."SUP Artikelnr." := SalesLineArchive_Service."No.";
+                        ServRelaDoc.VALIDATE("Ger„te Artikelnr.",ShipLine."No.");
+                        ServRelaDoc."Menge kalk." := ShipLine.Quantity;
                         ServRelaDoc."Nachtr„gliche Service Order" := TRUE;
-                        ServRelaDoc.Fremderwerb := ServicePos.Fremderwerb;
                         //Laufzeit vorbelegen
                         Opt.RESET;
                         Opt.SETRANGE("Tabellen ID",50024);
@@ -923,35 +857,134 @@ OBJECT Page 50023 Service Kalkulationsblatt
                         ServRelaDoc.Gruppierung := Gruppieren(ServRelaDoc."Belegnr.",
                         ServRelaDoc."Belegzeilennr.",ServRelaDoc.Basisger„t);
                         ServRelaDoc.INSERT(TRUE);
-                      END ELSE BEGIN
-                        CompareSystemPos.RESET;
-                        CompareSystemPos.SETRANGE(Art,CompareSystemPos.Art :: System);
-                        CompareSystemPos.SETRANGE(Inaktiv,FALSE);
-                        CompareSystemPos.SETRANGE("Wartungsvertragsnr.",wartungsnr);
-                        CompareSystemPos.SETRANGE("Nr.",ServicePos."Urspr. Lieferscheinnr.");
-                        CompareSystemPos.SETRANGE("Belegzeilennr.",ServicePos."Urspr. Lieferscheinzeilennr.");
-                        IF CompareSystemPos.FINDFIRST THEN BEGIN
-                          menge_gesamt := 0;
-                          REPEAT
-                            menge_gesamt := menge_gesamt + CompareSystemPos.Menge;
-                          UNTIL CompareSystemPos.NEXT = 0;
-                          IF TempServRelaDoc."Menge kalk." < menge_gesamt THEN BEGIN
-                            TempServRelaDoc."Menge kalk." := TempServRelaDoc."Menge kalk." + ServicePos.Menge;
-                            TempServRelaDoc.MODIFY;
+                      END;
+                    END;
+                  UNTIL ShipLine.NEXT = 0;
+                  CurrPage.UPDATE;
+                END ELSE BEGIN
+                  Beleghistorie.RESET;
+                  Beleghistorie.SETRANGE(Belegart,Beleghistorie.Belegart::"Sales Shipment");
+                  Beleghistorie.SETRANGE("Belegnr.",lieferscheinnr);
+                  Beleghistorie.SETRANGE(Herstellercode,'59');
+                  Beleghistorie.SETFILTER(Menge,'>%1',0);
+                  IF Beleghistorie.FINDFIRST THEN BEGIN
+                    REPEAT
+                      Artikel.GET(Beleghistorie."Artikelnr.");
+                      IF Artikel."Software Upgrade Protection" = FALSE THEN BEGIN
+                        TempServRelaDoc.RESET;
+                        TempServRelaDoc.SETRANGE(Art,TempServRelaDoc.Art :: "SUP-AU");
+                        TempServRelaDoc.SETRANGE("Nr.",GETFILTER("Nr."));
+                        TempServRelaDoc.SETRANGE("Zeilennr.",zeilennr);
+                        TempServRelaDoc.SETRANGE("Belegnr.",Beleghistorie."Belegnr.");
+                        TempServRelaDoc.SETRANGE("Belegzeilennr.",Beleghistorie."Zeilennr.");
+                        IF NOT TempServRelaDoc.FINDFIRST THEN BEGIN
+                          ServRelaDoc.INIT;
+                          ServRelaDoc.Art := Art :: "SUP-AU";
+                          ServRelaDoc."Nr." := SalesLineArchive_Service."Document No.";
+                          ServRelaDoc."Zeilennr." := zeilennr;
+                          ServRelaDoc."Belegnr." := Beleghistorie."Belegnr.";
+                          ServRelaDoc."Belegzeilennr." := Beleghistorie."Zeilennr.";
+                          ServRelaDoc."Debitornr." := SalesLineArchive_Service."Sell-to Customer No.";
+                          ServRelaDoc."SUP Artikelnr." := SalesLineArchive_Service."No.";
+                          ServRelaDoc.VALIDATE("Ger„te Artikelnr.",Beleghistorie."Artikelnr.");
+                          ServRelaDoc."Menge kalk." := Beleghistorie.Menge;
+                          ServRelaDoc."Nachtr„gliche Service Order" := TRUE;
+                          //Laufzeit vorbelegen
+                          Opt.RESET;
+                          Opt.SETRANGE("Tabellen ID",50024);
+                          Opt.SETRANGE("Feld ID",44);
+                          Opt.SETRANGE("Nr.",ServRelaDoc."SUP Artikelnr.");
+                          IF Opt.FINDFIRST THEN
+                            ServRelaDoc.Laufzeit := Opt.Code;
+                          ServRelaDoc.VALIDATE("Quotenr.",quotenr);
+                          ServRelaDoc.Gruppierung := Gruppieren(ServRelaDoc."Belegnr.",
+                          ServRelaDoc."Belegzeilennr.",ServRelaDoc.Basisger„t);
+                          ServRelaDoc.INSERT(TRUE);
+                        END;
+                      END;
+                    UNTIL Beleghistorie.NEXT = 0;
+                    CurrPage.UPDATE
+                  END ELSE
+                    ERROR(Text000);
+                END
+              END ELSE BEGIN
+                ////Service bezieht sich auf einen Wartungsvertrag
+                IF (wartungsnr <> '') THEN BEGIN
+                  ServicePos.RESET;
+                  ServicePos.SETRANGE(Art,ServicePos.Art :: Service);
+                  ServicePos.SETRANGE("Wartungsvertragsnr.",wartungsnr);
+                  //ServicePos.SETRANGE(Verl„ngerung,FALSE);
+                  ServicePos.SETRANGE(Inaktiv,FALSE);
+                  IF ServicePos.FINDFIRST THEN BEGIN
+                    REPEAT
+                      CompareSystemPos.RESET;
+                      CompareSystemPos.SETRANGE(Art,CompareSystemPos.Art :: System);
+                      CompareSystemPos.SETRANGE(Inaktiv,FALSE);
+                      CompareSystemPos.SETRANGE("Wartungsvertragsnr.",wartungsnr);
+                      CompareSystemPos.SETRANGE("Nr.",ServicePos."Urspr. Lieferscheinnr.");
+                      CompareSystemPos.SETRANGE("Belegzeilennr.",ServicePos."Urspr. Lieferscheinzeilennr.");
+                      IF CompareSystemPos.FINDFIRST THEN BEGIN
+                        TempServRelaDoc.RESET;
+                        TempServRelaDoc.SETRANGE(Art,TempServRelaDoc.Art :: "SUP-AU");
+                        TempServRelaDoc.SETRANGE("Nr.",GETFILTER("Nr."));
+                        TempServRelaDoc.SETRANGE("Zeilennr.",zeilennr);
+                        TempServRelaDoc.SETRANGE("Belegnr.",ServicePos."Urspr. Lieferscheinnr.");
+                        TempServRelaDoc.SETRANGE("Belegzeilennr.",ServicePos."Urspr. Lieferscheinzeilennr.");
+                        IF NOT TempServRelaDoc.FINDFIRST THEN BEGIN
+                          ServRelaDoc.INIT;
+                          ServRelaDoc.Art := Art :: "SUP-AU";
+                          ServRelaDoc."Nr." := SalesLineArchive_Service."Document No.";
+                          ServRelaDoc."Zeilennr." := zeilennr;
+                          ServRelaDoc."Belegnr." := ServicePos."Urspr. Lieferscheinnr.";
+                          ServRelaDoc."Belegzeilennr." := ServicePos."Urspr. Lieferscheinzeilennr.";
+                          ServRelaDoc."Debitornr." := SalesLineArchive_Service."Sell-to Customer No.";
+                          ServRelaDoc."SUP Artikelnr." := SalesLineArchive_Service."No.";
+                          ServRelaDoc.VALIDATE("Ger„te Artikelnr.",ServicePos."Artikelnr.");
+                          ServRelaDoc."Menge kalk." := ServicePos.Menge;
+                          ServRelaDoc."Vertragsnr. bernommen" := wartungsnr;
+                          ServRelaDoc."Nachtr„gliche Service Order" := TRUE;
+                          ServRelaDoc.Fremderwerb := ServicePos.Fremderwerb;
+                          //Laufzeit vorbelegen
+                          Opt.RESET;
+                          Opt.SETRANGE("Tabellen ID",50024);
+                          Opt.SETRANGE("Feld ID",44);
+                          Opt.SETRANGE("Nr.",ServRelaDoc."SUP Artikelnr.");
+                          IF Opt.FINDFIRST THEN
+                            ServRelaDoc.Laufzeit := Opt.Code;
+                          ServRelaDoc.VALIDATE("Quotenr.",quotenr);
+                          ServRelaDoc.Gruppierung := Gruppieren(ServRelaDoc."Belegnr.",
+                          ServRelaDoc."Belegzeilennr.",ServRelaDoc.Basisger„t);
+                          ServRelaDoc.INSERT(TRUE);
+                        END ELSE BEGIN
+                          CompareSystemPos.RESET;
+                          CompareSystemPos.SETRANGE(Art,CompareSystemPos.Art :: System);
+                          CompareSystemPos.SETRANGE(Inaktiv,FALSE);
+                          CompareSystemPos.SETRANGE("Wartungsvertragsnr.",wartungsnr);
+                          CompareSystemPos.SETRANGE("Nr.",ServicePos."Urspr. Lieferscheinnr.");
+                          CompareSystemPos.SETRANGE("Belegzeilennr.",ServicePos."Urspr. Lieferscheinzeilennr.");
+                          IF CompareSystemPos.FINDFIRST THEN BEGIN
+                            menge_gesamt := 0;
+                            REPEAT
+                              menge_gesamt := menge_gesamt + CompareSystemPos.Menge;
+                            UNTIL CompareSystemPos.NEXT = 0;
+                            IF TempServRelaDoc."Menge kalk." < menge_gesamt THEN BEGIN
+                              TempServRelaDoc."Menge kalk." := TempServRelaDoc."Menge kalk." + ServicePos.Menge;
+                              TempServRelaDoc.MODIFY;
+                            END;
                           END;
                         END;
                       END;
-                    END;
-                  UNTIL ServicePos.NEXT = 0;
-                  CurrPage.UPDATE;
+                    UNTIL ServicePos.NEXT = 0;
+                    CurrPage.UPDATE;
+                  END ELSE
+                    ERROR(Text000);
                 END ELSE
                   ERROR(Text000);
-              END ELSE
-                ERROR(Text000);
+              END;
             END;
-          END;
-        END ELSE
-          ERROR(Text000);
+          END ELSE
+            ERROR(Text000);
+        END;
       END;
     END;
 
@@ -1605,7 +1638,7 @@ OBJECT Page 50023 Service Kalkulationsblatt
               ServRelaDoc."SUP Artikelnr." := SalesLine_Service."No.";
               ServRelaDoc.VALIDATE("Ger„te Artikelnr.",TempServRelaDoc."Ger„te Artikelnr.");
               ServRelaDoc."Menge kalk." := TempServRelaDoc."Menge kalk.";
-              ServRelaDoc."Laufzeit ab Buchungsdatum" := TempServRelaDoc."Laufzeit ab Buchungsdatum";
+              ServRelaDoc."Laufzeit ab Buchungsdatum" := TempServRelaDoc."Laufzeit ab Buchungsdatum";              
               ServRelaDoc."Vertragsnr. bernommen" := TempServRelaDoc."Vertragsnr. bernommen";
               ServRelaDoc."Abw. Ger„te Artikelnr." := TempServRelaDoc."Abw. Ger„te Artikelnr.";
               ServRelaDoc."Nachtr„gliche Service Order" := TempServRelaDoc."Nachtr„gliche Service Order";
