@@ -1,0 +1,760 @@
+OBJECT Codeunit 7171 Sales Info-Pane Management
+{
+  OBJECT-PROPERTIES
+  {
+    Date=09.08.17;
+    Time=11:59:37;
+    Modified=Yes;
+    Version List=NAVW19.00,TOP1.00;
+  }
+  PROPERTIES
+  {
+    OnRun=BEGIN
+          END;
+
+  }
+  CODE
+  {
+    VAR
+      Cust@1000 : Record 18;
+      Item@1001 : Record 27;
+      SalesHeader@1003 : Record 36;
+      SalesPriceCalcMgt@1002 : Codeunit 7000;
+      Text000@1004 : TextConst 'DEU=Die Lieferadresse wurde ge„ndert.;ENU=The Ship-to Address has been changed.';
+      AvailableToPromise@1005 : Codeunit 5790;
+      Text50000@1000000000 : TextConst 'DEU=Es konnten keine Support Kontingente gefunden werden.';
+      Text50001@1000000001 : TextConst 'DEU=Dieser Kontakt wurde noch nicht mit einem Debitor Konto verknpft.';
+      Text50002@1000000002 : TextConst 'DEU=Diese Funktion kann nur unter einem %1 aufgerufen werden.';
+
+    LOCAL PROCEDURE CalcNoOfDocuments@1(VAR Cust@1000 : Record 18);
+    BEGIN
+      Cust.CALCFIELDS(
+        "No. of Quotes","No. of Blanket Orders","No. of Orders","No. of Invoices",
+        "No. of Return Orders","No. of Credit Memos","No. of Pstd. Shipments",
+        "No. of Pstd. Invoices","No. of Pstd. Return Receipts","No. of Pstd. Credit Memos",
+        "Sell-to No. Of Archived Doc.");
+    END;
+
+    LOCAL PROCEDURE CalcTotalNoOfDocuments@2(CustNo@1000 : Code[20]) : Integer;
+    BEGIN
+      GetCust(CustNo);
+      WITH Cust DO BEGIN
+        CalcNoOfDocuments(Cust);
+        EXIT(
+          "No. of Quotes" + "No. of Blanket Orders" + "No. of Orders" + "No. of Invoices" +
+          "No. of Return Orders" + "No. of Credit Memos" + "No. of Pstd. Shipments" +
+          "No. of Pstd. Invoices" + "No. of Pstd. Return Receipts" + "No. of Pstd. Credit Memos" +
+          "Sell-to No. Of Archived Doc.");
+      END;
+    END;
+
+    LOCAL PROCEDURE CalcNoOfShipToAddr@5(CustNo@1000 : Code[20]) : Integer;
+    BEGIN
+      GetCust(CustNo);
+      Cust.CALCFIELDS("No. of Ship-to Addresses");
+      EXIT(Cust."No. of Ship-to Addresses");
+    END;
+
+    LOCAL PROCEDURE CalcNoOfContacts@3(SalesHeader@1002 : Record 36) : Integer;
+    VAR
+      Cont@1000 : Record 5050;
+      ContBusRelation@1001 : Record 5054;
+    BEGIN
+      Cont.SETCURRENTKEY("Company No.");
+      WITH SalesHeader DO
+        IF "Sell-to Customer No." <> '' THEN BEGIN
+          IF Cont.GET("Sell-to Contact No.") THEN BEGIN
+            Cont.SETRANGE("Company No.",Cont."Company No.");
+            EXIT(Cont.COUNT);
+          END;
+          ContBusRelation.RESET;
+          ContBusRelation.SETCURRENTKEY("Link to Table","No.");
+          ContBusRelation.SETRANGE("Link to Table",ContBusRelation."Link to Table"::Customer);
+          ContBusRelation.SETRANGE("No.","Sell-to Customer No.");
+          IF ContBusRelation.FINDFIRST THEN BEGIN
+            Cont.SETRANGE("Company No.",ContBusRelation."Contact No.");
+            EXIT(Cont.COUNT);
+          END;
+          EXIT(0)
+          ;
+        END;
+    END;
+
+    PROCEDURE CalcNoOfContacts_TOP@1140000(ContactNo@1140002 : Code[20]) : Integer;
+    VAR
+      Cont@1140001 : Record 5050;
+    BEGIN
+      // TOPAS 16.05.17 ST
+      Cont.SETRANGE("Company No.",ContactNo);
+      EXIT(Cont.COUNT);
+      // TOPAS Ende
+    END;
+
+    PROCEDURE CalcNoOfProjects_TOP@1140002(ContactNo@1140000 : Code[20]) : Integer;
+    VAR
+      ProjAnsp@1140002 : Record 50005;
+    BEGIN
+      // TOPAS 16.05.17 ST
+      ProjAnsp.RESET;
+      ProjAnsp.SETFILTER("Kontaktnr.",'%1',ContactNo);
+      ProjAnsp.SETFILTER("Memonr.",'%1','');
+      ProjAnsp.SETFILTER("Kampagnennr.",'<%1','S');
+      IF ProjAnsp.FINDFIRST THEN
+        EXIT(ProjAnsp.COUNT)
+      ELSE
+        EXIT(0);
+      // TOPAS Ende
+    END;
+
+    PROCEDURE CalcNoOfMemo_TOP@1140003(ContactNo@1140000 : Code[20]) : Integer;
+    VAR
+      Memokopf@1140003 : Record 50003;
+    BEGIN
+      // TOPAS 16.05.17 ST
+      Memokopf.SETRANGE("Mandantennr.",ContactNo);
+      Memokopf.SETRANGE("Kampagnennr.",'');
+      EXIT(Memokopf.COUNT);
+      // TOPAS Ende
+    END;
+
+    PROCEDURE CalcNoOfLeihstellungen_TOP@1140009(ContactNo@1140000 : Code[20]) : Integer;
+    VAR
+      ContBusRelation@1140001 : Record 5054;
+      Leihstellung@1140002 : Record 50024;
+    BEGIN
+      // TOPAS 22.09.09 ST
+      ContBusRelation.RESET;
+      ContBusRelation.SETCURRENTKEY("Link to Table","No.");
+      ContBusRelation.SETRANGE("Link to Table",ContBusRelation."Link to Table" :: Customer);
+      ContBusRelation.SETRANGE("Contact No.",ContactNo);
+      IF ContBusRelation.FINDFIRST THEN BEGIN
+        Leihstellung.RESET;
+        Leihstellung.SETRANGE("Nr.",ContBusRelation."No.");
+        EXIT(Leihstellung.COUNT);
+      END ELSE
+        EXIT(0);
+      // TOPAS Ende
+    END;
+
+    PROCEDURE CalcNoOfRMA_TOP@1140015(ContactNo@1140001 : Code[20]) : Integer;
+    VAR
+      RMA@1140000 : Record 50022;
+    BEGIN
+      // TOPAS 16.05.17 ST
+      RMA.RESET;
+      RMA.SETRANGE("Nr.",ContactNo);
+      EXIT(RMA.COUNT);
+      // TOPAS Ende
+    END;
+
+    PROCEDURE CalcNoOfServiceleistungen_TOP@1140013(CustNo@1140000 : Code[20]) : Integer;
+    VAR
+      ContBusRelation@1000000000 : Record 5054;
+      Wartungsvertrag@1140001 : Record 50011;
+    BEGIN
+      // TOPAS 16.05.17 ST
+      Wartungsvertrag.RESET;
+      Wartungsvertrag.SETRANGE("Debitornr.",CustNo);
+      EXIT(Wartungsvertrag.COUNT);
+      // TOPAS Ende
+    END;
+
+    PROCEDURE CalcNoOfKontingente_TOP@1140017(ContactNo@1140002 : Code[20]) : Integer;
+    VAR
+      Support@1140001 : Record 50012;
+      Supp_Anspr@1140000 : Record 50005;
+      nr@1140003 : Code[250];
+      count@1140004 : Integer;
+    BEGIN
+      // TOPAS 16.05.17 ST
+      Supp_Anspr.RESET;
+      Supp_Anspr.SETRANGE("Kontaktnr.",ContactNo);
+      IF Supp_Anspr.FINDFIRST THEN
+        REPEAT
+          Support.RESET;
+          Support.SETRANGE("Nr.",Supp_Anspr."Kampagnennr.");
+          IF Support.FINDFIRST THEN BEGIN
+            IF (STRPOS(nr,Support."Nr.") = 0) THEN BEGIN
+              IF nr = '' THEN nr := Support."Nr."
+                ELSE nr := nr + '|' + Support."Nr.";
+              count += 1;
+            END;
+          END;
+        UNTIL Supp_Anspr.NEXT = 0;
+
+      EXIT(count);
+      // TOPAS Ende
+    END;
+
+    PROCEDURE CalcNoOfDokumenten_TOP@1140012(ContactNo@1140000 : Code[20]) : Integer;
+    VAR
+      Doku@1140001 : Record 50032;
+    BEGIN
+      // TOPAS 16.05.17 ST
+      Doku.RESET;
+      Doku.SETRANGE(Doku."Mandantennr.",ContactNo);
+      EXIT(Doku.COUNT);
+      // TOPAS Ende
+    END;
+
+    PROCEDURE CalcNoOfArchSalesQuotes_TOP@1140006(CustNo@1140000 : Code[20]) : Integer;
+    VAR
+      ArchSalesHeader@1140001 : Record 5107;
+    BEGIN
+      // TOPAS 16.05.17 ST
+      ArchSalesHeader.RESET;
+      ArchSalesHeader.SETRANGE("Bill-to Customer No.",CustNo);
+      ArchSalesHeader.SETRANGE("Document Type",ArchSalesHeader."Document Type"::Quote);
+      EXIT(ArchSalesHeader.COUNT);
+      //TOPAS Ende
+    END;
+
+    PROCEDURE CalcNoOfArchSalesOrders_TOP@1140007(CustNo@1140000 : Code[20]) : Integer;
+    VAR
+      ArchSalesHeader@1140001 : Record 5107;
+    BEGIN
+      // TOPAS 16.05.17 ST
+      ArchSalesHeader.RESET;
+      ArchSalesHeader.SETRANGE("Bill-to Customer No.",CustNo);
+      ArchSalesHeader.SETFILTER("Document Type",'%1|%2',ArchSalesHeader."Document Type"::Order,
+                                ArchSalesHeader."Document Type"::"Blanket Order");
+      EXIT(ArchSalesHeader.COUNT);
+      // TOPAS Ende
+    END;
+
+    PROCEDURE CalcAvailability@18(VAR SalesLine@1000 : Record 37) : Decimal;
+    VAR
+      GrossRequirement@1002 : Decimal;
+      ScheduledReceipt@1003 : Decimal;
+      PeriodType@1006 : 'Day,Week,Month,Quarter,Year';
+      LookaheadDateformula@1005 : DateFormula;
+    BEGIN
+      IF GetItem(SalesLine) THEN BEGIN
+        SetItemFilter(Item,SalesLine);
+
+        EXIT(
+          ConvertQty(
+            AvailableToPromise.QtyAvailabletoPromise(
+              Item,
+              GrossRequirement,
+              ScheduledReceipt,
+              CalcAvailabilityDate(SalesLine),
+              PeriodType,
+              LookaheadDateformula),
+            SalesLine."Qty. per Unit of Measure"));
+      END;
+    END;
+
+    PROCEDURE CalcAvailabilityDate@27(SalesLine@1000 : Record 37) : Date;
+    BEGIN
+      IF SalesLine."Shipment Date" <> 0D THEN
+        EXIT(SalesLine."Shipment Date");
+
+      EXIT(WORKDATE);
+    END;
+
+    PROCEDURE CalcAvailableInventory@9(SalesLine@1000 : Record 37) : Decimal;
+    BEGIN
+      IF GetItem(SalesLine) THEN BEGIN
+        SetItemFilter(Item,SalesLine);
+
+        EXIT(
+          ConvertQty(
+            AvailableToPromise.CalcAvailableInventory(Item),
+            SalesLine."Qty. per Unit of Measure"));
+      END;
+    END;
+
+    PROCEDURE CalcScheduledReceipt@21(SalesLine@1001 : Record 37) : Decimal;
+    BEGIN
+      IF GetItem(SalesLine) THEN BEGIN
+        SetItemFilter(Item,SalesLine);
+
+        EXIT(
+          ConvertQty(
+            AvailableToPromise.CalcScheduledReceipt(Item),
+            SalesLine."Qty. per Unit of Measure"));
+      END;
+    END;
+
+    PROCEDURE CalcGrossRequirements@23(SalesLine@1001 : Record 37) : Decimal;
+    BEGIN
+      IF GetItem(SalesLine) THEN BEGIN
+        SetItemFilter(Item,SalesLine);
+
+        EXIT(
+          ConvertQty(
+            AvailableToPromise.CalcGrossRequirement(Item),
+            SalesLine."Qty. per Unit of Measure"));
+      END;
+    END;
+
+    PROCEDURE CalcReservedRequirements@25(SalesLine@1001 : Record 37) : Decimal;
+    BEGIN
+      IF GetItem(SalesLine) THEN BEGIN
+        SetItemFilter(Item,SalesLine);
+
+        EXIT(
+          ConvertQty(
+            AvailableToPromise.CalcReservedReceipt(Item),
+            SalesLine."Qty. per Unit of Measure"));
+      END;
+    END;
+
+    PROCEDURE CalcReservedDemand@26(SalesLine@1000 : Record 37) : Decimal;
+    BEGIN
+      IF GetItem(SalesLine) THEN BEGIN
+        SetItemFilter(Item,SalesLine);
+
+        EXIT(
+          ConvertQty(
+            AvailableToPromise.CalcReservedRequirement(Item),
+            SalesLine."Qty. per Unit of Measure"));
+      END;
+    END;
+
+    PROCEDURE CalcNoOfSubstitutions@20(SalesLine@1000 : Record 37) : Integer;
+    BEGIN
+      IF GetItem(SalesLine) THEN BEGIN
+        Item.CALCFIELDS("No. of Substitutes");
+        EXIT(Item."No. of Substitutes");
+      END;
+    END;
+
+    PROCEDURE CalcNoOfSalesPrices@19(SalesLine@1000 : Record 37) : Integer;
+    BEGIN
+      IF GetItem(SalesLine) THEN BEGIN
+        GetSalesHeader(SalesLine);
+        EXIT(SalesPriceCalcMgt.NoOfSalesLinePrice(SalesHeader,SalesLine,TRUE));
+      END;
+    END;
+
+    PROCEDURE CalcNoOfSalesLineDisc@22(SalesLine@1001 : Record 37) : Integer;
+    BEGIN
+      IF GetItem(SalesLine) THEN BEGIN
+        GetSalesHeader(SalesLine);
+        EXIT(SalesPriceCalcMgt.NoOfSalesLineLineDisc(SalesHeader,SalesLine,TRUE));
+      END;
+    END;
+
+    LOCAL PROCEDURE ConvertQty@28(Qty@1000 : Decimal;PerUoMQty@1001 : Decimal) : Decimal;
+    BEGIN
+      IF PerUoMQty = 0 THEN
+        PerUoMQty := 1;
+      EXIT(ROUND(Qty / PerUoMQty,0.00001));
+    END;
+
+    LOCAL PROCEDURE DocExist@16(CurrentSalesHeader@1005 : Record 36;CustNo@1000 : Code[20]) : Boolean;
+    VAR
+      SalesInvHeader@1001 : Record 112;
+      SalesShptHeader@1002 : Record 110;
+      SalesCrMemoHeader@1003 : Record 114;
+      ReturnReceipt@1006 : Record 6660;
+      SalesHeader@1004 : Record 36;
+    BEGIN
+      IF CustNo = '' THEN
+        EXIT(FALSE);
+      WITH SalesInvHeader DO BEGIN
+        SETCURRENTKEY("Sell-to Customer No.");
+        SETRANGE("Sell-to Customer No.",CustNo);
+        IF NOT ISEMPTY THEN
+          EXIT(TRUE);
+      END;
+      WITH SalesShptHeader DO BEGIN
+        SETCURRENTKEY("Sell-to Customer No.");
+        SETRANGE("Sell-to Customer No.",CustNo);
+        IF NOT ISEMPTY THEN
+          EXIT(TRUE);
+      END;
+      WITH SalesCrMemoHeader DO BEGIN
+        SETCURRENTKEY("Sell-to Customer No.");
+        SETRANGE("Sell-to Customer No.",CustNo);
+        IF NOT ISEMPTY THEN
+          EXIT(TRUE);
+      END;
+      WITH SalesHeader DO BEGIN
+        SETCURRENTKEY("Sell-to Customer No.");
+        SETRANGE("Sell-to Customer No.",CustNo);
+        IF FINDFIRST THEN BEGIN
+          IF ("Document Type" <> CurrentSalesHeader."Document Type") OR
+             ("No." <> CurrentSalesHeader."No.")
+          THEN
+            EXIT(TRUE);
+          IF FIND('>') THEN
+            EXIT(TRUE);
+        END;
+      END;
+      WITH ReturnReceipt DO BEGIN
+        SETCURRENTKEY("Sell-to Customer No.");
+        SETRANGE("Sell-to Customer No.",CustNo);
+        IF NOT ISEMPTY THEN
+          EXIT(TRUE);
+      END;
+    END;
+
+    LOCAL PROCEDURE CustCommentExists@8(CustNo@1000 : Code[20]) : Boolean;
+    BEGIN
+      GetCust(CustNo);
+      Cust.CALCFIELDS(Comment);
+      EXIT(Cust.Comment);
+    END;
+
+    LOCAL PROCEDURE ItemCommentExists@12(SalesLine@1000 : Record 37) : Boolean;
+    BEGIN
+      IF GetItem(SalesLine) THEN BEGIN
+        Item.CALCFIELDS(Comment);
+        EXIT(Item.Comment);
+      END;
+    END;
+
+    LOCAL PROCEDURE LookupShipToAddr@10(VAR SalesHeader@1000 : Record 36);
+    VAR
+      ShipToAddr@1001 : Record 222;
+    BEGIN
+      WITH SalesHeader DO BEGIN
+        ShipToAddr.SETRANGE("Customer No.","Sell-to Customer No.");
+        IF PAGE.RUNMODAL(0,ShipToAddr) = ACTION::LookupOK THEN BEGIN
+          VALIDATE("Ship-to Code",ShipToAddr.Code);
+          MODIFY(TRUE);
+          MESSAGE(Text000);
+        END;
+      END;
+    END;
+
+    LOCAL PROCEDURE LookupContacts@11(VAR SalesHeader@1000 : Record 36);
+    VAR
+      Cont@1002 : Record 5050;
+      ContBusRelation@1001 : Record 5054;
+    BEGIN
+      WITH SalesHeader DO BEGIN
+        IF "Sell-to Customer No." <> '' THEN BEGIN
+          IF Cont.GET("Sell-to Contact No.") THEN
+            Cont.SETRANGE("Company No.",Cont."Company No.")
+          ELSE BEGIN
+            ContBusRelation.RESET;
+            ContBusRelation.SETCURRENTKEY("Link to Table","No.");
+            ContBusRelation.SETRANGE("Link to Table",ContBusRelation."Link to Table"::Customer);
+            ContBusRelation.SETRANGE("No.","Sell-to Customer No.");
+            IF ContBusRelation.FINDFIRST THEN
+              Cont.SETRANGE("Company No.",ContBusRelation."Contact No.")
+            ELSE
+              Cont.SETRANGE("No.",'');
+          END;
+          IF Cont.GET("Sell-to Contact No.") THEN ;
+        END ELSE
+          Cont.SETRANGE("No.",'');
+        IF PAGE.RUNMODAL(0,Cont) = ACTION::LookupOK THEN BEGIN
+          VALIDATE("Sell-to Contact No.",Cont."No.");
+          MODIFY(TRUE);
+        END;
+      END;
+    END;
+
+    PROCEDURE LookupContacts_TOP@1140001(ContactNo@1140002 : Code[20]);
+    VAR
+      Cont@1140001 : Record 5050;
+    BEGIN
+      // TOPAS 16.05.17 ST
+      Cont.RESET;
+      Cont.SETRANGE("Company No.",ContactNo);
+      PAGE.RUN(0,Cont);
+      // TOPAS ende
+    END;
+
+    PROCEDURE LookupProject_TOP@1140004(ContactNo@1140000 : Code[20]);
+    VAR
+      ProjAnsprech@1140001 : Record 50005;
+    BEGIN
+      // TOPAS 16.05.17 ST
+      ProjAnsprech.SETFILTER("Kontaktnr.",'%1',ContactNo);
+      ProjAnsprech.SETFILTER("Memonr.",'%1','');
+      ProjAnsprech.SETFILTER("Kampagnennr.",'<%1','SV');
+      ProjAnsprech.SETFILTER(Projektstatus,'<>%1','Beendet');
+      PAGE.RUN(50062,ProjAnsprech);
+      // TOPAS Ende
+    END;
+
+    PROCEDURE LookupMemo_TOP@1140005(ContactNo@1140000 : Code[20]);
+    VAR
+      Memokopf@1140001 : Record 50003;
+    BEGIN
+      // TOPAS 16.05.17 ST
+      Memokopf.RESET;
+      Memokopf.SETFILTER("Mandantennr.",'%1',ContactNo);
+      Memokopf.SETRANGE("Kampagnennr.",'');
+      PAGE.RUN(50063,Memokopf);
+      // TOPAS Ende
+    END;
+
+    PROCEDURE LookupLeihstellung_TOP@1140010(CustNo@1140000 : Code[20]);
+    VAR
+      ContBusRelation@1000000000 : Record 5054;
+      Leihstellung@1140001 : Record 50024;
+    BEGIN
+      // TOPAS 16.05.17 ST
+      Leihstellung.RESET;
+      Leihstellung.SETRANGE(Leihstellung."Nr.",CustNo);
+      PAGE.RUN(PAGE::"Leihstellung Karte",Leihstellung);
+      // TOPAS Ende
+    END;
+
+    PROCEDURE LookupRMA_TOP@1140016(ContactNo@1140001 : Code[20]);
+    VAR
+      RMA@1140000 : Record 50022;
+    BEGIN
+      // TOPAS 16.05.17 ST
+      RMA.RESET;
+      RMA.SETRANGE("Nr.",ContactNo);
+      PAGE.RUN(PAGE::"RMA-šbersicht 2",RMA);
+      // TOPAS Ende
+    END;
+
+    PROCEDURE LookupServiceleistungen_TOP@1140014(CustNo@1140000 : Code[20]);
+    VAR
+      ContBusRelation@1000000000 : Record 5054;
+      Wartungsvertrag@1140001 : Record 50011;
+    BEGIN
+      // TOPAS 16.05.17 ST
+      Wartungsvertrag.RESET;
+      Wartungsvertrag.SETRANGE("Debitornr.",CustNo);
+      PAGE.RUN(50024,Wartungsvertrag);
+      // TOPAS Ende
+    END;
+
+    PROCEDURE LookupKontingente_TOP@1140018(ContactNo@1140000 : Code[20]);
+    VAR
+      Support@1140001 : Record 50012;
+      Support_šbersicht@1140005 : Page 50018;
+      Support_Anzeige@1140004 : Record 50012;
+      Supp_Anspr@1140002 : Record 50005;
+      nr@1140003 : Code[250];
+    BEGIN
+      // TOPAS 16.05.17 ST
+      Supp_Anspr.RESET;
+      Supp_Anspr.SETRANGE("Kontaktnr.",ContactNo);
+      IF Supp_Anspr.FINDFIRST THEN
+        REPEAT
+          Support.RESET;
+          Support.SETRANGE("Nr.",Supp_Anspr."Kampagnennr.");
+          IF Support.FINDFIRST THEN BEGIN
+            IF (STRPOS(nr,Support."Nr.") = 0) THEN
+              IF nr = '' THEN
+                nr := Support."Nr."
+              ELSE
+                nr := FORMAT(nr + '|' + Support."Nr.");
+          END
+        UNTIL Supp_Anspr.NEXT = 0;
+
+      IF nr <> '' THEN BEGIN
+        Support_Anzeige.RESET;
+        Support_Anzeige.SETRANGE("Nr.",nr);
+        Support_šbersicht.SETTABLEVIEW(Support_Anzeige);
+        Support_šbersicht.SETRECORD(Support_Anzeige);
+        Support_šbersicht.RUNMODAL;
+      END ELSE
+        MESSAGE(Text50000);
+    END;
+
+    PROCEDURE LookupDokumenten_TOP@1140011(ContactNo@1140000 : Code[20]);
+    VAR
+      Doku@1140001 : Record 50032;
+    BEGIN
+      // TOPAS 16.05.17 ST
+      Doku.RESET;
+      Doku.SETRANGE(Doku."Mandantennr.",ContactNo);
+      PAGE.RUN(50037,Doku);
+      // TOPAS Ende
+    END;
+
+    PROCEDURE LookupStatistik_TOP@1140008(CustNo@1140000 : Code[20]);
+    VAR
+      ContBusRelation@1140001 : Record 5054;
+      Customer@1140002 : Record 18;
+    BEGIN
+      // TOPAS 16.05.17 ST
+      Customer.GET(CustNo);
+      PAGE.RUN(PAGE::"Statistik Debitor",Customer);
+      // TOPAS Ende
+    END;
+
+    PROCEDURE LookupVerkaufshistorie_TOP@1000000003(CustNo@1000000002 : Code[20]);
+    VAR
+      ContBusRelation@1000000001 : Record 5054;
+      Customer@1000000000 : Record 18;
+    BEGIN
+      // TOPAS 09.08.17 ST
+      Customer.GET(CustNo);
+      PAGE.RUN(PAGE::"TOPAS Debitoren Verkaufshist.",Customer);
+      // TOPAS Ende
+    END;
+
+    PROCEDURE LookupEndkunden_TOP@1000000000(ContactNo@1000000000 : Code[20]);
+    VAR
+      ContactBusinessRelation@1000000001 : Record 5054;
+      ContactIndustryGroup@1000000004 : Record 5058;
+      Contact@1000000003 : Record 5050;
+      Endkunden@1000000002 : Record 50007;
+    BEGIN
+      // TOPAS 17.05.17 ST
+      Contact.GET(ContactNo);
+      CASE Contact.Type OF
+        Contact.Type::Company:
+          BEGIN
+            ContactIndustryGroup.RESET;
+            ContactIndustryGroup.SETRANGE("Contact No.",ContactNo);
+            ContactIndustryGroup.SETRANGE("Industry Group Code",'BESTšCKER');
+            IF ContactIndustryGroup.FINDFIRST THEN BEGIN
+              ContactBusinessRelation.RESET;
+              ContactBusinessRelation.SETRANGE("Contact No.",ContactNo);
+              ContactBusinessRelation.SETRANGE("Business Relation Code",'DEB');
+              IF ContactBusinessRelation.FINDFIRST THEN BEGIN
+                Endkunden.RESET;
+                Endkunden.SETRANGE("Debitornr.",ContactBusinessRelation."No.");
+                Endkunden.SETRANGE(Art,Endkunden.Art::Endkunde);
+                PAGE.RUN(50003,Endkunden);
+              END ELSE
+                ERROR(Text50001);
+            END ELSE
+              ERROR(Text50002,'Bestcker');
+          END;
+      END;
+      // TOPAS Ende
+    END;
+
+    PROCEDURE LookupBestuecker_TOP@1000000010(ContactNo@1000000000 : Code[20]);
+    VAR
+      ContactBusinessRelation@1000000004 : Record 5054;
+      ContactIndustryGroup@1000000003 : Record 5058;
+      Contact@1000000002 : Record 5050;
+      Endkunden@1000000001 : Record 50007;
+    BEGIN
+      // TOPAS 17.05.17 ST
+      Contact.GET(ContactNo);
+      CASE Contact.Type OF
+        Contact.Type::Company:
+          BEGIN
+            ContactIndustryGroup.RESET;
+            ContactIndustryGroup.SETRANGE("Contact No.",ContactNo);
+            ContactIndustryGroup.SETRANGE("Industry Group Code",'BESTšCKER');
+            IF ContactIndustryGroup.FINDFIRST THEN
+                ERROR(Text50002,'Endkunden')
+            ELSE BEGIN
+              Endkunden.RESET;
+              Endkunden.SETRANGE("Endkundennr.",ContactNo);
+              Endkunden.SETRANGE(Art,Endkunden.Art::Endkunde);
+              PAGE.RUN(50004,Endkunden);
+            END;
+          END;
+      END;
+      // TOPAS Ende
+    END;
+
+    PROCEDURE LookupArchSalesQuotes_TOP@1000000001(CustNo@1000000001 : Code[20]);
+    VAR
+      SalesHeaderArchive@1000000000 : Record 5107;
+    BEGIN
+      // TOPAS 17.05.17 ST
+      SalesHeaderArchive.RESET;
+      SalesHeaderArchive.SETRANGE("Document Type",SalesHeaderArchive."Document Type"::Quote);
+      SalesHeaderArchive.SETRANGE("Sell-to Customer No.",CustNo);
+      PAGE.RUN(PAGE::"Sales Quote Archives",SalesHeaderArchive);
+      //TOPAS Ende
+    END;
+
+    PROCEDURE LookupArchSalesOrders_TOP@1000000002(CustNo@1000000001 : Code[20]);
+    VAR
+      SalesHeaderArchive@1000000000 : Record 5107;
+    BEGIN
+      // TOPAS 17.05.17 ST
+      SalesHeaderArchive.RESET;
+      SalesHeaderArchive.SETRANGE("Document Type",SalesHeaderArchive."Document Type"::Order);
+      SalesHeaderArchive.SETRANGE("Sell-to Customer No.",CustNo);
+      PAGE.RUN(PAGE::"Sales Order Archives",SalesHeaderArchive);
+      //TOPAS Ende
+    END;
+
+    LOCAL PROCEDURE LookupAvailCredit@15(CustNo@1000 : Code[20]);
+    BEGIN
+      Cust.RESET;
+      Cust.SETRANGE("No.",CustNo);
+      PAGE.RUNMODAL(PAGE::"Available Credit",Cust);
+    END;
+
+    PROCEDURE LookupItem@7(SalesLine@1000 : Record 37);
+    BEGIN
+      SalesLine.TESTFIELD(Type,SalesLine.Type::Item);
+      SalesLine.TESTFIELD("No.");
+      GetItem(SalesLine);
+      PAGE.RUNMODAL(PAGE::"Item Card",Item);
+    END;
+
+    LOCAL PROCEDURE LookupItemComment@14(SalesLine@1000 : Record 37);
+    VAR
+      CommentLine@1001 : Record 97;
+    BEGIN
+      IF GetItem(SalesLine) THEN BEGIN
+        CommentLine.SETRANGE("Table Name",CommentLine."Table Name"::Item);
+        CommentLine.SETRANGE("No.",SalesLine."No.");
+        PAGE.RUNMODAL(PAGE::"Comment Sheet",CommentLine);
+      END;
+    END;
+
+    LOCAL PROCEDURE GetCust@6(CustNo@1000 : Code[20]);
+    BEGIN
+      IF CustNo <> '' THEN BEGIN
+        IF CustNo <> Cust."No." THEN
+          IF NOT Cust.GET(CustNo) THEN
+            CLEAR(Cust);
+      END ELSE
+        CLEAR(Cust);
+    END;
+
+    LOCAL PROCEDURE GetItem@24(VAR SalesLine@1000 : Record 37) : Boolean;
+    BEGIN
+      WITH Item DO BEGIN
+        IF (SalesLine.Type <> SalesLine.Type::Item) OR (SalesLine."No." = '') THEN
+          EXIT(FALSE);
+
+        IF SalesLine."No." <> "No." THEN
+          GET(SalesLine."No.");
+        EXIT(TRUE);
+      END;
+    END;
+
+    LOCAL PROCEDURE GetSalesHeader@13(SalesLine@1000 : Record 37);
+    BEGIN
+      IF (SalesLine."Document Type" <> SalesHeader."Document Type") OR
+         (SalesLine."Document No." <> SalesHeader."No.")
+      THEN
+        SalesHeader.GET(SalesLine."Document Type",SalesLine."Document No.");
+    END;
+
+    LOCAL PROCEDURE CalcNoOfBillToDocuments@17(VAR Cust@1000 : Record 18);
+    BEGIN
+      Cust.CALCFIELDS(
+        "Bill-To No. of Quotes","Bill-To No. of Blanket Orders","Bill-To No. of Orders","Bill-To No. of Invoices",
+        "Bill-To No. of Return Orders","Bill-To No. of Credit Memos","Bill-To No. of Pstd. Shipments",
+        "Bill-To No. of Pstd. Invoices","Bill-To No. of Pstd. Return R.","Bill-To No. of Pstd. Cr. Memos",
+        "Bill-to No. Of Archived Doc.");
+    END;
+
+    LOCAL PROCEDURE SetItemFilter@4(VAR Item@1000 : Record 27;SalesLine@1001 : Record 37);
+    BEGIN
+      Item.RESET;
+      Item.SETRANGE("Date Filter",0D,CalcAvailabilityDate(SalesLine));
+      Item.SETRANGE("Variant Filter",SalesLine."Variant Code");
+      Item.SETRANGE("Location Filter",SalesLine."Location Code");
+      Item.SETRANGE("Drop Shipment Filter",FALSE);
+    END;
+
+    BEGIN
+    {
+      Lfd.Nr. Version   Datum       User  Beschreibung
+      ===========================================================================
+      1       TOP1.00   16.05.17    ST    Funktionen aus NAV 5.0 bernommen und angepasst
+      2       TOP1.00   17.05.17    ST    Neue Funktionen CalcNoOfArchSalesQuotes_TOP, CalcNoOfArchSalesOrders_TOP, LookupArchSalesQuotes_TOP, LookupArchSalesOrders_TOP
+      3       TOP1.00   09.08.17    ST    Neue Funktion LookupVerkaufshistorie_TOP
+    }
+    END.
+  }
+}
