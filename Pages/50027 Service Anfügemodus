@@ -2,8 +2,8 @@ OBJECT Page 50027 Service Anfgemodus
 {
   OBJECT-PROPERTIES
   {
-    Date=19.10.17;
-    Time=16:14:01;
+    Date=14.11.17;
+    Time=09:18:33;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -166,6 +166,7 @@ OBJECT Page 50027 Service Anfgemodus
                              END;
 
                              AktualisiereWartungsvertragsnr;
+                             CheckCrossCalculationsValid;
                            END;
                             }
 
@@ -204,6 +205,7 @@ OBJECT Page 50027 Service Anfgemodus
       PrfeLizenzTab@1140006 : Record 50024;
       PrfeServiceTab@1140009 : Record 50024;
       PrfeSystemTab@1140010 : Record 50024;
+      AktuelleServiceZuordnung@1000000001 : Record 50027;
       ServiceZuordnung@1140012 : Record 50027;
       PrfeNeuenWV@1140011 : Record 50024;
       Wartungsvertrag@1140008 : Record 50011;
@@ -211,6 +213,8 @@ OBJECT Page 50027 Service Anfgemodus
       Text000@1140003 : TextConst 'DEU=Sie k”nnen %1 nicht mehr „ndern.';
       Text001@1140004 : TextConst 'DEU=Sie haben noch nicht alle Felder ausgefllt. Wenn Sie mit Ja best„tigen, werden vorhandene Datens„tze gel”scht.\M”chten Sie das Fenster wirklich schlieáen?';
       wartungsnr@1140007 : Code[120];
+      Text002@1000000002 : TextConst 'DEU=Es konnte im Beleg eine zu der %1 passende Re-Instatement-Fee Kalkulation gefunden werden. Soll der Vertrag ab einem bestimmten Datum loslaufen?\Dann setzen Sie bitte das H„kchen im Feld %2.';
+      Text003@1000000000 : TextConst 'DEU=In diesem Beleg konnte eine weitere Kalkulation in Zeile %1 mit šbereinstimmung der %2 und Serviceleistung gefunden werden. Sie wrden damit eine Service Doppelbuchung fr %2 %3 ausl”sen.\M”chten Sie den Vorgang dennoch fortsetzen?';
 
     PROCEDURE AktualisiereWartungsvertragsnr@1140000();
     BEGIN
@@ -235,6 +239,53 @@ OBJECT Page 50027 Service Anfgemodus
         UNTIL PrfeServiceTab.NEXT = 0
       ELSE
         wartungsnr := '';
+    END;
+
+    LOCAL PROCEDURE CheckCrossCalculationsValid@1000000000();
+    VAR
+      coexistent@1000000000 : Integer;
+    BEGIN
+      IF Vormerkung = FALSE THEN EXIT;
+
+      coexistent := 0;
+      AktuelleServiceZuordnung.RESET;
+      AktuelleServiceZuordnung.SETRANGE("Nr.","Auftragsnr.");
+      AktuelleServiceZuordnung.SETRANGE("Zeilennr.","Auftragszeilennr.");
+      AktuelleServiceZuordnung.SETRANGE("Belegnr.","Nr.");
+      AktuelleServiceZuordnung.SETRANGE("Belegzeilennr.","Belegzeilennr.");
+      IF AktuelleServiceZuordnung.FINDFIRST THEN BEGIN
+        TempLizenzTab.RESET;
+        TempLizenzTab.SETRANGE(Art,TempLizenzTab.Art::Tempor„r);
+        TempLizenzTab.SETRANGE("Auftragsnr.","Auftragsnr.");
+        TempLizenzTab.SETFILTER("Auftragszeilennr.",'<>%1',"Auftragszeilennr.");
+        TempLizenzTab.SETRANGE("Nr.","Nr.");
+        TempLizenzTab.SETRANGE("Belegzeilennr.","Belegzeilennr.");
+        TempLizenzTab.SETRANGE("Artikelnr.","Artikelnr.");
+        TempLizenzTab.SETRANGE("Seriennr.","Seriennr.");
+        IF TempLizenzTab.FINDFIRST THEN BEGIN
+          REPEAT
+            ServiceZuordnung.RESET;
+            ServiceZuordnung.SETRANGE("Nr.",TempLizenzTab."Auftragsnr.");
+            ServiceZuordnung.SETRANGE("Zeilennr.",TempLizenzTab."Auftragszeilennr.");
+            ServiceZuordnung.SETRANGE("Belegnr.",TempLizenzTab."Nr.");
+            ServiceZuordnung.SETRANGE("Belegzeilennr.",TempLizenzTab."Belegzeilennr.");
+            ServiceZuordnung.SETRANGE("Ger„te Artikelnr.",TempLizenzTab."Artikelnr.");
+            IF ServiceZuordnung.FINDFIRST THEN BEGIN
+              IF (ServiceZuordnung."SUP Artikelnr." = AktuelleServiceZuordnung."SUP Artikelnr.") AND (Vormerkung = TRUE) THEN
+                coexistent += 1;
+              Artikel.GET(ServiceZuordnung."SUP Artikelnr.");
+              IF (STRPOS(Artikel.Artikelgruppe,'FEE') <> 0) AND (AktuelleServiceZuordnung."Beachte Startdatum" = FALSE) AND (Vormerkung = TRUE) THEN
+                MESSAGE(Text002,FIELDCAPTION("Seriennr."),ServiceZuordnung.FIELDCAPTION("Beachte Startdatum"));
+            END;
+            IF coexistent > 0 THEN BEGIN
+              IF NOT CONFIRM(Text003,FALSE,TempLizenzTab."Auftragszeilennr.",FIELDCAPTION("Seriennr."),"Seriennr.") THEN
+                ERROR('')
+              ELSE
+                EXIT;
+            END;
+          UNTIL TempLizenzTab.NEXT = 0;
+        END;
+      END;
     END;
 
     BEGIN
