@@ -2,10 +2,10 @@ OBJECT Page 42 Sales Order
 {
   OBJECT-PROPERTIES
   {
-    Date=15.08.17;
-    Time=17:30:18;
+    Date=21.11.17;
+    Time=17:59:50;
     Modified=Yes;
-    Version List=NAVW19.00.00.47042,TOP1.00;
+    Version List=NAVW19.00.00.47042,TOP1.02;
   }
   PROPERTIES
   {
@@ -66,7 +66,7 @@ OBJECT Page 42 Sales Order
                            CRMIsCoupledToRecord := CRMIntegrationEnabled AND CRMCouplingManagement.IsRecordCoupledToCRM(RECORDID);
                            ShowWorkflowStatus := CurrPage.WorkflowStatus.PAGE.SetFilterOnWorkflowRecord(RECORDID);
 
-                           //TOPAS 25.02.11 ST
+                           //TOPAS 25.02.11 ST - Betrag zu liefern
                            NoSalesPriceCheck := FALSE;
 
                            ShipAmount := 0;
@@ -448,7 +448,7 @@ OBJECT Page 42 Sales Order
                                  ReleaseSalesDoc@1000 : Codeunit 414;
                                BEGIN
                                  //TOPAS 18.05.17 ST
-                                 CheckAuftrag;
+                                 TOPASBeleg_Pruefungen.CheckSalesOrderOnActions(Rec,NoSalesPriceCheck);
                                  //TOPAS Ende
                                  ReleaseSalesDoc.PerformManualRelease(Rec);
                                END;
@@ -500,7 +500,7 @@ OBJECT Page 42 Sales Order
                       PromotedCategory=Process;
                       OnAction=BEGIN
                                  //TOPAS 18.05.17 ST
-                                 CheckAuftrag;
+                                 TOPASBeleg_Pruefungen.CheckSalesOrderOnActions(Rec,NoSalesPriceCheck);
                                  //TOPAS Ende
 
                                  CopySalesDoc.SetSalesHeader(Rec);
@@ -914,7 +914,7 @@ OBJECT Page 42 Sales Order
                       Image=Email;
                       OnAction=BEGIN
                                  //TOPAS 18.05.17 ST
-                                 CheckAuftrag;
+                                 TOPASBeleg_Pruefungen.CheckSalesOrderOnActions(Rec,NoSalesPriceCheck);
                                  //TOPAS Ende
 
                                  DocPrint.EmailSalesHeader(Rec);
@@ -927,7 +927,7 @@ OBJECT Page 42 Sales Order
                       Image=Print;
                       OnAction=BEGIN
                                  //TOPAS 18.05.17 ST
-                                 CheckAuftrag;
+                                 TOPASBeleg_Pruefungen.CheckSalesOrderOnActions(Rec,NoSalesPriceCheck);
                                  //TOPAS Ende
 
                                  DocPrint.PrintSalesOrder(Rec,Usage::"Order Confirmation");
@@ -962,8 +962,8 @@ OBJECT Page 42 Sales Order
                                  PrintDoc@1000000000 : Record 36;
                                BEGIN
                                  //TOPAS 08.12.15 ST  - šberprft, ob die Generierung des Servicevertrages m”glich ist
-                                 TOPAS_Prfungen.CheckSalesOrderBeforePost("No.");
-
+                                 TOPASBeleg_Pruefungen.CheckSalesOrderCalculationsBeforePost("No.");
+                                 COMMIT;
                                  PrintDoc.SETRANGE("No.","No.");
                                  REPORT.RUN(50159,TRUE,FALSE,PrintDoc);
                                  //TOPAS Ende
@@ -1050,6 +1050,9 @@ OBJECT Page 42 Sales Order
     { 8   ;2   ;Field     ;
                 SourceExpr="Sell-to Contact";
                 Importance=Additional }
+
+    { 1000000000;2;Field  ;
+                SourceExpr=Kontaktperson }
 
     { 198 ;2   ;Field     ;
                 SourceExpr="No. of Archived Versions";
@@ -1167,9 +1170,6 @@ OBJECT Page 42 Sales Order
                 SourceExpr=Status;
                 Importance=Promoted;
                 QuickEntry=FALSE }
-
-    { 1000000000;2;Field  ;
-                SourceExpr=Kontaktperson }
 
     { 1000000012;2;Field  ;
                 CaptionML=DEU=Rahmenauftrag;
@@ -1733,23 +1733,15 @@ OBJECT Page 42 Sales Order
       ShowWorkflowStatus@1018 : Boolean;
       "***TOPAS_Var***"@1000000000 : Integer;
       SalesLine@1000000001 : Record 37;
-      BlanketLine@1000000002 : Record 37;
-      Text50000@1000000009 : TextConst 'DEU=In Zeilennr. %1 wurde ein VK-Preis mit 0 gefunden. Bitte korrigieren.';
-      Text50001@1000000008 : TextConst 'DEU=Sie fakturieren unter einem Bestcker. In Zeilennr. %1 ist kein Endkunde eingetragen.';
-      Text50002@1000000007 : TextConst 'DEU=In Zeilennr. %1 weicht der Einkaufsw„hrungskurs mit %2 %3 vom W„hrungskurs %4 %5 %6 ab.';
-      Text50003@1000000006 : TextConst 'DEU="Fr %1 %2, Artikelnr. %3, liegt eine Reservierung vor. Bitte w„hlen Sie eine andere %1 aus oder stornieren Sie die Reservierung im Artikelstamm => Lagerbestand => Funktion Reservierung buchen / stornieren."';
-      Text50004@1000000005 : TextConst 'DEU=Fr Artikel %1 und Lagerortcode %2 steht nicht gengend Lagerbestand zur Verfgung.';
       Text50005@1000000004 : TextConst 'DEU=&Hilfestellung zur Auftragsbearbeitung,Hilfe zur &Servicekalkulation';
-      Text50006@1000000003 : TextConst 'DEU=In Zeilennr. %1 wurde eine Minus-Marge gefunden. Bitte korrigieren.';
+      Quotedaten@1000000005 : Record 50014;
       Customer@1000000013 : Record 18;
-      Quotedaten@1000000014 : Record 50014;
-      CurrencyExchRate@1000000010 : Record 330;
       Item@1000000011 : Record 27;
       Log@1000000019 : Record 405;
       CustLedgerEntry@1000000022 : Record 21;
       IssuedReminder@1000000023 : Record 298;
       TOPAS_Funktionen@1000000030 : Codeunit 50006;
-      TOPAS_Prfungen@1000000031 : Codeunit 50007;
+      TOPASBeleg_Pruefungen@1000000031 : Codeunit 50007;
       NoSalesPriceCheck@1000000012 : Boolean;
       ShipAmount@1000000016 : Decimal;
       BlanketOrder@1000000017 : Code[20];
@@ -1761,9 +1753,9 @@ OBJECT Page 42 Sales Order
       checkcustcredit_style@1000000025 : Text;
       Text50007@1000000028 : TextConst 'DEU=Musterberwachungen k”nnen nur unter dem Lagerortcode MUST gestartet werden.';
       Text50008@1000000020 : TextConst 'DEU=M”chten Sie wirklich eine Musterberwachung anlegen?';
-      Text50009@1000000015 : TextConst 'DEU=Das Datum %1 ist in diesem Feld nicht gestattet.';
       currency_style@1000000029 : Text;
       comment_style@1000000032 : Text;
+      Text50009@1000000003 : TextConst 'DEU=Das Datum %1 ist in diesem Feld nicht gestattet.';
 
     LOCAL PROCEDURE Post@4(PostingCodeunitID@1000 : Integer);
     BEGIN
@@ -1858,238 +1850,15 @@ OBJECT Page 42 Sales Order
     LOCAL PROCEDURE PostCheck@1000000001();
     BEGIN
       //TOPAS 29.06.12 ST - Prfungen in neue Funktion bertragen
-      CheckAuftrag;
-
-      //TOPAS 29.04.10 ST - šberprfung VK USD , EK JPY => 1. Abw. Kurs Rahmenauftrag, 2. Abw. Wechselkurs enstprechend AU-Datum
-      CheckEKwechselkurs;
+      TOPASBeleg_Pruefungen.CheckSalesOrderOnActions(Rec,NoSalesPriceCheck);
 
       //TOPAS 01.03.11 ST - šberprft, ob die Generierung des Servicevertrages m”glich ist
-      TOPAS_Prfungen.CheckSalesOrderBeforePost("No.");
+      TOPASBeleg_Pruefungen.CheckSalesOrderCalculationsBeforePost("No.");
 
-      //TOPAS 26.10.10-ST - šberprft, ob fr die zu liefernden Artikel Reservierungen vorliegen
-      CheckTOPASArtReserv;
-
-      //TOPAS 03.01.11 ST - šberprft, ob zu fakturierende Artikel mit Artikelverfolgungscode KEINE ber gengend Lagerbestand verfgen
-      CheckArtVerfolgLagerbestand;
+      //TOPAS 29.04.10 ST - šerprft EK Wechselkurse, Seriennr. Reservierungen und Lagerbestand fr Artikelverfolgungscode KEINE
+      TOPASBeleg_Pruefungen.CheckSalesOrderBeforePost_Part2(Rec);
 
       //TOPAS Ende
-    END;
-
-    PROCEDURE CheckEKwechselkurs@1140000();
-    BEGIN
-      IF "Currency Code" = 'USD' THEN BEGIN
-        SalesLine.RESET;
-        SalesLine.SETFILTER("Document No.",'%1',"No.");
-        SalesLine.SETFILTER(Type,'%1',SalesLine.Type::Item);
-        SalesLine.SETFILTER("Qty. to Invoice",'<>%1',0);
-        IF SalesLine.FINDFIRST THEN BEGIN
-          REPEAT
-            IF (SalesLine.Einkaufsw„hrungscode = 'JPY') AND (SalesLine."Blanket Order No." <> '') THEN BEGIN
-              BlanketLine.RESET;
-              BlanketLine.SETRANGE("Document No.",SalesLine."Blanket Order No.");
-              BlanketLine.SETRANGE("Line No.",SalesLine."Blanket Order Line No.");
-              IF BlanketLine.FINDFIRST THEN BEGIN
-                IF SalesLine.Einkaufsw„hrungsfaktor <> BlanketLine.Einkaufsw„hrungsfaktor THEN
-                  ERROR(Text50002,SalesLine."Line No.",SalesLine.Einkaufsw„hrungsfaktor,SalesLine.Einkaufsw„hrungscode,
-                                BlanketLine.Einkaufsw„hrungsfaktor,BlanketLine.Einkaufsw„hrungscode,'des Rahmenauftrages',
-                                SalesLine."Blanket Order No.");
-              END;
-            END ELSE BEGIN
-              IF (SalesLine.Einkaufsw„hrungscode = 'JPY') AND (SalesLine."Blanket Order No." = '') THEN BEGIN
-                CurrencyExchRate.RESET;
-                CurrencyExchRate.SETRANGE("Currency Code",SalesLine.Einkaufsw„hrungscode);
-                CurrencyExchRate.SETRANGE("Starting Date","Order Date");
-                IF CurrencyExchRate.FINDFIRST THEN BEGIN
-                  IF CurrencyExchRate."Exchange Rate Amount" <> SalesLine.Einkaufsw„hrungsfaktor THEN
-                    ERROR(Text50002,SalesLine."Line No.",SalesLine.Einkaufsw„hrungsfaktor,SalesLine.Einkaufsw„hrungscode,
-                                  CurrencyExchRate."Exchange Rate Amount",CurrencyExchRate."Currency Code",'des Auftragsdatums vom '+FORMAT
-                                  ("Order Date"));
-                END;
-              END;
-            END;
-            IF (SalesLine.Einkaufsw„hrungscode = 'USD') AND (SalesLine.Einkaufsw„hrungsfaktor <> "Currency Factor") THEN
-                ERROR(Text50002,SalesLine."Line No.",SalesLine.Einkaufsw„hrungsfaktor,SalesLine.Einkaufsw„hrungscode,
-                              "Currency Factor","Currency Code",'des Auftrages');
-          UNTIL SalesLine.NEXT = 0;
-        END;
-      END;
-    END;
-
-    PROCEDURE CheckAuftrag@1140001();
-    VAR
-      v_gesch„ft@1000000000 : Code[10];
-      v_MWSt@1000000001 : Code[10];
-    BEGIN
-      //****************************************************************************************************************************
-      //                                        TOPAS - Diverse Prfungen vor dem Buchen
-      //****************************************************************************************************************************
-
-      IF "Salesperson Code" = 'MULTI' THEN ERROR('Der Verk„ufercode ist nicht ausgew„hlt!');
-      IF "Betreuer Innendienst" = 'MULTI' THEN ERROR('Der Betreuer Innendienstcode ist nicht ausgew„hlt!');
-      IF Teams = 'MULTI' THEN ERROR('Das Team ist nicht ausgew„hlt!');
-
-      //13.10.08 ST  - Neu, 25.02.11-ST Žnderung 15.09.11 UB - Žnderung 13b2, 29.06.12 ST - Zusammenfassung und weitere Anpassungen 13B2
-      SalesLine.RESET;
-      SalesLine.SETFILTER(SalesLine."Document No.",'%1',Rec."No.");
-      SalesLine.SETFILTER(SalesLine."Qty. to Invoice",'>%1',0);
-      IF SalesLine.FINDFIRST THEN BEGIN
-        v_gesch„ft := SalesLine."Gen. Bus. Posting Group";
-        v_MWSt := SalesLine."VAT Prod. Posting Group";
-        REPEAT
-
-          IF ((v_gesch„ft <> SalesLine."Gen. Bus. Posting Group") AND ((v_gesch„ft='13B2') OR (SalesLine."Gen. Bus. Posting Group" = '13B2'))) THEN
-            ERROR('Gesch„ftsbuchungsgruppe weicht in den Zeilen ab, Zeilen bitte getrennt fakturieren.');
-          IF ((v_MWSt <> SalesLine."VAT Prod. Posting Group") AND ((v_MWSt='13B2') OR (SalesLine."VAT Prod. Posting Group" = '13B2'))) THEN
-            ERROR('MWSt-Produktbuchungsgruppe weicht in den Zeilen ab, Zeilen bitte getrennt fakturieren.');
-
-          IF ((SalesLine."Gen. Bus. Posting Group"='13B2') AND ("Ship-to Country/Region Code"<>'DE')) THEN
-            ERROR('MWSt-Produktbuchungsgruppe und Lieferanschrift stimmen nicht berein.');
-          IF ((SalesLine."VAT Prod. Posting Group"='13B2') AND ("Ship-to Country/Region Code"<>'DE')) THEN
-            ERROR('Gesch„ftsbuchungsgruppe und Lieferanschrift stimmen nicht berein.');
-
-          IF ((SalesLine."Gen. Bus. Posting Group"='13B2') AND (SalesLine."VAT Prod. Posting Group"<>'13B2')) THEN
-            ERROR('MWSt-Produktbuchungsgruppe und Gesch„ftsbuchungsgruppe mssen beide 13B2 enthalten, Zeilen bitte berprfen.');
-          IF ((SalesLine."VAT Prod. Posting Group"='13B2') AND (SalesLine."Gen. Bus. Posting Group"<>'13B2')) THEN
-            ERROR('MWSt-Produktbuchungsgruppe und Gesch„ftsbuchungsgruppe mssen beide 13B2 enthalten, Zeilen bitte berprfen.');
-
-          //27.04.16 UB - Minus-Marge wird berprft
-          IF ((SalesLine."Profit %"<0) AND (SalesLine."Qty. to Invoice (Base)">0)) THEN
-            ERROR(Text50006,SalesLine."Line No.");
-          //27.04.16 UB - Minus-Marge wird berprft ENDE
-
-          Item.RESET;
-          IF Item.GET(SalesLine."No.") THEN BEGIN
-            IF (SalesLine."Location Code" = 'ZENT') OR (SalesLine."Location Code" = 'KONSI') THEN BEGIN
-              IF (Item."Kein VK notwendig"=FALSE) AND ( SalesLine."Unit Price"=0) AND (NoSalesPriceCheck = FALSE) THEN
-                ERROR(Text50000,SalesLine."Line No.");
-              IF (SalesLine.Endkunde = '') AND (Customer."Endkunde w/Bestcker") THEN
-                ERROR(Text50001,SalesLine."Line No.");
-            END;
-
-            IF ((Item.UStG_13b_frei=TRUE) AND (SalesLine."Gen. Bus. Posting Group"='13B2')) THEN
-              ERROR('Artikel ist nicht nach 13B2 zu buchen.');
-            IF ((Item.UStG_13b_frei=TRUE) AND (SalesLine."VAT Prod. Posting Group"='13B2')) THEN
-              ERROR('Artikel ist nicht nach 13B2 zu buchen.');
-          END;
-
-        UNTIL SalesLine.NEXT = 0;
-      END;
-
-      SalesLine.RESET;
-      SalesLine.SETFILTER(SalesLine."Document No.",'%1',Rec."No.");
-      SalesLine.SETFILTER(SalesLine.Type,'%1',SalesLine.Type :: Item);
-      SalesLine.SETFILTER(SalesLine."Qty. to Ship",'>%1',0);
-      IF SalesLine.FINDFIRST THEN
-        REPEAT
-
-          SalesLine.CALCFIELDS("Quote gltig bis");
-          IF  (SalesLine."Quote gltig bis" < WORKDATE) AND (SalesLine."Quotenr." <> '') THEN
-            ERROR('Quote ist abgelaufen\Zeilennr.: %1\Quotenr.: %2\'+
-                  'Quotedatum: %3',SalesLine."Line No.",SalesLine."Quotenr.",SalesLine."Quote gltig bis");
-
-          //10.10.12 ST - MAT Label Spezifikation prfen
-          IF Customer."MAT Label Spezifikation" = TRUE THEN BEGIN
-            IF SalesLine.Verpackungstyp = SalesLine.Verpackungstyp :: " " THEN
-              ERROR('Der Kunde ist MAT Label spezifiziert:\Bitte w„hlen Sie in Zeile %1 den %2 aus.',SalesLine."Line No.",
-                      SalesLine.FIELDCAPTION(Verpackungstyp));
-            IF (SalesLine.Verpackungstyp <> SalesLine.Verpackungstyp :: Rolle) AND (SalesLine.Umverpackungsmenge = 0) THEN
-              ERROR('Der Kunde ist MAT Label spezifiziert:\Bitte hinterlegen Sie in Zeile %1 eine %2.',SalesLine."Line No.",
-                      SalesLine.FIELDCAPTION(Umverpackungsmenge));
-            IF (SalesLine.Verpackungstyp <> SalesLine.Verpackungstyp :: Rolle) AND (SalesLine."Qty. to Ship" <> SalesLine.Umverpackungsmenge) THEN
-              ERROR('In Zeile %1 muss die %2 gleich der Menge %3 entsprechen. Bitte korrigieren.',
-                      SalesLine."Line No.",SalesLine.FIELDCAPTION(Umverpackungsmenge),SalesLine.FIELDCAPTION("Qty. to Ship"));
-          END;
-
-          //T30.05.13 UB - šberbuchung von Quotemengen berprfen
-          IF SalesLine."Quotenr." <> '' THEN BEGIN
-              Quotedaten.RESET;
-              Quotedaten.SETFILTER("Quotenr.",'%1',SalesLine."Quotenr.");
-              Quotedaten.SETFILTER("Artikelnr.",'%1',SalesLine."No.");
-              Quotedaten.SETFILTER(Herstellercode,'%1|%2','00','54');
-              IF Quotedaten.FINDFIRST THEN BEGIN
-                Quotedaten.CALCFIELDS(Quotedaten."Restmenge in Auftrag",Quotedaten."Menge in VK-Rechnung");
-                IF (Quotedaten.Quotemenge-Quotedaten."Restmenge in Auftrag"-Quotedaten."Menge in VK-Rechnung") < 0 THEN
-                  ERROR('Quotemenge reicht nicht aus. Bitte berprfen!');
-               END;
-            END;
-
-        UNTIL SalesLine.NEXT = 0;
-
-      //21.03.14 UB - 13B2-Kenner im AU-Kopf mit Gesch„fts- und MWSt-Produktbuchungsgruppen abgleichen
-
-      SalesLine.RESET;
-      SalesLine.SETRANGE("Document No.","No.");
-      IF SalesLine.FINDFIRST THEN BEGIN
-        IF USt13b2=TRUE THEN BEGIN
-          IF SalesLine."Gen. Bus. Posting Group"<>'13B2' THEN ERROR('Abbruch! Kein 13B2-Eintrag in Gesch„ftsbuchungsgruppe');
-          IF SalesLine."VAT Prod. Posting Group"<>'13B2' THEN ERROR('Abbruch! Kein 13B2-Eintrag in MWSt-Produktbuchungsgruppe');
-        END;
-      END;
-    END;
-
-    PROCEDURE CheckTOPASArtReserv@1140002();
-    VAR
-      Reservierung@1140000 : Record 337;
-      Opt@1140001 : Record 50001;
-    BEGIN
-      Reservierung.RESET;
-      Reservierung.SETRANGE("Source ID","No.");
-      Reservierung.SETRANGE("Source Type",37);
-      IF Reservierung.FINDFIRST THEN
-        REPEAT
-          Opt.RESET;
-          Opt.SETRANGE("Tabellen ID",32);
-          IF Reservierung."Item Tracking" = Reservierung."Item Tracking" :: "Serial No." THEN BEGIN
-            Opt.SETRANGE("Feld ID",6500);
-            Opt.SETRANGE(Code,Reservierung."Serial No.");
-          END;
-          IF Reservierung."Item Tracking" = Reservierung."Item Tracking" :: "Lot No." THEN BEGIN
-            Opt.SETRANGE("Feld ID",6501);
-            Opt.SETRANGE(Code,Reservierung."Lot No.");
-          END;
-          Opt.SETRANGE("Nr.",Reservierung."Item No.");
-          IF Opt.FINDFIRST THEN
-            CASE Reservierung."Item Tracking" OF
-            Reservierung."Item Tracking" :: "Serial No.":
-              ERROR(Text50003,Reservierung.FIELDCAPTION("Serial No."),Reservierung."Serial No.",Reservierung."Item No.");
-            Reservierung."Item Tracking" :: "Lot No.":
-              ERROR(Text50003,Reservierung.FIELDCAPTION("Lot No."),Reservierung."Lot No.",Reservierung."Item No.");
-            END;
-        UNTIL Reservierung.NEXT = 0;
-    END;
-
-    PROCEDURE CheckArtVerfolgLagerbestand@1140003();
-    VAR
-      SalesLineItem@1140001 : Record 37;
-      ship_qty@1140000 : Decimal;
-    BEGIN
-      //****************************************************************************************************************************
-      //        Prft zu fakturierende Artikel mit Artikelverfolgungscode KEINE auf Lagerbestand, wenn nicht gengend
-      //                     Lagerbestand vorhanden ist, erscheint eine entsprechende ERROR MESSAGE
-      //****************************************************************************************************************************
-
-      SalesLine.RESET;
-      SalesLine.SETFILTER("Document No.",'%1',"No.");
-      SalesLine.SETFILTER(Type,'%1',SalesLine.Type :: Item);
-      SalesLine.SETFILTER("Qty. to Ship",'>%1',0);
-      IF SalesLine.FINDFIRST THEN
-        REPEAT
-          ship_qty := 0;
-          SalesLineItem.RESET;
-          SalesLineItem.SETRANGE("Document No.","No.");
-          SalesLineItem.SETRANGE("No.",SalesLine."No.");
-          IF SalesLineItem.FINDFIRST THEN
-            REPEAT
-              ship_qty += SalesLineItem."Qty. to Ship";
-            UNTIL SalesLineItem.NEXT = 0;
-
-          Item.RESET;
-          Item.GET(SalesLine."No.");
-          Item.SETRANGE("Location Filter",SalesLine."Location Code");
-          Item.CALCFIELDS(Inventory);
-          IF (Item."Item Tracking Code" = 'KEINE') AND (Item.Inventory < ship_qty) THEN
-            ERROR(Text50004,SalesLine."No.",SalesLine."Location Code");
-        UNTIL SalesLine.NEXT = 0;
     END;
 
     LOCAL PROCEDURE OpenHelp@1000000002();
@@ -2122,8 +1891,12 @@ OBJECT Page 42 Sales Order
                                           CheckArtVerfolgLagerbestand, OpenHelp eingebaut
       3       TOP1.00   18.05.17    ST    Funktionen wie Best„tigung per E-Mail, Best„tigung Drucken, Freigeben, "Beleg kopieren" werden vorher mit der Fkt. CheckAuftrag berprft
       4       TOP1.00   02.06.17    ST    Reiter Infos jetzt "Kommunikation & Infos" mit weiteren Felder (u.a. E-Mail Adressen)
-      5       TOP1.00   15.06.17    ST    ActionItems "Projektnr. berprfen" und "Projektnr. „ndern" bernommen
+      5       TOP1.00   13.06.17    ST    "Currency Code" wird eingef„rbt, Feld Comment hinzugefgt und bei vorhandener Bemerkung wird Comment rot eingef„rbt
+      6       TOP1.00   15.06.17    ST    ActionItems "Projektnr. berprfen" und "Projektnr. „ndern" bernommen
+      7       TOP1.01   24.07.17    ST    Amount wird angezeigt und neu kalkuliert
+      8       TOP1.02   21.11.17    ST    TOPAS Funktionen CheckAuftrag, CheckTOPASArtReserv, CheckArtVerfolgLagerbestand und CheckEKwechselkurs in CU 50007 ausgelagert
     }
     END.
   }
 }
+
