@@ -2,10 +2,10 @@ OBJECT Page 9305 Sales Order List
 {
   OBJECT-PROPERTIES
   {
-    Date=16.11.17;
-    Time=12:19:56;
+    Date=28.11.17;
+    Time=14:42:54;
     Modified=Yes;
-    Version List=NAVW19.00.00.44974,TOP1.01;
+    Version List=NAVW19.00.00.44974,TOP1.02;
   }
   PROPERTIES
   {
@@ -17,6 +17,8 @@ OBJECT Page 9305 Sales Order List
                     WHERE(Document Type=CONST(Order));
     PageType=List;
     CardPageID=Sales Order;
+    PromotedActionCategoriesML=[DEU=Neu,Verwalten,Bericht,TOPAS Druck,Muster;
+                                ENU=New,Process,Report,TOPAS Print,Samples];
     OnOpenPage=VAR
                  SalesSetup@1000 : Record 311;
                  CRMIntegrationManagement@1001 : Codeunit 5330;
@@ -172,6 +174,35 @@ OBJECT Page 9305 Sales Order List
                                  PAGE.RUN(PAGE::"CRM Sales Order List",CRMSalesorder);
                                END;
                                 }
+      { 1000000010;1 ;ActionGroup;
+                      CaptionML=DEU=&Musterberwachung }
+      { 1000000009;2 ;Action    ;
+                      Name=Musterberwachung;
+                      Ellipsis=Yes;
+                      Promoted=Yes;
+                      Image=MovementWorksheet;
+                      PromotedCategory=Category5;
+                      RunPageMode=Create;
+                      OnAction=VAR
+                                 Mšwach@1000000000 : Record 50029;
+                                 MšwachNew@1000000001 : Record 50029;
+                               BEGIN
+                                 IF "Location Code" <> 'MUST' THEN MESSAGE(Text50007)
+                                 ELSE BEGIN
+                                   Mšwach.SETFILTER(Nr,'%1',"No.");
+                                   IF NOT Mšwach.FINDFIRST THEN BEGIN
+                                     IF CONFIRM(Text50008,TRUE) THEN BEGIN
+                                       MšwachNew.INIT;
+                                       MšwachNew.Nr := "No.";
+                                       MšwachNew.INSERT(TRUE);
+                                       Mšwach.COPY(MšwachNew);
+                                       Mšwach.SETRECFILTER;
+                                     END;
+                                   END;
+                                   PAGE.RUN(50031,Mšwach);
+                                 END;
+                               END;
+                                }
       { 1900000004;0 ;ActionContainer;
                       ActionContainerType=ActionItems }
       { 12      ;1   ;ActionGroup;
@@ -189,6 +220,10 @@ OBJECT Page 9305 Sales Order List
                       OnAction=VAR
                                  ReleaseSalesDoc@1000 : Codeunit 414;
                                BEGIN
+                                 //TOPAS 22.11.17 ST
+                                 TOPASBeleg_Pruefungen.CheckSalesOrderOnActions(Rec,FALSE);
+                                 //TOPAS Ende
+
                                  ReleaseSalesDoc.PerformManualRelease(Rec);
                                END;
                                 }
@@ -320,6 +355,10 @@ OBJECT Page 9305 Sales Order List
                       Image=PostOrder;
                       PromotedCategory=Process;
                       OnAction=BEGIN
+                                 //TOPAS 22.11.17 ST
+                                 PostCheck;
+                                 //TOPAS Ende
+
                                  SendToPosting(CODEUNIT::"Sales-Post (Yes/No)");
                                END;
                                 }
@@ -333,6 +372,10 @@ OBJECT Page 9305 Sales Order List
                       Image=PostPrint;
                       PromotedCategory=Process;
                       OnAction=BEGIN
+                                 //TOPAS 22.11.17 ST
+                                 PostCheck;
+                                 //TOPAS Ende
+
                                  SendToPosting(CODEUNIT::"Sales-Post + Print");
                                END;
                                 }
@@ -344,6 +387,10 @@ OBJECT Page 9305 Sales Order List
                       OnAction=VAR
                                  SalesPostPrint@1000 : Codeunit 82;
                                BEGIN
+                                 //TOPAS 22.11.17 ST
+                                 PostCheck;
+                                 //TOPAS Ende
+
                                  SalesPostPrint.PostAndEmail(Rec);
                                END;
                                 }
@@ -416,6 +463,10 @@ OBJECT Page 9305 Sales Order List
                                  ENU=Email Confirmation];
                       Image=Email;
                       OnAction=BEGIN
+                                 //TOPAS 22.11.17 ST
+                                 TOPASBeleg_Pruefungen.CheckSalesOrderOnActions(Rec,FALSE);
+                                 //TOPAS Ende
+
                                  DocPrint.EmailSalesHeader(Rec);
                                END;
                                 }
@@ -427,7 +478,44 @@ OBJECT Page 9305 Sales Order List
                       Image=Print;
                       PromotedCategory=Process;
                       OnAction=BEGIN
+                                 //TOPAS 22.11.17 ST
+                                 TOPASBeleg_Pruefungen.CheckSalesOrderOnActions(Rec,FALSE);
+                                 //TOPAS Ende
+
                                  DocPrint.PrintSalesOrder(Rec,Usage::"Order Confirmation");
+                               END;
+                                }
+      { 1000000006;1 ;ActionGroup;
+                      CaptionML=DEU=TOPAS Druck }
+      { 1000000005;2 ;Action    ;
+                      Ellipsis=Yes;
+                      CaptionML=DEU=Deckblatt drucken;
+                      Promoted=Yes;
+                      Image=Print;
+                      PromotedCategory=Category4;
+                      OnAction=VAR
+                                 PrintDoc@1000000000 : Record 36;
+                               BEGIN
+                                 //TOPAS 08.12.15 ST  - šberprft, ob die Generierung des Servicevertrages m”glich ist
+                                 TOPASBeleg_Pruefungen.CheckSalesOrderCalculationsBeforePost("No.");
+                                 COMMIT;
+                                 PrintDoc.SETRANGE("No.","No.");
+                                 REPORT.RUN(50159,TRUE,FALSE,PrintDoc);
+                                 //TOPAS Ende
+                               END;
+                                }
+      { 1000000004;2 ;Action    ;
+                      CaptionML=DEU=Packzettel drucken;
+                      Promoted=Yes;
+                      Image=Print;
+                      PromotedCategory=Category4;
+                      OnAction=VAR
+                                 OrderPacking@1000000000 : Record 36;
+                               BEGIN
+                                 //TOPAS 21.03.17 ST - Packzettel Druckaufruf
+                                 OrderPacking.SETRANGE("No.","No.");
+                                 REPORT.RUN(50071,TRUE,FALSE,OrderPacking);
+                                 //TOPAS Ende
                                END;
                                 }
       { 1900000006;0 ;ActionContainer;
@@ -648,8 +736,11 @@ OBJECT Page 9305 Sales Order List
       OpenApprovalEntriesExist@1006 : Boolean;
       CRMIntegrationEnabled@1002 : Boolean;
       "***TOPAS_Var***"@1000000000 : Integer;
+      TOPASBeleg_Pruefungen@1000000003 : Codeunit 50007;
       TOPAS_Funktionen@1000000002 : Codeunit 50006;
       currency_style@1000000001 : Text;
+      Text50007@1000000005 : TextConst 'DEU=Musterberwachungen k”nnen nur unter dem Lagerortcode MUST gestartet werden.';
+      Text50008@1000000004 : TextConst 'DEU=M”chten Sie wirklich eine Musterberwachung anlegen?';
 
     PROCEDURE ShowPreview@1();
     VAR
@@ -665,12 +756,32 @@ OBJECT Page 9305 Sales Order List
       OpenApprovalEntriesExist := ApprovalsMgmt.HasOpenApprovalEntries(RECORDID);
     END;
 
+    LOCAL PROCEDURE "***TOPAS_Func***"@1000000000();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE PostCheck@1000000001();
+    BEGIN
+      //TOPAS 22.11.17 ST
+      //Prfungen in neue Funktion bertragen
+      TOPASBeleg_Pruefungen.CheckSalesOrderOnActions(Rec,FALSE);
+
+      //šberprft, ob die Generierung des Servicevertrages m”glich ist
+      TOPASBeleg_Pruefungen.CheckSalesOrderCalculationsBeforePost("No.");
+
+      //šerprft EK Wechselkurse, Seriennr. Reservierungen und Lagerbestand fr Artikelverfolgungscode KEINE
+      TOPASBeleg_Pruefungen.CheckSalesOrderBeforePost_Part2(Rec);
+
+      //TOPAS Ende
+    END;
+
     BEGIN
     {
       Lfd.Nr. Version   Datum       User  Beschreibung
       ===========================================================================
       1       TOP1.00   12.07.17    ST    Weitere Felder eingebaut und W„hrungscode wird eingef„rbt
       2       TOP1.01   08.09.17    ST    Absteigend sortiert +  Cursor an die 1. Stelle
+      3       TOP1.02   22.11.17    ST    TOPAS Funktionen wie auf der Karte integriert, Verknpfung Musterberwachung, Deckblatt und Packzettel drucken eingebaut
     }
     END.
   }
