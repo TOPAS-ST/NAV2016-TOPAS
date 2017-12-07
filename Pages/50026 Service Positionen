@@ -2,8 +2,8 @@ OBJECT Page 50026 Service Positionen
 {
   OBJECT-PROPERTIES
   {
-    Date=26.07.17;
-    Time=16:46:26;
+    Date=07.12.17;
+    Time=12:18:16;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -123,7 +123,7 @@ OBJECT Page 50026 Service Positionen
                       PromotedCategory=Report;
                       OnAction=BEGIN
                                  ServiceDruck.RESET;
-                                 ServiceDruck.SETFILTER(ServiceDruck."Wartungsvertragsnr.",'%1',"Wartungsvertragsnr.");
+                                 ServiceDruck.SETFILTER("Wartungsvertragsnr.",'%1',"Wartungsvertragsnr.");
                                  REPORT.RUN(50176,TRUE,FALSE,ServiceDruck);
                                  REPORT.RUN(50177,TRUE,FALSE,ServiceDruck);
                                END;
@@ -137,7 +137,7 @@ OBJECT Page 50026 Service Positionen
                       PromotedCategory=Report;
                       OnAction=BEGIN
                                  ServiceDruck.RESET;
-                                 ServiceDruck.SETFILTER(ServiceDruck."Wartungsvertragsnr.",'%1',"Wartungsvertragsnr.");
+                                 ServiceDruck.SETFILTER("Wartungsvertragsnr.",'%1',"Wartungsvertragsnr.");
                                  REPORT.RUN(50178,TRUE,FALSE,ServiceDruck);
                                END;
                                 }
@@ -461,6 +461,7 @@ OBJECT Page 50026 Service Positionen
       TOPAS_API@1140020 : Codeunit 50001;
       Wartungsvertrag@1140002 : Record 50011;
       ServiceDruck@1140007 : Record 50011;
+      ZugangsdatenAndruck@1000000007 : Record 50024;
       BestellDruck@1140034 : Record 50024;
       Artikel@1140023 : Record 27;
       PrfeLizenzTab@1140017 : Record 50024;
@@ -486,12 +487,14 @@ OBJECT Page 50026 Service Positionen
       Text015@1000000002 : TextConst 'DEU=Die Exportierte SUP %1,\ ist Fehlerhaft!';
       Text016@1000000003 : TextConst 'DEU=Keine neuen Eintr„ge gefunden. M”chten Sie die Tabelle dennoch ”ffnen?';
       Zielpfaddatei@1140030 : TextConst 'DEU=I:\DOKU\Audiocodes\Zugangsdaten_SW_Updates\SUP_Daten.xlsx';
-      hinweis@1140008 : Text[20];
-      preisinfo@1140009 : Text[20];
+      hinweis@1140008 : Text;
+      username@1000000008 : Text;
+      password@1000000009 : Text;
+      preisinfo@1140009 : Text;
       aur_nr@1140019 : Code[20];
-      laufzeit_text@1140021 : Text[30];
-      hinweis_style@1000000005 : Text[20];
-      preisinfo_style@1000000006 : Text[20];
+      laufzeit_text@1140021 : Text;
+      hinweis_style@1000000005 : Text;
+      preisinfo_style@1000000006 : Text;
 
     PROCEDURE Export_Data_Excel@1140004();
     VAR
@@ -513,14 +516,14 @@ OBJECT Page 50026 Service Positionen
         ERROR(Text014,Zielpfaddatei);
 
       ServicePos.RESET;
-      ServicePos.SETFILTER(Art,'%1',Art :: Service);
+      ServicePos.SETFILTER(Art,'%1',Art::Service);
       ServicePos.SETFILTER("Zu exportieren",'%1',TRUE);
       ServicePos.SETFILTER(Exportiert,'%1',FALSE);
       IF ServicePos.FINDFIRST THEN BEGIN
         anzahl_daten := ServicePos.COUNT;
 
         Datum_date := WORKDATE();
-        Datum_text := FORMAT(DATE2DMY(Datum_date,3))+'-'+FORMAT(DATE2DMY(Datum_date,2))+'-'+FORMAT(DATE2DMY(Datum_date,1));
+        Datum_text := FORMAT(DATE2DMY(Datum_date,3)) + '-' + FORMAT(DATE2DMY(Datum_date,2)) + '-' + FORMAT(DATE2DMY(Datum_date,1));
 
         // Definiert die Zieldatei
         CREATE(Ziel_Excel,FALSE,TRUE);                                        //erzeugt excel
@@ -542,24 +545,50 @@ OBJECT Page 50026 Service Positionen
 
         //Datens„tze werden nun in Excel eingefgt
         REPEAT
-          Ziel_Sheet.Range('A'+Ziel_j).Value:= ServicePos."Lfd. Nr.";
-          Ziel_Sheet.Range('B'+Ziel_j).Value:= TOPAS_API.CreateExcelHyperlinkToNav(Wartungsvertrag.TABLENAME,1,50015,
+
+          //Suche nach 1. Basisger„t zum Andruck des Benuters + PW
+          username := '';
+          password := '';
+          ZugangsdatenAndruck.RESET;
+          ZugangsdatenAndruck.SETRANGE(Art,ZugangsdatenAndruck.Art::Service);
+          ZugangsdatenAndruck.SETRANGE(Inaktiv,FALSE);
+          ZugangsdatenAndruck.SETRANGE(Basisger„t,TRUE);
+          ZugangsdatenAndruck.SETRANGE("Zu exportieren",TRUE);
+          ZugangsdatenAndruck.SETRANGE("Wartungsvertragsnr.",ServicePos."Wartungsvertragsnr.");
+          IF ZugangsdatenAndruck.FINDFIRST THEN BEGIN
+            username := ZugangsdatenAndruck.Benutzername;
+            password := ZugangsdatenAndruck.Passwort;
+          END ELSE BEGIN
+            //Wartungsvertrag verfgt ber kein Basisger„t
+            ZugangsdatenAndruck.RESET;
+            ZugangsdatenAndruck.SETRANGE(Art,ZugangsdatenAndruck.Art::Service);
+            ZugangsdatenAndruck.SETRANGE(Inaktiv,FALSE);
+            ZugangsdatenAndruck.SETRANGE("Zu exportieren",TRUE);
+            ZugangsdatenAndruck.SETRANGE("Wartungsvertragsnr.",ServicePos."Wartungsvertragsnr.");
+            IF ZugangsdatenAndruck.FINDFIRST THEN BEGIN
+              username := ZugangsdatenAndruck.Benutzername;
+              password := ZugangsdatenAndruck.Passwort;
+            END
+          END;
+
+          Ziel_Sheet.Range('A'+Ziel_j).Value := ServicePos."Lfd. Nr.";
+          Ziel_Sheet.Range('B'+Ziel_j).Value := TOPAS_API.CreateExcelHyperlinkToNav(Wartungsvertrag.TABLENAME,1,50015,
                                                 ServicePos."Wartungsvertragsnr.");
-          Ziel_Sheet.Range('C'+Ziel_j).Value:= ServicePos."Artikelnr. 2";
-          Ziel_Sheet.Range('D'+Ziel_j).Value:= ServicePos."Seriennr.";
-          Ziel_Sheet.Range('E'+Ziel_j).Value:= ServicePos."SUP Artikelnr.";
-          Ziel_Sheet.Range('F'+Ziel_j).Value:= ServicePos."Auftragsnr.";
-          Ziel_Sheet.Range('G'+Ziel_j).Value:= TOPAS_API.CreateExcelHyperlinkToNav(SalesShipHeader.TABLENAME,1,130,
+          Ziel_Sheet.Range('C'+Ziel_j).Value := ServicePos."Artikelnr. 2";
+          Ziel_Sheet.Range('D'+Ziel_j).Value := ServicePos."Seriennr.";
+          Ziel_Sheet.Range('E'+Ziel_j).Value := ServicePos."SUP Artikelnr.";
+          Ziel_Sheet.Range('F'+Ziel_j).Value := ServicePos."Auftragsnr.";
+          Ziel_Sheet.Range('G'+Ziel_j).Value := TOPAS_API.CreateExcelHyperlinkToNav(SalesShipHeader.TABLENAME,1,130,
                                                 ServicePos."Nr.");
-          Ziel_Sheet.Range('H'+Ziel_j).Value:= ServicePos.Belegdatum;
-          Ziel_Sheet.Range('I'+Ziel_j).Value:= ServicePos."Debitornr.";
-          Ziel_Sheet.Range('J'+Ziel_j).Value:= ServicePos.Debitorname;
-          Ziel_Sheet.Range('K'+Ziel_j).Value:= ServicePos."System Projektinfos";
-          Ziel_Sheet.Range('L'+Ziel_j).Value:= ServicePos.Benutzername;
-          Ziel_Sheet.Range('M'+Ziel_j).Value:= ServicePos.Passwort;
-          Ziel_Sheet.Range('N'+Ziel_j).Value:= ServicePos.Lizenzdatum;
-          Ziel_Sheet.Range('O'+Ziel_j).Value:= ServicePos."Ablaufdatum Serviceleistung";
-          Ziel_Sheet.Range('A'+Ziel_j+':'+'O'+Ziel_j).Font.Bold := TRUE;
+          Ziel_Sheet.Range('H'+Ziel_j).Value := ServicePos.Belegdatum;
+          Ziel_Sheet.Range('I'+Ziel_j).Value := ServicePos."Debitornr.";
+          Ziel_Sheet.Range('J'+Ziel_j).Value := ServicePos.Debitorname;
+          Ziel_Sheet.Range('K'+Ziel_j).Value := ServicePos."System Projektinfos";
+          Ziel_Sheet.Range('L'+Ziel_j).Value := username;
+          Ziel_Sheet.Range('M'+Ziel_j).Value := password;
+          Ziel_Sheet.Range('N'+Ziel_j).Value := ServicePos.Lizenzdatum;
+          Ziel_Sheet.Range('O'+Ziel_j).Value := ServicePos."Ablaufdatum Serviceleistung";
+          Ziel_Sheet.Range('A'+Ziel_j + ':' + 'O' + Ziel_j).Font.Bold := TRUE;
           Ziel_j := INCSTR(Ziel_j);
           ServicePos.Exportiert := TRUE;
           ServicePos.Exportdatum := WORKDATE;
@@ -916,3 +945,4 @@ OBJECT Page 50026 Service Positionen
     END.
   }
 }
+
