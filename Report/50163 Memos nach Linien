@@ -2,8 +2,8 @@ OBJECT Report 50163 Memos nach Linien
 {
   OBJECT-PROPERTIES
   {
-    Date=15.05.17;
-    Time=13:23:33;
+    Date=08.12.17;
+    Time=10:41:38;
     Modified=Yes;
     Version List=TOPAS,FORNAV2.0.0.1189/1189;
   }
@@ -14,22 +14,42 @@ OBJECT Report 50163 Memos nach Linien
                  END;
 
     OnPreReport=BEGIN
-                  Anlagename:='';
-                  Memodatumfilter:='';
-                  Anlagedatumfilter:='';
-                  QBRFilter:='';
-                  IF vVerfasser <> '' THEN BEGIN
-                    VerkTab.SETFILTER(VerkTab.Code,vVerfasser);
-                    IF VerkTab.FINDFIRST THEN BEGIN
-                      Anlagename:=VerkTab."First name"+' ' +VerkTab.Name;
+                  Anlagename := '';
+                  Memodatumfilter := '';
+                  Anlagedatumfilter := '';
+                  QBRFilter := '';
+                  IF VerkTab.GET(verfasser_filter) THEN
+                    Anlagename := VerkTab."First name" + ' ' + VerkTab.Name;
+
+                  //Die Vermischung der Verfasser aus den alten Krzel aus NAV 5.0 und den neuen Windows Benutzernamen mit W2K\...
+                  //werden jetzt so umgesetzt, dass sich der Benutzer die neuen Benutzer nicht merken muss, sondern einfach die alten Krzel
+                  //weiter verwenden darf, ohne dass Eintr„ge verloren gehen sollten
+                  IF verfasser_filter <> '' THEN BEGIN
+                    l := STRLEN(DELCHR(verfasser_filter,'=',DELCHR(verfasser_filter,'=','|'))) + 1;
+                    IF l > 0 THEN BEGIN
+                      FOR i := 1 TO l DO BEGIN
+                        IF STRPOS(verfasser_filter,'|') > 0 THEN BEGIN
+                          verfasser := COPYSTR(verfasser_filter,1,STRPOS(verfasser_filter,'|') - 1);
+                          verfasser_filter := COPYSTR(verfasser_filter,STRPOS(verfasser_filter,'|') + 1);
+                        END ELSE
+                          verfasser := verfasser_filter;
+                        UserTab.RESET;
+                        UserTab.SETRANGE("Salesperson Code",verfasser);
+                        IF UserTab.FINDFIRST THEN
+                          verfasser_filter_neu += UserTab."User Name" + '|' + verfasser + '|'
+                        ELSE
+                          verfasser_filter_neu += verfasser + '|';
+                      END;
                     END;
                   END;
-                  IF (vMemoStartdatum <> 0D) OR (vMemoEnddatum <> 0D) THEN
-                    Memodatumfilter := FORMAT(vMemoStartdatum) + '..' + FORMAT(vMemoEnddatum);
-                  IF (vAnlageStartdatum <> 0D) OR (vAnlageEnddatum <> 0D) THEN
-                    Anlagedatumfilter := FORMAT(vAnlageStartdatum) + '..' + FORMAT(vAnlageEnddatum);
-                  IF vQBR= TRUE THEN
-                    QBRFilter :='QBR=ja';
+                  verfasser_filter_neu := DELCHR(verfasser_filter_neu,'>','|');
+
+                  IF (MemoStartdatum <> 0D) OR (MemoEnddatum <> 0D) THEN
+                    Memodatumfilter := FORMAT(MemoStartdatum) + '..' + FORMAT(MemoEnddatum);
+                  IF (AnlageStartdatum <> 0D) OR (AnlageEnddatum <> 0D) THEN
+                    Anlagedatumfilter := FORMAT(AnlageStartdatum) + '..' + FORMAT(AnlageEnddatum);
+                  IF QBR = TRUE THEN
+                    QBRFilter := 'QBR=ja';
                   ;ReportForNav.OpenDesigner:=ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
                 END;
 
@@ -45,8 +65,8 @@ OBJECT Report 50163 Memos nach Linien
                DataItemTableView=SORTING(Linienkrzel,Projektnr.-Verb.)
                                  ORDER(Ascending);
                OnPreDataItem=BEGIN
-                               IF vLinienkrzel <>'' THEN
-                               Linienauswahl.SETFILTER(Linienauswahl.Linienkrzel,vLinienkrzel);
+                               IF Linienfilter <>'' THEN
+                                 Linienauswahl.SETFILTER(Linienkrzel,Linienfilter);
                              END;
                               }
 
@@ -77,22 +97,22 @@ OBJECT Report 50163 Memos nach Linien
                                  ORDER(Ascending);
                PrintOnlyIfDetail=No;
                OnPreDataItem=BEGIN
-                               IF (vMemoStartdatum<>0D) AND (vMemoEnddatum=0D) THEN
-                                 Memokopf.SETFILTER(Memokopf.Memodatum,'>=%1',vMemoStartdatum);
-                               IF (vMemoStartdatum<>0D) AND (vMemoEnddatum<>0D) THEN
-                                 Memokopf.SETFILTER(Memokopf.Memodatum,'>=%1&<=%2',vMemoStartdatum,vMemoEnddatum);
-                               IF (vMemoStartdatum=0D) AND (vMemoEnddatum<>0D) THEN
-                                 Memokopf.SETFILTER(Memokopf.Memodatum,'<=%1',vMemoEnddatum);
-                               IF (vAnlageStartdatum<>0D) AND (vAnlageEnddatum=0D) THEN
-                                 Memokopf.SETFILTER(Memokopf.Anlagedatum,'>=%1',vAnlageStartdatum);
-                               IF (vAnlageStartdatum<>0D) AND (vAnlageEnddatum<>0D) THEN
-                                 Memokopf.SETFILTER(Memokopf.Anlagedatum,'>=%1&<=%2',vAnlageStartdatum,vAnlageEnddatum);
-                               IF (vAnlageStartdatum=0D) AND (vAnlageEnddatum<>0D) THEN
-                                 Memokopf.SETFILTER(Memokopf.Anlagedatum,'<=%1',vAnlageEnddatum);
-                               IF vVerfasser <> '' THEN
-                               Memokopf.SETFILTER(Memokopf."Angelegt von",vVerfasser);
-                               IF vQBR = TRUE THEN
-                               Memokopf.SETFILTER(Memokopf.QBR,'%1',vQBR);
+                               IF (MemoStartdatum <> 0D) AND (MemoEnddatum = 0D) THEN
+                                 Memokopf.SETFILTER(Memodatum,'>=%1',MemoStartdatum);
+                               IF (MemoStartdatum <> 0D) AND (MemoEnddatum <> 0D) THEN
+                                 Memokopf.SETFILTER(Memodatum,'>=%1&<=%2',MemoStartdatum,MemoEnddatum);
+                               IF (MemoStartdatum = 0D) AND (MemoEnddatum <> 0D) THEN
+                                 Memokopf.SETFILTER(Memodatum,'<=%1',MemoEnddatum);
+                               IF (AnlageStartdatum <> 0D) AND (AnlageEnddatum = 0D) THEN
+                                 Memokopf.SETFILTER(Anlagedatum,'>=%1',AnlageStartdatum);
+                               IF (AnlageStartdatum <> 0D) AND (AnlageEnddatum <> 0D) THEN
+                                 Memokopf.SETFILTER(Anlagedatum,'>=%1&<=%2',AnlageStartdatum,AnlageEnddatum);
+                               IF (AnlageStartdatum = 0D) AND (AnlageEnddatum <> 0D) THEN
+                                 Memokopf.SETFILTER(Anlagedatum,'<=%1',AnlageEnddatum);
+                               IF verfasser_filter_neu <> '' THEN
+                               Memokopf.SETFILTER("Angelegt von",verfasser_filter_neu);
+                               IF QBR = TRUE THEN
+                               Memokopf.SETFILTER(QBR,'%1',QBR);
                              END;
 
                DataItemLink=Memonr.=FIELD(Memonr.) }
@@ -130,8 +150,8 @@ OBJECT Report 50163 Memos nach Linien
     { 20  ;2   ;Column  ;Statustext          ;
                SourceExpr=Statustext }
 
-    { 21  ;2   ;Column  ;vLinientext         ;
-               SourceExpr=vLinientext }
+    { 21  ;2   ;Column  ;Linientext          ;
+               SourceExpr=Linientext }
 
     { 22  ;2   ;Column  ;Kontaktart_Memokopf ;
                SourceExpr=Kontaktart }
@@ -193,39 +213,39 @@ OBJECT Report 50163 Memos nach Linien
 
       { 1140005;2;Field     ;
                   CaptionML=DEU=Herstellercode;
-                  SourceExpr=vLinienkrzel;
+                  SourceExpr=Linienfilter;
                   OnLookup=BEGIN
-                             Hersteller2.RESET;
-                             IF PAGE.RUNMODAL(5728,Hersteller2) = ACTION::LookupOK THEN
+                             Manufacturer2.RESET;
+                             IF PAGE.RUNMODAL(5728,Manufacturer2) = ACTION::LookupOK THEN
                              BEGIN
-                                vLinienkrzel:=Hersteller2.Code;
+                                Linienfilter := Manufacturer2.Code;
                              END;
                            END;
                             }
 
       { 1140006;2;Field     ;
                   CaptionML=DEU=Memodatum von;
-                  SourceExpr=vMemoStartdatum }
+                  SourceExpr=MemoStartdatum }
 
       { 1140012;2;Field     ;
                   CaptionML=DEU=bis;
-                  SourceExpr=vMemoEnddatum }
+                  SourceExpr=MemoEnddatum }
 
       { 1140007;2;Field     ;
                   CaptionML=DEU=Anlagedatum von;
-                  SourceExpr=vAnlageStartdatum }
+                  SourceExpr=AnlageStartdatum }
 
       { 1140013;2;Field     ;
                   CaptionML=DEU=bis;
-                  SourceExpr=vAnlageEnddatum }
+                  SourceExpr=AnlageEnddatum }
 
       { 1140008;2;Field     ;
                   CaptionML=DEU=Verfasser;
-                  SourceExpr=vVerfasser }
+                  SourceExpr=verfasser_filter }
 
       { 1140010;2;Field     ;
                   CaptionML=DEU=QBR;
-                  SourceExpr=vQBR }
+                  SourceExpr=QBR }
 
       { 5000;2   ;Field     ;
                   Name=ForNavOpenDesigner;
@@ -241,15 +261,14 @@ OBJECT Report 50163 Memos nach Linien
   CODE
   {
     VAR
-      Anlagename@1140001 : Text[50];
+      UserTab@1000000005 : Record 2000000120;
       VerkTab@1140003 : Record 13;
       Proj@1140004 : Record 5071;
-      Cont@1140005 : Record 5050;
-      vLinientext@1140006 : Text[80];
-      Hersteller@1140007 : Record 5720;
-      Hersteller2@1140013 : Record 5720;
+      Contact@1140005 : Record 5050;
+      Manufacturer@1140007 : Record 5720;
+      Manufacturer2@1140013 : Record 5720;
       Linien@1140008 : Record 50002;
-      RecBeteiligt@1140009 : Record 50005;
+      Beteiligte@1140009 : Record 50005;
       Kontaktname@1140010 : Text[50];
       Kontakt_PLZ@1140011 : Text[30];
       Kontakt_Ort@1140012 : Text[30];
@@ -260,14 +279,20 @@ OBJECT Report 50163 Memos nach Linien
       Projektstatus@1140018 : Text[30];
       Projektklasse@1140019 : Text[30];
       Statustext@1140020 : Text[150];
-      vLinienkrzel@1140021 : Code[10];
-      vMemoStartdatum@1140022 : Date;
-      vMemoEnddatum@1140000 : Date;
-      vAnlageStartdatum@1140023 : Date;
-      vAnlageEnddatum@1140002 : Date;
-      vVerfasser@1140024 : Code[20];
-      vQBR@1140025 : Boolean;
-      QBRFilter@1140026 : Text[250];
+      Anlagename@1000000004 : Text;
+      Linienfilter@1140021 : Code[10];
+      Linientext@1000000007 : Text[80];
+      MemoStartdatum@1140022 : Date;
+      MemoEnddatum@1140000 : Date;
+      AnlageStartdatum@1140023 : Date;
+      AnlageEnddatum@1140002 : Date;
+      QBR@1000000009 : Boolean;
+      QBRFilter@1000000008 : Text[250];
+      verfasser@1140024 : Code[20];
+      verfasser_filter@1000000000 : Text;
+      verfasser_filter_neu@1000000006 : Text;
+      l@1000000001 : Integer;
+      i@1000000002 : Integer;
       Memodatumfilter@1140027 : Text[250];
       Anlagedatumfilter@1140028 : Text[250];
       ReportForNav@5000 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
@@ -280,79 +305,61 @@ OBJECT Report 50163 Memos nach Linien
     BEGIN
       WITH Memokopf DO BEGIN
         //Anzeige des entsprechenden Projektes auf dem Berichtsausdruck
-        Statustext:='';
+        Statustext := '';
         Proj.RESET;
-        IF Memokopf."Kampagnennr."<>'' THEN BEGIN
-          Proj.SETFILTER(Proj."No.",Memokopf."Kampagnennr.");
-          IF Proj.FINDFIRST THEN BEGIN
-            Projektname:=Proj.Description;
-            "Projektnr.":=Proj."No.";
-            Projektstatus:=Proj.Projektstatus;
-            Projektklasse:=Proj.Projektklasse;
-          END
-          ELSE
-          BEGIN
-            Projektname:='';
-            "Projektnr.":='';
-            Projektstatus:='';
-            Projektklasse:='';
-            Statustext:='Projekt existiert nicht mehr';
+        IF "Kampagnennr." <> '' THEN BEGIN
+          IF Proj.GET("Kampagnennr.") THEN BEGIN
+            Projektname   := Proj.Description;
+            "Projektnr."  := Proj."No.";
+            Projektstatus := Proj.Projektstatus;
+            Projektklasse := Proj.Projektklasse;
+          END ELSE BEGIN
+            Projektname   := '';
+            "Projektnr."  := '';
+            Projektstatus := '';
+            Projektklasse := '';
+            Statustext    := 'Projekt existiert nicht mehr';
           END;
         END;
-        RecBeteiligt.RESET;
-        Cont.RESET;
-        IF Memokopf."Kampagnennr."<>'' THEN BEGIN
-        RecBeteiligt.SETFILTER(RecBeteiligt."Kampagnennr.",Proj."No.");
-        RecBeteiligt.SETFILTER(RecBeteiligt.Fhrungsrolle,'%1',TRUE);
-        IF RecBeteiligt.FINDFIRST THEN BEGIN
-          Cont.SETFILTER(Cont."No.",RecBeteiligt."Kontakt Mandantennr.");
-          IF Cont.FINDFIRST THEN BEGIN
-            Kontaktname       := Cont.Name;
-            Kontakt_PLZ       := Cont."Post Code";
-            Kontakt_Ort       := Cont.City;
-            Kontakt_Betreuer  := Cont."Betreuer Innendienst";
-            Kontakt_Verk„ufer := Cont."Salesperson Code";
-          END
-          ELSE
-            BEGIN
+        IF "Kampagnennr."<>'' THEN BEGIN
+          Beteiligte.RESET;
+          Beteiligte.SETRANGE("Kampagnennr.",Proj."No.");
+          Beteiligte.SETRANGE(Fhrungsrolle,TRUE);
+          IF Beteiligte.FINDFIRST THEN BEGIN
+            IF Contact.GET(Beteiligte."Kontakt Mandantennr.") THEN BEGIN
+              Kontaktname       := Contact.Name;
+              Kontakt_PLZ       := Contact."Post Code";
+              Kontakt_Ort       := Contact.City;
+              Kontakt_Betreuer  := Contact."Betreuer Innendienst";
+              Kontakt_Verk„ufer := Contact."Salesperson Code";
             END;
-        END
-        ELSE
-        BEGIN
+          END ELSE BEGIN
             Kontaktname       := '';
             Kontakt_PLZ       := '';
             Kontakt_Ort       := '';
             Kontakt_Betreuer  := '';
             Kontakt_Verk„ufer := '';
-            IF Statustext<>'' THEN
-              Statustext:=Statustext+ ', '+'Kein Hauptbeteiligter im Projekt'
+            IF Statustext <> '' THEN
+              Statustext := Statustext + ', ' + 'Kein Hauptbeteiligter im Projekt'
             ELSE
-              Statustext:='Kein Hauptbeteiligter im Projekt';
-        END;
-        END
-        ELSE
-        BEGIN
-        IF Memokopf."Mandantennr."<>'' THEN BEGIN
-          Cont.SETFILTER(Cont."No.",Memokopf."Mandantennr.");
-          IF Cont.FINDFIRST THEN BEGIN
-            Kontaktname       := Cont.Name;
-            Kontakt_PLZ       := Cont."Post Code";
-            Kontakt_Ort       := Cont.City;
-            Kontakt_Betreuer  := Cont."Betreuer Innendienst";
-            Kontakt_Verk„ufer := Cont."Salesperson Code";
-          END
-          ELSE
-            BEGIN
-            END;
-          END
-          ELSE
-            BEGIN
+              Statustext := 'Kein Hauptbeteiligter im Projekt';
+          END;
+        END ELSE BEGIN
+          IF Memokopf."Mandantennr."<>'' THEN BEGIN
+            IF Contact.GET(Memokopf."Mandantennr.") THEN BEGIN
+              Kontaktname       := Contact.Name;
+              Kontakt_PLZ       := Contact."Post Code";
+              Kontakt_Ort       := Contact.City;
+              Kontakt_Betreuer  := Contact."Betreuer Innendienst";
+              Kontakt_Verk„ufer := Contact."Salesperson Code";
+            END ELSE BEGIN
               Kontaktname       := '';
               Kontakt_PLZ       := '';
               Kontakt_Ort       := '';
               Kontakt_Betreuer  := '';
               Kontakt_Verk„ufer := '';
             END;
+          END;
         END;
       END;
     END;
@@ -360,18 +367,13 @@ OBJECT Report 50163 Memos nach Linien
     LOCAL PROCEDURE OnPreSectionMemokopf_Body3@5050(VAR Memokopf@1000000000 : Record 50003);
     BEGIN
       WITH Memokopf DO BEGIN
-        vLinientext:='';
-        Linien.SETFILTER(Linien."Memonr.",Memokopf."Memonr.");
-        IF Linien.FIND('-') THEN
-        BEGIN
+        Linientext := '';
+        Linien.SETRANGE("Memonr.",Memokopf."Memonr.");
+        IF Linien.FINDFIRST THEN
           REPEAT
-            Hersteller.SETFILTER(Hersteller.Code,Linien.Linienkrzel);
-            IF Hersteller.FIND('-') THEN
-            BEGIN
-              vLinientext:=vLinientext+' '+Hersteller.Herstellerkurzname;
-            END;
-          UNTIL Linien.NEXT=0;
-        END;
+            IF Manufacturer.GET(Linien.Linienkrzel) THEN
+              Linientext := Linientext + '  ' + Manufacturer.Herstellerkurzname;
+          UNTIL Linien.NEXT = 0;
       END;
     END;
 
@@ -577,7 +579,7 @@ OBJECT Report 50163 Memos nach Linien
   {
     <?xml version="1.0" encoding="utf-8"?>
 <Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
-  <Description>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</Description>
+  <Description>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</Description>
   <AutoRefresh>0</AutoRefresh>
   <DataSources>
     <DataSource Name="DataSource">
@@ -660,8 +662,8 @@ OBJECT Report 50163 Memos nach Linien
         <Field Name="Statustext">
           <DataField>Statustext</DataField>
         </Field>
-        <Field Name="vLinientext">
-          <DataField>vLinientext</DataField>
+        <Field Name="Linientext">
+          <DataField>Linientext</DataField>
         </Field>
         <Field Name="Kontaktart_Memokopf">
           <DataField>Kontaktart_Memokopf</DataField>
@@ -697,3 +699,4 @@ OBJECT Report 50163 Memos nach Linien
     END_OF_RDLDATA
   }
 }
+
