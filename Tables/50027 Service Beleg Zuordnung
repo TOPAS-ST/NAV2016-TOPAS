@@ -1,0 +1,423 @@
+OBJECT Table 50027 Service Beleg Zuordnung
+{
+  OBJECT-PROPERTIES
+  {
+    Date=29.11.17;
+    Time=18:01:20;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    OnDelete=VAR
+               ServiceLizenzTab@1140000 : Record 50024;
+             BEGIN
+               ServiceLizenzTab.RESET;
+               ServiceLizenzTab.SETRANGE(Art,ServiceLizenzTab.Art::Tempor„r);
+               ServiceLizenzTab.SETRANGE("Nr.","Belegnr.");
+               ServiceLizenzTab.SETRANGE("Belegzeilennr.","Belegzeilennr.");
+               ServiceLizenzTab.SETRANGE("Auftragsnr.","Nr.");
+               ServiceLizenzTab.SETRANGE("Auftragszeilennr.","Zeilennr.");
+               IF ServiceLizenzTab.FINDFIRST THEN
+                 ServiceLizenzTab.DELETEALL;
+             END;
+
+  }
+  FIELDS
+  {
+    { 1   ;   ;Art                 ;Option        ;OptionString=[ ,SUP-AU,,,SPL-AU] }
+    { 2   ;   ;Nr.                 ;Code20        ;Description=Belegnr. der TOPAS Service Artikelnr. }
+    { 3   ;   ;Zeilennr.           ;Integer       ;Description=Belegzeilennr. der TOPAS Service Artikelnr. }
+    { 4   ;   ;SUP Artikelnr.      ;Code20        ;TableRelation=Item;
+                                                   Description=TOPAS Service Artikelnr. }
+    { 5   ;   ;Ger„te Artikelnr.   ;Code20        ;TableRelation=Item;
+                                                   OnValidate=BEGIN
+                                                                IF Art = Art::"SUP-AU" THEN
+                                                                  BEGIN
+
+                                                                    //Prfung: Bei Fremderwerb mssen fr ein und derselben Pseudo Belegnr. + Zeilennr. die Artikelnummern identisch sein
+                                                                    IF Fremderwerb = TRUE THEN
+                                                                      BEGIN
+                                                                        ServiceRelaDoc.RESET;
+                                                                        ServiceRelaDoc.SETRANGE(Art,ServiceRelaDoc.Art::"SUP-AU");
+                                                                        ServiceRelaDoc.SETRANGE("Belegnr.","Belegnr.");
+                                                                        ServiceRelaDoc.SETRANGE("Belegzeilennr.","Belegzeilennr.");
+                                                                        IF ServiceRelaDoc.FINDFIRST THEN
+                                                                          REPEAT
+                                                                            ServicePos.RESET;
+                                                                            ServicePos.SETRANGE("Auftragsnr.","Nr.");
+                                                                            ServicePos.SETRANGE("Auftragszeilennr.","Zeilennr.");
+                                                                            IF ServicePos.FINDFIRST THEN BEGIN
+                                                                              IF ((ServiceRelaDoc."Nr." <> "Nr.") OR (ServiceRelaDoc."Zeilennr." <> "Zeilennr."))
+                                                                              AND (ServiceRelaDoc."Ger„te Artikelnr." <> "Ger„te Artikelnr.") THEN
+                                                                                ERROR(Text004,FIELDCAPTION("Belegnr."),ServiceRelaDoc."Belegnr.",FIELDCAPTION("Belegzeilennr."),
+                                                                                      ServiceRelaDoc."Belegzeilennr.",FIELDCAPTION("Ger„te Artikelnr."),
+                                                                                      ServiceRelaDoc."Ger„te Artikelnr.",ServiceRelaDoc."Nr.",ServiceRelaDoc."Zeilennr.","Ger„te Artikelnr.");
+                                                                            END;
+                                                                          UNTIL ServiceRelaDoc.NEXT = 0;
+                                                                      END;
+
+                                                                    Artikel.GET("Ger„te Artikelnr.");
+                                                                    IF Artikel.Serviceklassifizierung = '' THEN ERROR(Text000,"Ger„te Artikelnr.");
+                                                                    IF (Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS')
+                                                                    OR (Artikel.Serviceklassifizierung = 'SYSTEM FLAT') THEN
+                                                                      Basisger„t := TRUE
+                                                                    ELSE
+                                                                      Basisger„t := FALSE;
+
+                                                                    "Service VK-Preis einzeln" := 0;
+                                                                    "Service VK-Preis Zeilenbetrag" := 0;
+                                                                    "Service DC einzeln" := 0;
+                                                                    "Service DC Gesamt" := 0;
+                                                                    "MSRP Service" := 0;
+
+                                                                    IF (("Belegnr." <> '') AND ("Belegzeilennr." <> 0)) THEN
+                                                                      Gruppierung := Gruppieren("Belegnr.","Belegzeilennr.",Basisger„t);
+
+                                                                    //Re Instatement Fee soll fr Arikelpositionen aus dem Auftrag unterbunden werden
+                                                                    Artikel.GET("SUP Artikelnr.");
+                                                                    IF (STRPOS(Artikel."No. 2",'INSTATEMENT') <> 0) AND (STRPOS(Artikel."No. 2",'FEE') <> 0) THEN
+                                                                      BEGIN
+                                                                        Auftrag.RESET;
+                                                                        Auftrag.SETRANGE(Auftrag."No.","Belegnr.");
+                                                                        IF Auftrag.FINDFIRST THEN
+                                                                          BEGIN
+                                                                            ERROR(Text006);
+                                                                          END;
+                                                                      END;
+
+                                                                  END;
+                                                              END;
+
+                                                   Description=Artikelnr. des Ger„tes, Moduls oder Software etc. }
+    { 6   ;   ;Abw. Ger„te Artikelnr.;Code20      ;TableRelation=Item;
+                                                   Description=12.12.12 ST - Abweichende Ger„te Artikelnr. }
+    { 9   ;   ;Basisger„t          ;Boolean       ;Description=25.08.11 ST - Deklariert das Basisger„t in einem Servicevertrag }
+    { 10  ;   ;Belegnr.            ;Code20        ;OnValidate=BEGIN
+                                                                Gruppierung := Gruppieren("Belegnr.","Belegzeilennr.",Basisger„t)
+                                                              END;
+
+                                                   Description=Belegnr. des verknpften Ger„tes, Moduls oder Software }
+    { 11  ;   ;Belegzeilennr.      ;Integer       ;OnValidate=BEGIN
+                                                                Gruppierung := Gruppieren("Belegnr.","Belegzeilennr.",Basisger„t)
+                                                              END;
+
+                                                   Description=Belegzeilennr. des verknpften Ger„tes, Moduls oder Software }
+    { 12  ;   ;Debitornr.          ;Code20        ;Description=Verk. an Debitornr. aus Beleg }
+    { 13  ;   ;Wartungsvertragsnr. ;Code20        ;TableRelation=Wartungsvertrag;
+                                                   Description=Manuelle Eingabe verhindert autom. Generierung eines WV, ordnet die Pos. stattdessen den genannnten WV zu. }
+    { 14  ;   ;Vertragsnr. bernommen;Code20      ;TableRelation=Wartungsvertrag;
+                                                   Description=20.11.12 ST - Aus der Kalkulation bernommene Wartungsvertragsnr. }
+    { 15  ;   ;Service VK-Preis einzeln;Decimal   ;Description=Historischer Wert zur damaligen Belegerfassung }
+    { 16  ;   ;Service VK-Preis Zeilenbetrag;Decimal;
+                                                   Description=Historischer Wert zur damaligen Belegerfassung }
+    { 17  ;   ;Menge kalk.         ;Decimal       ;OnValidate=BEGIN
+                                                                IF xRec."Menge kalk." <> "Menge kalk." THEN
+                                                                  BEGIN
+                                                                    "Service VK-Preis Zeilenbetrag" := 0;
+                                                                    "Service DC Gesamt" := 0;
+                                                                  END;
+                                                              END;
+
+                                                   Description=Historischer Wert zur damaligen Belegerfassung }
+    { 18  ;   ;Laufzeit            ;Code20        ;TableRelation=Optionstabelle.Code WHERE (Tabellen ID=FILTER(50024),
+                                                                                            Feld ID=FILTER(44));
+                                                   OnValidate=BEGIN
+                                                                PrfeServiceQuote("SUP Artikelnr.",Laufzeit,"Quotenr.");
+
+                                                                IF STRPOS(Laufzeit,'M') = 0 THEN
+                                                                  ERROR('Im Feld %1 muss auch immer die Angabe M (Monate) enthalten sein.',FIELDCAPTION(Laufzeit));
+
+                                                                IF xRec.Laufzeit <> Laufzeit THEN
+                                                                  BEGIN
+                                                                    "Service VK-Preis einzeln" := 0;
+                                                                    "Service VK-Preis Zeilenbetrag" := 0;
+                                                                    "Service DC einzeln" := 0;
+                                                                    "Service DC Gesamt" := 0;
+                                                                    "Rabatt/Marge" := 0;
+                                                                  END;
+
+                                                                //VALIDATE(Startdatum);
+                                                              END;
+
+                                                   ValidateTableRelation=No;
+                                                   Description=Angabe in Monatszahl + 'M' }
+    { 20  ;   ;Startdatum          ;Date          ;OnValidate=VAR
+                                                                champs_fee_monate@1140000 : Integer;
+                                                              BEGIN
+                                                                IF "SUP Artikelnr." = 'EXTD-HW-WARR/YR' THEN ERROR(Text005);
+
+                                                                ServiceRelaDoc.RESET;
+                                                                ServiceRelaDoc.SETRANGE(Art,ServiceRelaDoc.Art::"SUP-AU");
+                                                                ServiceRelaDoc.SETRANGE("Nr.","Nr.");
+                                                                ServiceRelaDoc.SETRANGE("Zeilennr.","Zeilennr.");
+                                                                ServiceRelaDoc.SETRANGE(Startdatum,Startdatum);
+                                                                IF NOT ServiceRelaDoc.FINDFIRST THEN
+                                                                  BEGIN
+                                                                    IF (Startdatum < WORKDATE) AND (Startdatum <> 0D) THEN
+                                                                      IF NOT CONFIRM(Text002,TRUE,FIELDCAPTION(Startdatum)) THEN
+                                                                        BEGIN
+                                                                          Startdatum := xRec.Startdatum;
+                                                                          EXIT;
+                                                                        END;
+                                                                  END;
+
+                                                                //2015-12-11 ST Zusatz Berechnung der Re Instatement Fee Monate
+                                                                Artikel.GET("SUP Artikelnr.");
+                                                                IF Artikel.Artikelgruppe = 'CHAMPS_FEE' THEN
+                                                                  BEGIN
+                                                                    champs_fee_monate := TOPAS_API.CalculateTimeDiff('M',Startdatum,WORKDATE);
+                                                                    IF champs_fee_monate < 3 THEN
+                                                                      champs_fee_monate := 0
+                                                                    ELSE
+                                                                      IF champs_fee_monate > 36 THEN
+                                                                        champs_fee_monate := 36;
+                                                                    VALIDATE(Laufzeit, FORMAT(champs_fee_monate)+ 'M');
+                                                                  END
+                                                                ELSE
+                                                                  VALIDATE(Ablaufdatum);
+                                                              END;
+
+                                                   Description=Manuelle Eingabe bzw. Feld ungleich leer verhindert autom. Festlegung des Startdatums aus dem Buchungsdatums des Lieferscheins }
+    { 21  ;   ;Ablaufdatum         ;Date          ;OnValidate=BEGIN
+                                                                IF "SUP Artikelnr." = 'EXTD-HW-WARR/YR' THEN ERROR(Text005);
+
+                                                                Artikel.GET("SUP Artikelnr.");
+                                                                IF Artikel.Artikelgruppe = 'CHAMPS_FEE' THEN
+                                                                  ERROR(Text007,FIELDCAPTION(Ablaufdatum),FIELDCAPTION(Startdatum));
+
+                                                                IF ((Ablaufdatum < WORKDATE) OR (Ablaufdatum < Startdatum)) AND (Ablaufdatum <> 0D) THEN
+                                                                  ERROR(Text003,FIELDCAPTION(Ablaufdatum));
+
+                                                                //IF (xRec.Startdatum <> 0D) AND (Ablaufdatum = 0D) THEN
+                                                                //  Startdatum := 0D;
+
+                                                                //IF (Laufzeit <> '') AND (Startdatum <> 0D) THEN
+                                                                //  Ablaufdatum := CALCDATE(Laufzeit,Startdatum);
+
+                                                                IF Ablaufdatum <> 0D THEN
+                                                                  VALIDATE(Laufzeit,FORMAT(TOPAS_API.CalculateTimeDiff('M',Startdatum,Ablaufdatum)) + 'M');
+
+                                                                IF Startdatum = 0D THEN
+                                                                  Ablaufdatum := 0D;
+
+                                                                IF (Ablaufdatum = 0D) AND (Startdatum = 0D) THEN
+                                                                  BEGIN
+                                                                    Opt.RESET;
+                                                                    Opt.SETRANGE("Tabellen ID",50024);
+                                                                    Opt.SETRANGE("Feld ID",44);
+                                                                    Opt.SETRANGE("Nr.","SUP Artikelnr.");
+                                                                    IF Opt.FINDFIRST THEN
+                                                                      VALIDATE(Laufzeit,Opt.Code);
+                                                                  END;
+                                                              END;
+                                                               }
+    { 22  ;   ;Nachtr„gliche Service Order;Boolean;Description=Kunde bestellt Service fr bereits gelieferte Ger„te nach }
+    { 23  ;   ;Fremderwerb         ;Boolean       ;Description=Kunde bestellt Service auf anderweitig bezogene Ger„te }
+    { 30  ;   ;Service DC einzeln  ;Decimal       ;Description=28.09.11 ST - Historischer Wert zur damaligen Belegerfassung }
+    { 31  ;   ;Service DC Gesamt   ;Decimal       ;Description=28.09.11 ST - Historischer Wert zur damaligen Belegerfassung }
+    { 32  ;   ;MSRP Service        ;Decimal       ;Description=28.09.11 ST - Historischer Wert zur damaligen Belegerfassung }
+    { 33  ;   ;Service DC W„hrungscode;Code20     ;TableRelation=Currency;
+                                                   Description=05.04.13 ST }
+    { 34  ;   ;Rabatt/Marge        ;Decimal       ;Description=10.01.14 ST }
+    { 35  ;   ;Laufzeit ab Buchungsdatum;Boolean  ;Description=04.12.15 ST - Um Angleichung des Startdatums zu verhindern, insbesondere bei Re-Instatment-Fee }
+    { 36  ;   ;Quotenr.            ;Code10        ;TableRelation=Quotedaten WHERE (Herstellercode=FILTER(57|5710|5720),
+                                                                                   Erledigtstatus=FILTER(' '));
+                                                   OnValidate=BEGIN
+                                                                PrfeServiceQuote("SUP Artikelnr.",Laufzeit,"Quotenr.");
+                                                              END;
+
+                                                   Description=17.12.15 ST - Bessere Konditionen fr ACTS in Verbindung Managed Spare Service }
+    { 37  ;   ;Beachte Startdatum  ;Boolean       ;Description=10.01.17 ST - Setzt die autom. Anpassung der Laufzeit ausser Kraft }
+    { 100 ;   ;Gruppierung         ;Text50        ;Description=22.11.11 ST - Sorgt fr eine bessere, chronologische Sortierung und Buchung der Service Artikel }
+  }
+  KEYS
+  {
+    {    ;Art,Nr.,Zeilennr.,Belegnr.,Belegzeilennr.;
+                                                   Clustered=Yes }
+    {    ;Art,Nr.,Zeilennr.,Gruppierung            }
+  }
+  FIELDGROUPS
+  {
+  }
+  CODE
+  {
+    VAR
+      Artikel@1140000 : Record 27;
+      Text000@1140001 : TextConst 'DEU=Bitte hinterlegen Sie fr Artikelnr. %1 eine Serviceklassifizierung im Artikelstamm.';
+      Text001@1140003 : TextConst 'DEU=Es konnte ein fremderwerborbenes System bereits in einer anderen Kalkulation dieses Beleges, in Zeilennr. %1 fr Artikelnr. %2, gefunden werden.\Wenn es sich um das identische System handelt drcken Sie auf Ja und bernehmen die Belegnr. %3, ansonsten drcken Sie auf Nein, um eine neue Fremerwerbs Belegnr. generieren zu k”nnen.';
+      Text002@1140002 : TextConst 'DEU=Das %1 liegt in der Vergangenheit, wollen Sie den Vorgang wirklich fortsetzen?';
+      Text003@1140004 : TextConst 'DEU=Das %1 ist nicht korrekt.';
+      Text004@1140005 : TextConst 'DEU=Die %1 %2, %3 %4 ist bereits fr %5 ''%6'' in der Beleg Kalkulation %7 Zeile %8 vorgemerkt (entspricht also nicht %9). Unterschiedliche Artikelnummern fr ein und denselben Pseudo Beleg sind nicht m”glich.';
+      ServiceRelaDoc@1140006 : Record 50027;
+      Text005@1140007 : TextConst 'DEU=Fr erweiterte Hardware Garantie nicht sinnvoll (wird auf das Ende der regul„ren Hardware Garantie drauf gerechnet) und deshalb nicht m”glich.';
+      ServicePos@1000000000 : Record 50024;
+      Opt@1140009 : Record 50001;
+      Auftrag@1140010 : Record 36;
+      TOPAS_API@1140008 : Codeunit 50001;
+      Text006@1140011 : TextConst 'DEU=Sie sind dabei Ger„te aus dem Auftrag bernehmen.\RE INSTATEMENT FEE ist nicht fr Ger„te vorgesehen, die erst noch geliefert werden sollen!';
+      Text007@1140012 : TextConst 'DEU=Fr Re Instatement Fee Artikel ist das Feld %1 nicht sinnvoll. Bitte benutzen Sie das Feld %2.';
+      Text008@1140014 : TextConst 'DEU=Service Quotes sind nur h”chstens fr 1 Jahr Laufzeit zul„ssig.';
+      Text009@1140013 : TextConst 'DEU=Eine %1 ist nur fr ACTS, APSS OneBox und ManagedSpare Services gestattet.';
+      Text010@1140015 : TextConst 'DEU=M”chten Sie alle Positionen dieser Kalkulation umstellen?';
+
+    PROCEDURE PseudoBelegNrErmitteln@1140014(auftragsnr@1140003 : Code[20];auzeilennr@1140004 : Integer) : Code[20];
+    VAR
+      PrfeServRelaDoc@1140001 : Record 50027;
+      belegnr@1140009 : Code[20];
+      NoSeriesMgt@1140008 : Codeunit 396;
+      laufende_nummer@1140007 : Code[20];
+      eingabe@1140006 : Code[10];
+      ok@1140005 : Boolean;
+    BEGIN
+      PrfeServRelaDoc.RESET;
+      PrfeServRelaDoc.SETRANGE(Art,PrfeServRelaDoc.Art::"SUP-AU");
+      PrfeServRelaDoc.SETRANGE("Nr.",auftragsnr);
+      PrfeServRelaDoc.SETRANGE("Zeilennr.",auzeilennr);
+      PrfeServRelaDoc.SETRANGE(Fremderwerb,TRUE);
+      IF PrfeServRelaDoc.FINDFIRST THEN
+        BEGIN
+          EXIT(PrfeServRelaDoc."Belegnr.");
+        END
+      ELSE
+        BEGIN
+          // Prfe, ob im Beleg eine andere Kalkulation mit Pseudo Belegnr. besteht und wenn ja biete diese an
+          PrfeServRelaDoc.RESET;
+          PrfeServRelaDoc.SETRANGE(Art,PrfeServRelaDoc.Art::"SUP-AU");
+          PrfeServRelaDoc.SETRANGE("Nr.",auftragsnr);
+          //PrfeServRelaDoc.SETRANGE(Basisger„t,TRUE);
+          PrfeServRelaDoc.SETRANGE(Fremderwerb,TRUE);
+          IF PrfeServRelaDoc.FINDLAST THEN
+            IF CONFIRM(Text001,TRUE,PrfeServRelaDoc."Zeilennr.",PrfeServRelaDoc."SUP Artikelnr.",PrfeServRelaDoc."Belegnr.") THEN
+              EXIT(PrfeServRelaDoc."Belegnr.");
+
+          ok := EVALUATE(eingabe,'TOPAS-PSEU');
+          laufende_nummer:='';
+          NoSeriesMgt.InitSeries(eingabe,eingabe,TODAY,laufende_nummer,eingabe);
+          EXIT('LS_' + laufende_nummer);
+        END;
+    END;
+
+    PROCEDURE PrfeServiceQuote@1140000(Service@1140003 : Code[20];kalk_laufzeit@1140001 : Code[20];kalk_quotenr@1140002 : Code[10]);
+    VAR
+      v_laufzeit@1140000 : Integer;
+    BEGIN
+      //Zun„chst fr AudioCodes Quotes gedacht, gelten grunds„tzlich nur fr Service-Laufzeiten von max. 1 Jahr
+      IF (kalk_quotenr = '') OR (kalk_laufzeit = '') THEN EXIT;
+
+      IF Artikel.GET(Service) THEN
+        IF (Artikel.Artikelgruppe <> 'APSS_OB') AND (Artikel.Artikelgruppe <> 'ACTS') AND (Artikel.Artikelgruppe <> 'ACTS_MSS') THEN
+          ERROR(Text009,FIELDCAPTION("Quotenr."));
+
+      EVALUATE(v_laufzeit,COPYSTR(kalk_laufzeit,1,STRPOS(kalk_laufzeit,'M')-1));
+      IF (kalk_quotenr <> '') AND (v_laufzeit > 12) THEN
+        ERROR(Text008);
+    END;
+
+    PROCEDURE Gruppieren@1140007(Belegnr@1140000 : Code[20];Belegzeile@1140002 : Integer;Basisger„t@1140001 : Boolean) : Text[50];
+    VAR
+      Artikel@1140005 : Record 27;
+      Teil_string_a@1140003 : Code[5];
+      Teil_string_b@1140006 : Code[30];
+      zusatz_belegzeile@1140004 : Code[10];
+    BEGIN
+      IF (Belegnr = '') OR (Belegzeile = 0) THEN
+        EXIT;
+
+      IF Basisger„t = TRUE THEN
+        Teil_string_a := 'B_'
+      ELSE
+        Teil_string_a := 'M_';
+
+      //Damit 6 stellige Zeilennr. auch nach unten sortiert werden
+      zusatz_belegzeile := '';
+      IF STRLEN(FORMAT(Belegzeile)) >=6 THEN
+        zusatz_belegzeile := '6ST_';
+
+      IF (STRPOS(Belegnr,'AU') <> 0) OR (STRPOS(Belegnr,'PSEU') <> 0) THEN
+        //Ein X_ damit Auftrags- oder Pseudo Positionen nach unten sortiert werden
+        Teil_string_b := 'X_' + zusatz_belegzeile + Belegnr + '_' + FORMAT(Belegzeile)
+      ELSE
+        Teil_string_b := zusatz_belegzeile + Belegnr + '_' + FORMAT(Belegzeile);
+
+      EXIT(Teil_string_a + Teil_string_b);
+    END;
+
+    PROCEDURE UpdateLaufzeitabBuchungsdatum@1140002(VAR FromServiceRelaDoc@1140000 : Record 50027) : Boolean;
+    VAR
+      UpdateServiceRelaDoc@1140001 : Record 50027;
+    BEGIN
+      IF (FromServiceRelaDoc.HASFILTER) AND (FromServiceRelaDoc."Laufzeit ab Buchungsdatum" = TRUE) THEN BEGIN
+        IF CONFIRM(Text010,TRUE) = TRUE THEN BEGIN
+          UpdateServiceRelaDoc.RESET;
+          UpdateServiceRelaDoc.SETRANGE(Art,FromServiceRelaDoc.Art);
+          UpdateServiceRelaDoc.SETRANGE("Nr.",FromServiceRelaDoc."Nr.");
+          UpdateServiceRelaDoc.SETRANGE("Zeilennr.",FromServiceRelaDoc."Zeilennr.");
+          IF UpdateServiceRelaDoc.FIND('-') THEN BEGIN
+            UpdateServiceRelaDoc.MODIFYALL("Laufzeit ab Buchungsdatum",TRUE);
+            EXIT(TRUE);
+          END;
+        END;
+      END;
+    END;
+
+    PROCEDURE UpdateBeachteStartdatum@1140003(VAR FromServiceRelaDoc@1140000 : Record 50027) : Boolean;
+    VAR
+      UpdateServiceRelaDoc@1140001 : Record 50027;
+    BEGIN
+      IF (FromServiceRelaDoc.HASFILTER) AND (FromServiceRelaDoc."Beachte Startdatum" = TRUE) THEN BEGIN
+        IF CONFIRM(Text010,TRUE) = TRUE THEN BEGIN
+          UpdateServiceRelaDoc.RESET;
+          UpdateServiceRelaDoc.SETRANGE(Art,FromServiceRelaDoc.Art);
+          UpdateServiceRelaDoc.SETRANGE("Nr.",FromServiceRelaDoc."Nr.");
+          UpdateServiceRelaDoc.SETRANGE("Zeilennr.",FromServiceRelaDoc."Zeilennr.");
+          IF UpdateServiceRelaDoc.FIND('-') THEN BEGIN
+            UpdateServiceRelaDoc.MODIFYALL("Beachte Startdatum",TRUE);
+            EXIT(TRUE);
+          END;
+        END;
+      END;
+    END;
+
+    PROCEDURE Ablaufdatum_generieren@1140020(SUPArtikelnr@1140003 : Code[20];Wartungsnr@1140004 : Code[20]) : Date;
+    VAR
+      PrfeServiceTab@1140002 : Record 50024;
+      Ermittle_Servicegruppe@1140001 : Record 50001;
+      Artikel_Servicegruppe@1140000 : Record 50001;
+    BEGIN
+      Ermittle_Servicegruppe.RESET;
+      Ermittle_Servicegruppe.SETFILTER("Tabellen ID",'%1',50024);
+      Ermittle_Servicegruppe.SETFILTER("Feld ID",'%1',44);
+      Ermittle_Servicegruppe.SETFILTER("Nr.",'%1',SUPArtikelnr);
+      IF Ermittle_Servicegruppe.FINDFIRST THEN
+        BEGIN
+          PrfeServiceTab.RESET;
+          PrfeServiceTab.SETFILTER(Art,'%1',PrfeServiceTab.Art::Service);
+          PrfeServiceTab.SETFILTER("Ablaufdatum Serviceleistung",'>%1',WORKDATE);
+          PrfeServiceTab.SETFILTER("Wartungsvertragsnr.",'%1',Wartungsnr);
+          //PrfeServiceTab.SETFILTER("Zu exportieren",'%1',TRUE);
+          PrfeServiceTab.SETFILTER(Basisger„t,'%1',TRUE);
+          PrfeServiceTab.SETFILTER(Inaktiv,'%1',FALSE);
+          PrfeServiceTab.ASCENDING(FALSE);
+          IF PrfeServiceTab.FINDFIRST THEN
+            REPEAT
+              Artikel_Servicegruppe.RESET;
+              Artikel_Servicegruppe.SETFILTER("Tabellen ID",'%1',50024);
+              Artikel_Servicegruppe.SETFILTER("Feld ID",'%1',44);
+              Artikel_Servicegruppe.SETFILTER("Nr.",'%1',PrfeServiceTab."SUP Artikelnr.");
+              IF (Artikel_Servicegruppe.FINDFIRST) AND (Artikel_Servicegruppe."Einordnung Servicegruppe" =
+              Ermittle_Servicegruppe."Einordnung Servicegruppe") THEN
+                BEGIN
+                  EXIT(PrfeServiceTab."Ablaufdatum Serviceleistung");
+                END;
+          UNTIL PrfeServiceTab.NEXT = 0;
+        END;
+
+      EXIT(0D);
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
