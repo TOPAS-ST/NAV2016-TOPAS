@@ -2,8 +2,8 @@ OBJECT Table 50024 Serviceleist. & Leihstellungen
 {
   OBJECT-PROPERTIES
   {
-    Date=18.12.17;
-    Time=17:27:14;
+    Date=21.12.17;
+    Time=12:14:55;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -512,6 +512,7 @@ OBJECT Table 50024 Serviceleist. & Leihstellungen
     {    ;Gruppierung,Nr.,Belegzeilennr.           }
     {    ;Art,Leihstellung zurck,Artikelnr.      ;SumIndexFields=Menge }
     {    ;Wartungsvertragsnr.,Nr.,Belegzeilennr.   }
+    {    ;Ablaufdatum Serviceleistung,SUP Artikelnr.,Gruppierung }
   }
   FIELDGROUPS
   {
@@ -2616,8 +2617,8 @@ OBJECT Table 50024 Serviceleist. & Leihstellungen
 
     PROCEDURE PrfeLizenzVerl„ngerung@1140006("Service Artikelnr"@1140005 : Code[20];Lieferscheinnr@1140002 : Code[20];Lieferscheinzeilennr@1140001 : Integer;Seriennr@1140000 : Code[20];Debnr@1140004 : Code[20];Pseudo@1140007 : Boolean;Laufzeit@1140011 : Code[20];Ausgabedatum@1140013 : 'Lizenzdatum,Ablaufdatum';Wartungsnr@1140014 : Code[20]) : Date;
     VAR
-      PrfeLizenzTab@1140003 : Record 50024;
-      TempSystemTab@1140012 : Record 50024;
+      PruefeService@1140003 : Record 50024;
+      TempSystem@1140012 : Record 50024;
       Ermittle_Servicegruppe@1140008 : Record 50001;
       Verbundene_Servicegruppe@1140009 : Record 50001;
       Artikel_Servicegruppe@1140010 : Record 50001;
@@ -2645,74 +2646,77 @@ OBJECT Table 50024 Serviceleist. & Leihstellungen
         Verbundene_Servicegruppe.SETFILTER("Einordnung Servicegruppe",'%1',Ermittle_Servicegruppe."Einordnung Servicegruppe");
         Verbundene_Servicegruppe.FINDFIRST;
           REPEAT
-            PrfeLizenzTab.RESET;
-            PrfeLizenzTab.SETFILTER(Art,'%1',PrfeLizenzTab.Art::Service);
-            PrfeLizenzTab.SETFILTER("Ablaufdatum Serviceleistung",'<>%1',0D);
-            //PrfeLizenzTab.SETFILTER("Ablaufdatum Serviceleistung",'>%1',WORKDATE);
-            PrfeLizenzTab.SETFILTER("Urspr. Lieferscheinnr.",'%1',Lieferscheinnr);
-            PrfeLizenzTab.SETFILTER("Urspr. Lieferscheinzeilennr.",'%1',Lieferscheinzeilennr);
-            PrfeLizenzTab.SETFILTER("Seriennr.",'%1',Seriennr);
-            PrfeLizenzTab.SETFILTER(Inaktiv,'%1',FALSE);
-            PrfeLizenzTab.ASCENDING(FALSE);
-            IF PrfeLizenzTab.FINDFIRST THEN
+            PruefeService.RESET;
+            PruefeService.SETCURRENTKEY("Ablaufdatum Serviceleistung","SUP Artikelnr.",Gruppierung);
+            PruefeService.SETFILTER(Art,'%1',PruefeService.Art::Service);
+            PruefeService.SETFILTER("Ablaufdatum Serviceleistung",'<>%1',0D);
+            //PruefeService.SETFILTER("Ablaufdatum Serviceleistung",'>%1',WORKDATE);
+            PruefeService.SETFILTER("Urspr. Lieferscheinnr.",'%1',Lieferscheinnr);
+            PruefeService.SETFILTER("Urspr. Lieferscheinzeilennr.",'%1',Lieferscheinzeilennr);
+            PruefeService.SETFILTER("Seriennr.",'%1',Seriennr);
+            PruefeService.SETFILTER(Inaktiv,'%1',FALSE);
+            PruefeService.ASCENDING(FALSE);
+            IF PruefeService.FINDFIRST THEN
               REPEAT
                 Artikel_Servicegruppe.RESET;
                 Artikel_Servicegruppe.SETFILTER("Tabellen ID",'%1',50024);
                 Artikel_Servicegruppe.SETFILTER("Feld ID",'%1',44);
-                Artikel_Servicegruppe.SETFILTER("Nr.",'%1',PrfeLizenzTab."SUP Artikelnr.");
+                Artikel_Servicegruppe.SETFILTER("Nr.",'%1',PruefeService."SUP Artikelnr.");
                 IF (Artikel_Servicegruppe.FINDFIRST) AND (Artikel_Servicegruppe."Einordnung Servicegruppe" =
                 Ermittle_Servicegruppe."Einordnung Servicegruppe") THEN
                   IF Ausgabedatum = Ausgabedatum::Lizenzdatum THEN
-                    EXIT(PrfeLizenzTab."Ablaufdatum Serviceleistung")
-              UNTIL PrfeLizenzTab.NEXT = 0
+                    EXIT(PruefeService."Ablaufdatum Serviceleistung")
+              UNTIL PruefeService.NEXT = 0
           UNTIL Verbundene_Servicegruppe.NEXT = 0;
 
           //Nachtr„gliches Modul hinzu, das bisher noch nicht in Wartung steht, umweg ber Systemposition
-          TempSystemTab.RESET;
-          TempSystemTab.SETFILTER(Art,'%1',TempSystemTab.Art::System);
-          TempSystemTab.SETFILTER("Nr.",'%1',Lieferscheinnr);
-          TempSystemTab.SETFILTER("Belegzeilennr.",'%1',Lieferscheinzeilennr);
-          TempSystemTab.SETFILTER("Seriennr.",'%1',Seriennr);
-          TempSystemTab.SETFILTER(Basisger„t,'%1',FALSE);
-          TempSystemTab.SETFILTER(Inaktiv,'%1',FALSE);
-          IF TempSystemTab.FINDLAST THEN BEGIN
-            PrfeLizenzTab.RESET;
-            PrfeLizenzTab.SETFILTER(Art,'%1',PrfeLizenzTab.Art::Service);
-            PrfeLizenzTab.SETFILTER("Ablaufdatum Serviceleistung",'>%1',WORKDATE);
-            PrfeLizenzTab.SETFILTER("Wartungsvertragsnr.",'%1',TempSystemTab."Wartungsvertragsnr.");
-            //PrfeLizenzTab.SETFILTER("Zu exportieren",'%1',TRUE);
-            PrfeLizenzTab.SETFILTER(Basisger„t,'%1',TRUE);
-            PrfeLizenzTab.SETFILTER(Inaktiv,'%1',FALSE);
-            PrfeLizenzTab.ASCENDING(FALSE);
-            IF PrfeLizenzTab.FINDFIRST THEN
+          TempSystem.RESET;
+          TempSystem.SETFILTER(Art,'%1',TempSystem.Art::System);
+          TempSystem.SETFILTER("Nr.",'%1',Lieferscheinnr);
+          TempSystem.SETFILTER("Belegzeilennr.",'%1',Lieferscheinzeilennr);
+          TempSystem.SETFILTER("Seriennr.",'%1',Seriennr);
+          TempSystem.SETFILTER(Basisger„t,'%1',FALSE);
+          TempSystem.SETFILTER(Inaktiv,'%1',FALSE);
+          IF TempSystem.FINDLAST THEN BEGIN
+            PruefeService.RESET;
+            PruefeService.SETCURRENTKEY("Ablaufdatum Serviceleistung","SUP Artikelnr.",Gruppierung);
+            PruefeService.SETFILTER(Art,'%1',PruefeService.Art::Service);
+            PruefeService.SETFILTER("Ablaufdatum Serviceleistung",'>%1',WORKDATE);
+            PruefeService.SETFILTER("Wartungsvertragsnr.",'%1',TempSystem."Wartungsvertragsnr.");
+            //PruefeService.SETFILTER("Zu exportieren",'%1',TRUE);
+            PruefeService.SETFILTER(Basisger„t,'%1',TRUE);
+            PruefeService.SETFILTER(Inaktiv,'%1',FALSE);
+            PruefeService.ASCENDING(FALSE);
+            IF PruefeService.FINDFIRST THEN
               REPEAT
                 Artikel_Servicegruppe.RESET;
                 Artikel_Servicegruppe.SETFILTER("Tabellen ID",'%1',50024);
                 Artikel_Servicegruppe.SETFILTER("Feld ID",'%1',44);
-                Artikel_Servicegruppe.SETFILTER("Nr.",'%1',PrfeLizenzTab."SUP Artikelnr.");
+                Artikel_Servicegruppe.SETFILTER("Nr.",'%1',PruefeService."SUP Artikelnr.");
                 IF (Artikel_Servicegruppe.FINDFIRST) AND (Artikel_Servicegruppe."Einordnung Servicegruppe" =
                   Ermittle_Servicegruppe."Einordnung Servicegruppe") THEN BEGIN
                   IF (Laufzeit <> '') AND (STRPOS(Laufzeit,'M') <> 0) THEN
                     //Muss hier runtergerechnet werden, da anschlieáend wieder drauf gerechnet wird
                     IF Ausgabedatum = Ausgabedatum::Lizenzdatum THEN
-                      EXIT(CALCDATE('-1T',CALCDATE('-'+PrfeLizenzTab."Dauer Serviceleistung",PrfeLizenzTab."Ablaufdatum Serviceleistung")))
+                      EXIT(CALCDATE('-1T',CALCDATE('-' + PruefeService."Dauer Serviceleistung",PruefeService."Ablaufdatum Serviceleistung")))
                     ELSE
-                      EXIT(PrfeLizenzTab."Ablaufdatum Serviceleistung");
+                      EXIT(PruefeService."Ablaufdatum Serviceleistung");
                 END;
-              UNTIL PrfeLizenzTab.NEXT = 0;
+              UNTIL PruefeService.NEXT = 0;
           END;
       END ELSE BEGIN
       //Nur die gleiche Service Artikelnr kann verl„ngert werden Bsp. EXT-HW
-        PrfeLizenzTab.RESET;
-        PrfeLizenzTab.SETFILTER(Art,'%1',PrfeLizenzTab.Art::Service);
-        PrfeLizenzTab.SETFILTER("SUP Artikelnr.",'%1',"Service Artikelnr");
-        PrfeLizenzTab.SETFILTER("Ablaufdatum Serviceleistung",'<>%1',0D);
-        PrfeLizenzTab.SETFILTER("Urspr. Lieferscheinnr.",'%1',Lieferscheinnr);
-        PrfeLizenzTab.SETFILTER("Urspr. Lieferscheinzeilennr.",'%1',Lieferscheinzeilennr);
-        PrfeLizenzTab.SETFILTER("Seriennr.",'%1',Seriennr);
-        PrfeLizenzTab.SETFILTER(Inaktiv,'%1',FALSE);
-        IF PrfeLizenzTab.FINDLAST THEN BEGIN
-          EXIT(PrfeLizenzTab."Ablaufdatum Serviceleistung")
+        PruefeService.RESET;
+        PruefeService.SETCURRENTKEY("Ablaufdatum Serviceleistung","SUP Artikelnr.",Gruppierung);
+        PruefeService.SETFILTER(Art,'%1',PruefeService.Art::Service);
+        PruefeService.SETFILTER("SUP Artikelnr.",'%1',"Service Artikelnr");
+        PruefeService.SETFILTER("Ablaufdatum Serviceleistung",'<>%1',0D);
+        PruefeService.SETFILTER("Urspr. Lieferscheinnr.",'%1',Lieferscheinnr);
+        PruefeService.SETFILTER("Urspr. Lieferscheinzeilennr.",'%1',Lieferscheinzeilennr);
+        PruefeService.SETFILTER("Seriennr.",'%1',Seriennr);
+        PruefeService.SETFILTER(Inaktiv,'%1',FALSE);
+        IF PruefeService.FINDLAST THEN BEGIN
+          EXIT(PruefeService."Ablaufdatum Serviceleistung")
         END ELSE
           EXIT(0D);
       END;
