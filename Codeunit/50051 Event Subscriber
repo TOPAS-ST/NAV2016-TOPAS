@@ -1,0 +1,112 @@
+OBJECT Codeunit 50051 Event Subscriber
+{
+  OBJECT-PROPERTIES
+  {
+    Date=03.01.18;
+    Time=17:40:29;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    OnRun=BEGIN
+          END;
+
+  }
+  CODE
+  {
+    VAR
+      ArchSalesLine@1000000001 : Record 5108;
+      Kalkulation@1000000000 : Record 50027;
+      Text37_1@1000000004 : TextConst 'DEU=Warnung !!\Die aktuelle Marge von %1 Prozent unterschreitet den Wert von %2 Prozent!';
+      Text37_2@1000000003 : TextConst 'DEU=Es konnte eine Kalkulation zu diesem Artikel und dieser Belegzeile gefunden werden. Sie wurde gel”scht.';
+      Text37_3@1000000002 : TextConst 'DEU=Diese Position wird in der Champ Kalkulation in Zeile %1 verwendet. Bitte korrigieren Sie die Champ Kalkulation manuell.';
+      Packkontrolle@1000000005 : Record 50038;
+      Service@1000000006 : Record 50024;
+      ApplicationManagement@1000000007 : Codeunit 1;
+
+    [EventSubscriber(Table,37,OnAfterModifyEvent)]
+    LOCAL PROCEDURE CheckSalesLineModify@1000000000(VAR Rec@1000000000 : Record 37;VAR xRec@1000000001 : Record 37;RunTrigger@1000000002 : Boolean);
+    BEGIN
+      //Margen Warnung im Beleg
+      IF (Rec.Type = Rec.Type::Item) AND (Rec."Unit Price" <> 0) AND (xRec."Profit %" <> Rec."Profit %") AND (Rec."Location Code" = 'ZENT') THEN
+        IF (Rec."Profit %" < 8) AND (Rec."Manufacturer Code" = '69') THEN
+          MESSAGE(Text37_1,ROUND(Rec."Profit %"),8)
+        ELSE
+          IF (Rec."Profit %" < 10) AND (Rec."Manufacturer Code" <> '69') THEN
+            MESSAGE(Text37_1,ROUND(Rec."Profit %"),10);
+
+      //berprft verbundene Kalkulationen und l”scht diese ggf.
+      IF Rec."No." <> xRec."No." THEN BEGIN
+        ArchSalesLine.RESET;
+        ArchSalesLine.SETRANGE("Document No.",Rec."Document No.");
+        ArchSalesLine.SETRANGE("Line No.",Rec."Line No.");
+        IF NOT ArchSalesLine.FINDFIRST THEN BEGIN
+          Kalkulation.RESET;
+          Kalkulation.SETRANGE("Nr.",Rec."Document No.");
+          Kalkulation.SETRANGE("Zeilennr.",Rec."Line No.");
+          IF Kalkulation.FINDFIRST THEN BEGIN
+            IF (Rec."Quantity Shipped" = 0) THEN BEGIN
+                Kalkulation.DELETEALL(TRUE);
+                MESSAGE(Text37_2);
+              END;
+          END;
+          //Position wird auf Vorhandensein in einer Kalkulation hin berprft
+          Kalkulation.RESET;
+          Kalkulation.SETRANGE("Belegnr.",Rec."Document No.");
+          Kalkulation.SETRANGE("Belegzeilennr.",Rec."Line No.");
+          IF (Kalkulation.FINDFIRST) AND (Rec.Type = Rec.Type::Item) THEN
+            MESSAGE(Text37_3,Kalkulation."Zeilennr.");
+        END;
+      END;
+    END;
+
+    [EventSubscriber(Codeunit,80,OnAfterPostBeforeCommitSalesDoc)]
+    LOCAL PROCEDURE CheckSalesHeaderPost@1000000001(VAR SalesHeader@1000000000 : Record 36;VAR GenJnlPostLine@1000000001 : Codeunit 12;SalesShptHdrNo@1000000002 : Code[20];RetRcpHdrNo@1000000003 : Code[20];SalesInvHdrNo@1000000004 : Code[20];SalesCrMemoHdrNo@1000000005 : Code[20]);
+    VAR
+      SalesLine@1000000006 : Record 37;
+    BEGIN
+      IF SalesShptHdrNo <> '' THEN BEGIN
+        //Packkontrolle wird gefllt
+        Packkontrolle.HolePackDaten(SalesHeader."No.");
+        //Erstellung der Servicevertr„ge und Positionen
+        Service.CreateSystemFromSalesHeader(SalesShptHdrNo,FALSE);
+        Service.CreateServiceFromSalesHeader(SalesShptHdrNo,FALSE);
+      END;
+    END;
+
+    [EventSubscriber(Table,36,OnCheckSalesPostRestrictions)]
+    PROCEDURE CheckSalesHeaderBeforePost@1000000003(VAR Sender@1000000000 : Record 36);
+    BEGIN
+    END;
+
+    PROCEDURE CheckSalesLineZugeLieferdatum@1000000002(VAR Rec@1000000000 : Record 37;VAR xRec@1000000001 : Record 37);
+    VAR
+      PartOfText@1000000006 : Text[250];
+      Length@1000000002 : Integer;
+      UnconfirmedText@1000000005 : TextConst '@@@=Must be uppercase;DEU=UNBESTŽTIGT;ENU=UNCONFIRMED';
+      ASAPText@1000000004 : TextConst '@@@=Must be uppercase;DEU=ASAP;ENU=ASAP';
+      OnDemandText@1000000003 : TextConst '@@@=Must be uppercase;DEU=ABRUF;ENU=ONDEMAND';
+    BEGIN
+      //Test Validierung eines Datumsfeldes ber Subscriber Funktion an die OnBeforeValidateEvent und
+      //Feld "Promised Delivery Date" der Tab 37 gehangen - leider ohne Erfolg, deshalb wieder deaktiviert
+      {
+      WITH Rec DO BEGIN
+        PartOfText := FORMAT("Promised Delivery Date");
+        CASE PartOfText OF
+          COPYSTR('UNCONFIRMED',1,STRLEN(PartOfText)),COPYSTR(UnconfirmedText,1,STRLEN(PartOfText)):
+            Rec."Promised Delivery Date" := 31122055D;
+          COPYSTR('ASAP',1,STRLEN(PartOfText)),COPYSTR(ASAPText,1,STRLEN(PartOfText)):
+            Rec."Promised Delivery Date" := 31122054D;
+          COPYSTR('ONDEMAND',1,STRLEN(PartOfText)),COPYSTR(OnDemandText,1,STRLEN(PartOfText)):
+            Rec."Promised Delivery Date" := 31122053D;
+        END;
+      END;
+      }
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
