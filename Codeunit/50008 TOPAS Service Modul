@@ -2,8 +2,8 @@ OBJECT Codeunit 50008 TOPAS Service Modul
 {
   OBJECT-PROPERTIES
   {
-    Date=21.11.17;
-    Time=16:24:46;
+    Date=03.01.18;
+    Time=12:47:56;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -16,6 +16,7 @@ OBJECT Codeunit 50008 TOPAS Service Modul
   CODE
   {
     VAR
+      Text50022@1000000020 : TextConst 'DEU=Diese Funktion ist nur bei Service- (SUP) oder Splicecom System Artikeln erlaubt.';
       Text51000@1000000011 : TextConst 'DEU=Systemvertrag %1 angelegt.';
       Text51001@1000000010 : TextConst 'DEU=ACHTUNG!\\Fr Artikelnr. %1, Zeilennr. %2 konnte kein alleinstehendes ACS Basisger„t oder ein verbundener Serviceartikel im Auftrag gefunden werden. Bitte w„hlen Sie dazu in der folgenden šbersicht einen entsprechenden System- bzw. Wartungsvertrag aus. Wenn Sie sich nicht sicher sind drcken Sie im Anschluss auf Abbrechen, der Vorgang kann ber den Lieferschein erneut ausgefhrt werden.\\Hilfestellung %3: %4';
       Text51002@1000000009 : TextConst 'DEU=Systemvertragserstellung fr Artikelnr. %1, Zeilennr. %2 auf Wunsch abgebrochen.';
@@ -34,7 +35,7 @@ OBJECT Codeunit 50008 TOPAS Service Modul
       Text52003@1000000015 : TextConst 'DEU=Es konnte kein Service Preis errechnet werden.';
       Text52004@1000000016 : TextConst 'DEU=Bitte hinterlegen Sie einen Prozentsatz fr Artikel %1 in der Optionstabelle (Feld Lfd.-Nr.), damit der Upgrade-Preis auf Grundlage des MSRP''s vom Ger„t %2 ermittelt werden kann.';
       Text52005@1000000017 : TextConst 'DEU=Bitte hinterlegen Sie die Laufzeit fr Artikel %1 in der Optionstabelle (Feld Code), damit der Service-Preis fr Artikel %2 richtig ermittelt werden kann.';
-      Text52006@1000000018 : TextConst 'DEU=Bitte hinterlegen Sie den MSRP-Preis als Vk-Preis im Artikel %1, damit der Vk-Preis fr die %2 automatisch berechnet werden kann. Vergewissern Sie sich auch, dass das Arbeitsdatum innerhalb des Start- und Enddatums des Vk-Preises liegt.';
+      Text52006@1000000018 : TextConst 'DEU=Bitte hinterlegen Sie den MSRP-Preis als Vk-Preis im Artikel %1, damit der Vk-Preis fr die %2 automatisch berechnet werden kann. Vergewissern Sie sich auch, dass das Arbeitsdatum innerhalb des Start- und Enddatums des Vk-Preises liegt.\Oder setzen Sie den Haken "%3" im Artikel.';
       Text52007@1000000019 : TextConst 'DEU=Bitte hinterlegen Sie fr Artikel %1 in der Service Preistabelle sowohl den ACTS Euro und/oder den ACTS USD MSRP.';
 
     PROCEDURE CreateSystemFromShipHeader@1140001(ShipNo@1000000001 : Code[20]);
@@ -1171,7 +1172,7 @@ OBJECT Codeunit 50008 TOPAS Service Modul
         Service_PL.RESET;
         Service_PL.SETFILTER("Zuordnung obsolete",'%1',FALSE);
         IF (ACTS = TRUE) OR (ACTS_AHR = TRUE) OR (ACHAT = TRUE) OR (ACTS_MSS = TRUE)
-        OR (ACTS_SCHAEFFLER = TRUE) OR (APSS_OB = TRUE) OR (ACTS_MSS_SCHAEFFLER = TRUE) THEN
+        OR (ACTS_SCHAEFFLER = TRUE) OR (ACTS_MSS_SCHAEFFLER = TRUE) THEN
           Service_PL.SETFILTER(Art,'%1',Service_PL.Art::ACTS)
         ELSE
           Service_PL.SETFILTER(Art,'%1',Service_PL.Art::Champs);
@@ -1479,7 +1480,7 @@ OBJECT Codeunit 50008 TOPAS Service Modul
               ERROR(Text52005,"SUP Artikelnr","Basis Artikelnr");
           END ELSE
             IF Item."Kein VK notwendig" = FALSE THEN
-              ERROR(Text52006,"Basis Artikelnr",Item.FIELDCAPTION("Software Upgrade Protection"));
+              ERROR(Text52006,"Basis Artikelnr",Item.FIELDCAPTION("Software Upgrade Protection"),Item.FIELDCAPTION("Kein VK notwendig"));
       END;
     END;
 
@@ -1591,7 +1592,7 @@ OBJECT Codeunit 50008 TOPAS Service Modul
           SETRANGE("SUP Artikelnr.",SUP_Artikelnr);
           SETRANGE(W„hrungscode,W„h);
           SETRANGE(Art,Art::ACTS);
-          IF (CHAMPS_PARTNER = TRUE) OR (RE_INSTATEMENT_FEE = TRUE) THEN
+          IF (CHAMPS_PARTNER = TRUE) OR (RE_INSTATEMENT_FEE = TRUE) OR (APSS_OB = TRUE) THEN
             SETRANGE(Art,Art::Champs);
           SETRANGE("Zuordnung obsolete",FALSE);
           IF FINDFIRST THEN BEGIN
@@ -1601,6 +1602,49 @@ OBJECT Codeunit 50008 TOPAS Service Modul
           END ELSE
             ERROR(Text52007,Artikelnr);
         END;
+      END;
+    END;
+
+    PROCEDURE OpenCalculationToolFromSalesLine@1140006(SalesLine@1000000000 : Record 37);
+    VAR
+      Item@1000000001 : Record 27;
+      ™ffneLizenzTab@1140002 : Record 50024;
+      LizenzTab@1140001 : Record 50024;
+      CalcRelaDoc@1140003 : Record 50027;
+      OptCode@1140004 : Record 50001;
+      i@1140000 : Integer;
+    BEGIN
+      //***************************************************************************************************
+      //        TOPAS 01.03.11 ST - ™ffnet die Champ Kalkulation fr den ausgew„hlten Champ Artikel
+      //        TOPAS 21.10.13 ST - Anpassung um Splicecom Lizenz Aufstellung
+      //***************************************************************************************************
+      WITH SalesLine DO BEGIN
+
+        TESTFIELD(Type,Type::Item);
+        TESTFIELD("No.");
+        TESTFIELD("Quantity (Base)");
+
+        Item.GET("No.");
+        IF (Item."Software Upgrade Protection" = TRUE) OR (Item."Manufacturer Code" = '82') THEN BEGIN
+          IF Item."Manufacturer Code" = '82' THEN BEGIN
+            OptCode.RESET;
+            OptCode.SETRANGE("Tabellen ID",50027);
+            OptCode.SETRANGE("Feld ID",5);
+            OptCode.SETRANGE(Code,"No.");
+            IF NOT OptCode.FINDFIRST THEN
+              ERROR(Text50022,Item.FIELDCAPTION("Software Upgrade Protection"));
+          END;
+        END ELSE
+          ERROR(Text50022,Item.FIELDCAPTION("Software Upgrade Protection"));
+
+        CalcRelaDoc.RESET;
+        IF Item."Manufacturer Code" = '82' THEN
+          CalcRelaDoc.SETRANGE(Art,CalcRelaDoc.Art::"SPL-AU")
+        ELSE
+          CalcRelaDoc.SETRANGE(Art,CalcRelaDoc.Art::"SUP-AU");
+        CalcRelaDoc.SETRANGE("Nr.","Document No.");
+        CalcRelaDoc.SETRANGE("Zeilennr.","Line No.");
+        PAGE.RUN(50023,CalcRelaDoc);
       END;
     END;
 
