@@ -1,0 +1,703 @@
+OBJECT Page 5098 To-do Card
+{
+  OBJECT-PROPERTIES
+  {
+    Date=31.07.17;
+    Time=09:22:39;
+    Modified=Yes;
+    Version List=NAVW19.00,TOP1.00;
+  }
+  PROPERTIES
+  {
+    CaptionML=[DEU=Aufgabenkarte;
+               ENU=To-do Card];
+    InsertAllowed=No;
+    DeleteAllowed=No;
+    SourceTable=Table5080;
+    PageType=Card;
+    OnInit=BEGIN
+             "Calc. Due Date FromEnable" := TRUE;
+             "Recurring Date IntervalEnable" := TRUE;
+             "Completed ByEnable" := TRUE;
+             "Attendees Accepted No.Enable" := TRUE;
+             "No. of AttendeesEnable" := TRUE;
+             MakePhoneCallEnable := TRUE;
+             AllDayEventEnable := TRUE;
+             LocationEnable := TRUE;
+             DurationEnable := TRUE;
+             EndingTimeEnable := TRUE;
+             StartTimeEnable := TRUE;
+             "Completed ByEditable" := TRUE;
+             "Calc. Due Date FromEditable" := TRUE;
+             RecurringDateIntervalEditable := TRUE;
+             "Contact No.Editable" := TRUE;
+           END;
+
+    OnOpenPage=BEGIN
+                 //TOPAS 02.06.17 ST - Deaktiviert, sonst ist die Maske nur editierbar, wenn man vorher ber Ansicht die Karte ge”ffnet hat
+                 //IF GETFILTER("No.") = '' THEN
+                 //  CurrPage.EDITABLE := FALSE;
+               END;
+
+    OnAfterGetRecord=BEGIN
+                       "Contact Company NameHideValue" := FALSE;
+                       "Contact NameHideValue" := FALSE;
+                       SwitchCardControls;
+                       IF "No." <> "Organizer To-do No." THEN
+                         CurrPage.EDITABLE := FALSE
+                       ELSE
+                         CurrPage.EDITABLE := TRUE;
+                       SetRecurringEditable;
+                       EnableFields;
+                       ContactNoOnFormat(FORMAT("Contact No."));
+                       ContactNameOnFormat;
+                       ContactCompanyNameOnFormat;
+                     END;
+
+    OnModifyRecord=BEGIN
+                     IF ("Team Code" = '') AND ("Salesperson Code" = '') THEN
+                       ERROR(
+                         Text000,TABLECAPTION,FIELDCAPTION("Salesperson Code"),FIELDCAPTION("Team Code"));
+
+                     IF (Type = Type::Meeting) AND (NOT "All Day Event") THEN BEGIN
+                       IF "Start Time" = 0T THEN
+                         ERROR(Text002,TABLECAPTION,Type,FIELDCAPTION("Start Time"));
+                       IF Duration = 0 THEN
+                         ERROR(Text002,TABLECAPTION,Type,FIELDCAPTION(Duration));
+                     END;
+                   END;
+
+    OnQueryClosePage=BEGIN
+                       //TOPAS 02.06.17 ST
+                       IF (Aufgabenart = 'ANGEBOT') OR (Aufgabenart = 'PROJEKT') OR (Aufgabenart = 'ALLGEMEIN') OR (Aufgabenart = 'MUSTER') THEN BEGIN
+                         IF ("Follow Up" = 0D) OR ("Follow Up" <> WORKDATE) THEN BEGIN
+                           Bemerkungen.RESET;
+                           Bemerkungen.SETRANGE("Table Name",Bemerkungen."Table Name"::"To-do");
+                           Bemerkungen.SETRANGE("No.","No.");
+                           Bemerkungen.SETRANGE(Date,WORKDATE);
+                           IF Bemerkungen.FINDFIRST THEN BEGIN
+                             IF CONFIRM(Text50003,TRUE) THEN BEGIN
+                               Todo.GET("No.");
+                               Todo."Follow Up" := WORKDATE;
+                               Todo.MODIFY(TRUE);
+                             END;
+                           END;
+                         END;
+                       END;
+                       //TOPAS Ende
+                     END;
+
+    ActionList=ACTIONS
+    {
+      { 1900000003;0 ;ActionContainer;
+                      ActionContainerType=RelatedInformation }
+      { 29      ;1   ;ActionGroup;
+                      CaptionML=[DEU=Auf&gabe;
+                                 ENU=To-&do];
+                      Image=Task }
+      { 33      ;2   ;Action    ;
+                      CaptionML=[DEU=Be&merkung;
+                                 ENU=Co&mment];
+                      RunObject=Page 5072;
+                      RunPageLink=Table Name=CONST(To-do),
+                                  No.=FIELD(Organizer To-do No.),
+                                  Sub No.=CONST(0);
+                      Image=ViewComments }
+      { 34      ;2   ;Action    ;
+                      ShortCutKey=Ctrl+F7;
+                      CaptionML=[DEU=Aktivit&„tenprotokollposten;
+                                 ENU=Interaction Log E&ntries];
+                      RunObject=Page 5076;
+                      RunPageView=SORTING(To-do No.);
+                      RunPageLink=To-do No.=FIELD(Organizer To-do No.);
+                      Image=InteractionLog }
+      { 69      ;2   ;Action    ;
+                      CaptionML=[DEU=Zurckgestellte &Aktivit„ten;
+                                 ENU=Postponed &Interactions];
+                      RunObject=Page 5082;
+                      RunPageView=SORTING(To-do No.);
+                      RunPageLink=To-do No.=FIELD(Organizer To-do No.);
+                      Image=PostponedInteractions }
+      { 70      ;2   ;Action    ;
+                      CaptionML=[DEU=&Teilnehmerplanung;
+                                 ENU=A&ttendee Scheduling];
+                      Image=ProfileCalender;
+                      OnAction=BEGIN
+                                 IF Type <> Type::Meeting THEN
+                                   ERROR(Text003,FORMAT(Type));
+
+                                 PAGE.RUNMODAL(PAGE::"Attendee Scheduling",Rec);
+                               END;
+                                }
+      { 1000000001;2 ;Action    ;
+                      Name=Musterberwachung;
+                      Image=MovementWorksheet;
+                      OnAction=BEGIN
+                                 //TOPAS 12.05.17 ST  -Aufruf der Musterberwachung
+                                 IF ("Arch. Belegnr." = '') AND ("Belegnr." = '') THEN
+                                   ERROR(Text50001);
+
+                                 Musterberwachung.RESET;
+                                 //Musterberwachung.SETFILTER(Nr,"Arch. Belegnr.");
+                                 //Musterberwachung.SETFILTER(Nr,"Belegnr.");
+                                 Musterberwachung.SETFILTER(Nr,"Musterberwachungsnr.");
+                                 IF Musterberwachung.FINDFIRST THEN
+                                   PAGE.RUN(50031,Musterberwachung)
+                                 ELSE
+                                   ERROR(Text50001);
+                                 //TOPAS Ende
+                               END;
+                                }
+      { 1000000013;2 ;Action    ;
+                      Name=Projekt;
+                      RunObject=Page 50052;
+                      RunPageLink=No.=FIELD(Campaign No.);
+                      Image=Campaign }
+      { 1900000004;0 ;ActionContainer;
+                      ActionContainerType=ActionItems }
+      { 30      ;1   ;ActionGroup;
+                      CaptionML=[DEU=F&unktion;
+                                 ENU=F&unctions];
+                      Image=Action }
+      { 35      ;2   ;Action    ;
+                      CaptionML=[DEU=Aktionen zuordnen;
+                                 ENU=Assign Activities];
+                      Image=Allocate;
+                      OnAction=VAR
+                                 TempToDo@1001 : TEMPORARY Record 5080;
+                               BEGIN
+                                 TempToDo.AssignActivityFromToDo(Rec)
+                               END;
+                                }
+      { 36      ;2   ;Action    ;
+                      CaptionML=[DEU=&Telefonverbindung herstellen;
+                                 ENU=Make &Phone Call];
+                      Image=Calls;
+                      OnAction=VAR
+                                 SegmentLine@1001 : TEMPORARY Record 5077;
+                               BEGIN
+                                 IF "Contact No." = '' THEN BEGIN
+                                   IF (Type = Type::Meeting) AND ("Team Code" = '') THEN
+                                     ERROR(Text005);
+                                   ERROR(Text006);
+                                 END;
+                                 SegmentLine."To-do No." := "No.";
+                                 SegmentLine."Contact No." := "Contact No.";
+                                 SegmentLine."Contact Company No." := "Contact Company No.";
+                                 SegmentLine."Campaign No." := "Campaign No.";
+                                 SegmentLine.CreateCall;
+                               END;
+                                }
+      { 31      ;1   ;Action    ;
+                      CaptionML=[DEU=Aufgabe &erstellen;
+                                 ENU=&Create To-do];
+                      Promoted=Yes;
+                      Image=NewToDo;
+                      PromotedCategory=Process;
+                      OnAction=VAR
+                                 TempToDo@1001 : TEMPORARY Record 5080;
+                               BEGIN
+                                 TempToDo.CreateToDoFromToDo(Rec);
+                               END;
+                                }
+    }
+  }
+  CONTROLS
+  {
+    { 1900000001;0;Container;
+                ContainerType=ContentArea }
+
+    { 1   ;1   ;Group     ;
+                CaptionML=[DEU=Allgemein;
+                           ENU=General] }
+
+    { 2   ;2   ;Field     ;
+                SourceExpr="No." }
+
+    { 1000000002;2;Field  ;
+                SourceExpr=Aufgabenart }
+
+    { 20  ;2   ;Field     ;
+                SourceExpr=Description }
+
+    { 67  ;2   ;Field     ;
+                SourceExpr=Location;
+                Enabled=LocationEnable }
+
+    { 6   ;2   ;Field     ;
+                CaptionML=[DEU=Bearbeiter;
+                           ENU=Salesperson Code];
+                SourceExpr="Salesperson Code";
+                OnValidate=BEGIN
+                             SalespersonCodeOnAfterValidate;
+                           END;
+                            }
+
+    { 4   ;2   ;Field     ;
+                SourceExpr="Team Code";
+                OnValidate=BEGIN
+                             TeamCodeOnAfterValidate;
+                           END;
+                            }
+
+    { 1000000000;2;Field  ;
+                SourceExpr=Ersteller }
+
+    { 1000000003;2;Field  ;
+                SourceExpr="Erstellt am" }
+
+    { 71  ;2   ;Field     ;
+                SourceExpr="No. of Attendees";
+                Enabled="No. of AttendeesEnable";
+                OnDrillDown=BEGIN
+                              MODIFY;
+                              COMMIT;
+                              PAGE.RUNMODAL(PAGE::"Attendee Scheduling",Rec);
+                              GET("No.");
+                              CurrPage.UPDATE;
+                            END;
+                             }
+
+    { 73  ;2   ;Field     ;
+                SourceExpr="Attendees Accepted No.";
+                Enabled="Attendees Accepted No.Enable";
+                OnDrillDown=BEGIN
+                              MODIFY;
+                              COMMIT;
+                              PAGE.RUNMODAL(PAGE::"Attendee Scheduling",Rec);
+                              GET("No.");
+                              CurrPage.UPDATE;
+                            END;
+                             }
+
+    { 10  ;2   ;Field     ;
+                SourceExpr="Contact No.";
+                Editable="Contact No.Editable";
+                OnValidate=BEGIN
+                             ContactNoOnAfterValidate;
+                           END;
+
+                OnLookup=VAR
+                           Todo@1005 : Record 5080;
+                           AttendeesScheduling@1004 : Page 5199;
+                           Cont@1003 : Record 5050;
+                         BEGIN
+                           IF Type = Type::Meeting THEN BEGIN
+                             Todo.SETRANGE("No.","No.");
+                             AttendeesScheduling.SETTABLEVIEW(Todo);
+                             AttendeesScheduling.RUNMODAL;
+                           END ELSE BEGIN
+                             IF Cont.GET("Contact No.") THEN;
+                             IF PAGE.RUNMODAL(0,Cont) = ACTION::LookupOK THEN BEGIN
+                               VALIDATE("Contact No.",Cont."No.");
+                               CurrPage.UPDATE;
+                             END;
+                           END;
+                         END;
+                          }
+
+    { 47  ;2   ;Field     ;
+                SourceExpr="Contact Name";
+                Editable=FALSE;
+                HideValue="Contact NameHideValue" }
+
+    { 49  ;2   ;Field     ;
+                SourceExpr="Contact Company Name";
+                Editable=FALSE;
+                HideValue="Contact Company NameHideValue" }
+
+    { 1000000010;2;Field  ;
+                Name=Campaign No._;
+                SourceExpr="Campaign No.";
+                OnValidate=BEGIN
+                             CampaignNoOnAfterValidate;
+                           END;
+                            }
+
+    { 1000000009;2;Field  ;
+                Name=Campaign Description_;
+                SourceExpr="Campaign Description";
+                Editable=FALSE }
+
+    { 16  ;2   ;Field     ;
+                SourceExpr=Status;
+                OnValidate=BEGIN
+                             //TOPAS 16.06.17 ST - wenn Status Abgeschlossen und Aufgabenart = MUSTER => Hinweis Status in Musterberwachung
+                             IF (Closed = TRUE) AND (Aufgabenart = 'MUSTER') THEN BEGIN
+                               Musterberwachung.RESET;
+                               Musterberwachung.SETFILTER(Aufgabennr,'%1',"No.");
+                               IF Musterberwachung.FINDFIRST THEN BEGIN
+                                 IF NOT CONFIRM(Text50000,TRUE) THEN
+                                   PAGE.RUN(50031,Musterberwachung);
+                               END ELSE
+                                 MESSAGE(Text50001);
+                             END;
+
+                             //Wenn Status Abgeschlossen => Prfung ob Angebot archiviert wurde => Hinweis
+                             IF (Closed = TRUE) AND (Aufgabenart = 'ANGEBOT') AND ("Belegnr." <> '') THEN BEGIN
+                               IF CONFIRM(Text50002,TRUE) THEN BEGIN
+                                 //CurrPage.CLOSE;
+                                 IF SalesHeader.GET(SalesHeader."Document Type"::Quote,"Belegnr.") THEN
+                                   PAGE.RUN(PAGE::"Sales Quote",SalesHeader);
+                               END;
+                             END;
+                             //TOPAS Ende
+                           END;
+                            }
+
+    { 18  ;2   ;Field     ;
+                SourceExpr=Priority }
+
+    { 12  ;2   ;Field     ;
+                SourceExpr=Type;
+                OnValidate=BEGIN
+                             TypeOnAfterValidate;
+                           END;
+                            }
+
+    { 1000000005;2;Field  ;
+                SourceExpr=Linie }
+
+    { 1000000004;2;Field  ;
+                SourceExpr=Linienname }
+
+    { 1000000012;2;Field  ;
+                SourceExpr=Vertragsablauf }
+
+    { 1000000006;2;Field  ;
+                SourceExpr="Belegnr.";
+                Editable="Arch. Belegnr." = '' }
+
+    { 1000000007;2;Field  ;
+                SourceExpr="Arch. Belegnr.";
+                Editable="Belegnr." = '' }
+
+    { 64  ;2   ;Field     ;
+                Name=AllDayEvent;
+                CaptionML=[DEU=Ganzt„giges Ereignis;
+                           ENU=All Day Event];
+                SourceExpr="All Day Event";
+                Enabled=AllDayEventEnable;
+                OnValidate=BEGIN
+                             AllDayEventOnAfterValidate;
+                           END;
+                            }
+
+    { 14  ;2   ;Field     ;
+                Name=Date;
+                SourceExpr=Date }
+
+    { 56  ;2   ;Field     ;
+                Name=StartTime;
+                SourceExpr="Start Time";
+                Enabled=StartTimeEnable }
+
+    { 58  ;2   ;Field     ;
+                Name=Duration;
+                BlankZero=Yes;
+                SourceExpr=Duration;
+                Enabled=DurationEnable }
+
+    { 63  ;2   ;Field     ;
+                Name=EndingDate;
+                CaptionML=[DEU=Enddatum;
+                           ENU=Ending Date];
+                SourceExpr="Ending Date" }
+
+    { 61  ;2   ;Field     ;
+                Name=EndingTime;
+                CaptionML=[DEU=Endzeit;
+                           ENU=Ending Time];
+                SourceExpr="Ending Time";
+                Enabled=EndingTimeEnable }
+
+    { 1000000011;2;Field  ;
+                SourceExpr="Follow Up" }
+
+    { 26  ;2   ;Field     ;
+                SourceExpr=Canceled;
+                OnValidate=BEGIN
+                             SwitchCardControls
+                           END;
+                            }
+
+    { 22  ;2   ;Field     ;
+                SourceExpr=Closed;
+                OnValidate=BEGIN
+                             SwitchCardControls;
+
+                             //TOPAS 16.06.17 ST - wenn Status Abgeschlossen und Aufgabenart = MUSTER => Hinweis Status in Musterberwachung
+                             IF (Closed = TRUE) AND (Aufgabenart = 'MUSTER') THEN BEGIN
+                               Musterberwachung.RESET;
+                               Musterberwachung.SETFILTER(Aufgabennr,'%1',"No.");
+                               IF Musterberwachung.FINDFIRST THEN BEGIN
+                                 IF NOT CONFIRM(Text50000,TRUE) THEN
+                                   PAGE.RUN(50031,Musterberwachung);
+                               END ELSE
+                                 MESSAGE(Text50001);
+                             END;
+
+                             //Wenn Status Abgeschlossen => Prfung ob Angebot archiviert wurde => Hinweis
+                             IF (Closed = TRUE) AND (Aufgabenart = 'ANGEBOT') AND ("Belegnr." <> '') THEN BEGIN
+                               IF CONFIRM(Text50002,TRUE) THEN BEGIN
+                                 //CurrPage.CLOSE;
+                                 IF SalesHeader.GET(SalesHeader."Document Type"::Quote,"Belegnr.") THEN
+                                   PAGE.RUN(PAGE::"Sales Quote",SalesHeader);
+                               END;
+                             END;
+                             //TOPAS Ende
+                           END;
+                            }
+
+    { 24  ;2   ;Field     ;
+                SourceExpr="Date Closed" }
+
+    { 76  ;2   ;Field     ;
+                SourceExpr="Completed By";
+                Enabled="Completed ByEnable";
+                Editable="Completed ByEditable";
+                OnValidate=BEGIN
+                             SwitchCardControls
+                           END;
+                            }
+
+    { 1000000008;2;Field  ;
+                SourceExpr=ISO }
+
+    { 1905354401;1;Group  ;
+                CaptionML=[DEU=Verknpfte Aktivit„ten;
+                           ENU=Related Activities] }
+
+    { 8   ;2   ;Field     ;
+                SourceExpr="Campaign No.";
+                OnValidate=BEGIN
+                             CampaignNoOnAfterValidate;
+                           END;
+                            }
+
+    { 51  ;2   ;Field     ;
+                SourceExpr="Campaign Description";
+                Editable=FALSE }
+
+    { 45  ;2   ;Field     ;
+                SourceExpr="Opportunity No.";
+                OnValidate=BEGIN
+                             OpportunityNoOnAfterValidate;
+                           END;
+                            }
+
+    { 53  ;2   ;Field     ;
+                SourceExpr="Opportunity Description";
+                Editable=FALSE }
+
+    { 1904441601;1;Group  ;
+                CaptionML=[DEU=Wiederkehrend;
+                           ENU=Recurring] }
+
+    { 39  ;2   ;Field     ;
+                SourceExpr=Recurring;
+                OnValidate=BEGIN
+                             RecurringOnPush;
+                           END;
+                            }
+
+    { 41  ;2   ;Field     ;
+                SourceExpr="Recurring Date Interval";
+                Enabled="Recurring Date IntervalEnable";
+                Editable=RecurringDateIntervalEditable }
+
+    { 43  ;2   ;Field     ;
+                SourceExpr="Calc. Due Date From";
+                Enabled="Calc. Due Date FromEnable";
+                Editable="Calc. Due Date FromEditable" }
+
+    { 1900000007;0;Container;
+                ContainerType=FactBoxArea }
+
+    { 1900383207;1;Part   ;
+                Visible=FALSE;
+                PartType=System;
+                SystemPartID=RecordLinks }
+
+    { 1905767507;1;Part   ;
+                Visible=TRUE;
+                PartType=System;
+                SystemPartID=Notes }
+
+  }
+  CODE
+  {
+    VAR
+      Text000@1000 : TextConst 'DEU=Die %1 ist immer entweder dem %2 oder %3 zugewiesen.;ENU=The %1 will always have either the %2 or %3 assigned.';
+      Text002@1002 : TextConst 'DEU=Der %1 vom Typ %2 muss immer die %3 zugeordnet sein.;ENU=The %1 of the %2 type must always have the %3 assigned.';
+      Text003@1005 : TextConst 'DEU=Fr Aufgaben der Art "%1" k”nnen Sie keine Teilnehmer ausw„hlen.;ENU=You cannot select attendees for a to-do of the ''%1'' type.';
+      Text005@1007 : TextConst 'DEU=Fr diese Aufgabe kann nur innerhalb des Teilnehmerplanungsfensters eine Telefonverbindung hergestellt werden.;ENU=The Make Phone Call function for this to-do is available only in the Attendee Scheduling window.';
+      Text006@1008 : TextConst 'DEU=Sie mssen dieser Aufgabe einen Kontakt zuweisen, bevor Sie eine Telefonverbindung herstellen k”nnen.;ENU=You must assign a contact to this to-do before you can use the Make Phone Call function.';
+      Text007@1009 : TextConst 'DEU=(Mehrere);ENU=(Multiple)';
+      "Contact NameHideValue"@19061599 : Boolean INDATASET;
+      "Contact Company NameHideValue"@19040407 : Boolean INDATASET;
+      "Contact No.Editable"@19030566 : Boolean INDATASET;
+      RecurringDateIntervalEditable@19051941 : Boolean INDATASET;
+      "Calc. Due Date FromEditable"@19052355 : Boolean INDATASET;
+      "Completed ByEditable"@19071171 : Boolean INDATASET;
+      StartTimeEnable@19008764 : Boolean INDATASET;
+      EndingTimeEnable@19050392 : Boolean INDATASET;
+      DurationEnable@19035217 : Boolean INDATASET;
+      LocationEnable@19013618 : Boolean INDATASET;
+      AllDayEventEnable@19049519 : Boolean INDATASET;
+      MakePhoneCallEnable@19032886 : Boolean INDATASET;
+      "No. of AttendeesEnable"@19000329 : Boolean INDATASET;
+      "Attendees Accepted No.Enable"@19007606 : Boolean INDATASET;
+      "Completed ByEnable"@19024761 : Boolean INDATASET;
+      "Recurring Date IntervalEnable"@19019953 : Boolean INDATASET;
+      "Calc. Due Date FromEnable"@19036769 : Boolean INDATASET;
+      Text50000@1000000001 : TextConst 'DEU=Haben Sie den Status der Musterberwachung ge„ndert?';
+      Text50001@1000000000 : TextConst 'DEU=Es konnte keine Musterberwachung zu dieser Aufgabe gefunden werden!';
+      Text50002@1000000003 : TextConst 'DEU=Sie haben vergessen das Angebot zu archivieren. M”chten Sie sich jetzt das Angebot anzeigen lassen?';
+      Text50003@1000000002 : TextConst 'DEU=M”chten Sie jetzt das Follow Up Datum mit dem aktuellen Tagesdatum ersetzen?';
+      "***TOPAS_Var***"@1000000004 : Integer;
+      Todo@1000000007 : Record 5080;
+      SalesHeader@1000000008 : Record 36;
+      Musterberwachung@1000000005 : Record 50029;
+      Bemerkungen@1000000006 : Record 5061;
+
+    PROCEDURE SetRecurringEditable@1();
+    BEGIN
+      RecurringDateIntervalEditable := Recurring;
+      "Calc. Due Date FromEditable" := Recurring;
+    END;
+
+    LOCAL PROCEDURE EnableFields@2();
+    BEGIN
+      "Recurring Date IntervalEnable" := Recurring;
+      "Calc. Due Date FromEnable" := Recurring;
+
+      IF NOT Recurring THEN BEGIN
+        EVALUATE("Recurring Date Interval",'');
+        CLEAR("Calc. Due Date From");
+      END;
+
+      IF Type = Type::Meeting THEN BEGIN
+        StartTimeEnable := NOT "All Day Event";
+        EndingTimeEnable := NOT "All Day Event";
+        DurationEnable := NOT "All Day Event";
+        LocationEnable := TRUE;
+        AllDayEventEnable := TRUE;
+      END ELSE BEGIN
+        StartTimeEnable := FALSE;
+        EndingTimeEnable := FALSE;
+        LocationEnable := FALSE;
+        DurationEnable := FALSE;
+        AllDayEventEnable := FALSE;
+      END;
+
+      GetEndDateTime;
+    END;
+
+    LOCAL PROCEDURE SwitchCardControls@3();
+    BEGIN
+      IF Type = Type::Meeting THEN BEGIN
+        "Contact No.Editable" := FALSE;
+        MakePhoneCallEnable := FALSE;
+
+        "No. of AttendeesEnable" := TRUE;
+        "Attendees Accepted No.Enable" := TRUE;
+      END ELSE BEGIN
+        "Contact No.Editable" := TRUE;
+        MakePhoneCallEnable := TRUE;
+
+        "No. of AttendeesEnable" := FALSE;
+        "Attendees Accepted No.Enable" := FALSE;
+      END;
+      IF "Team Code" = '' THEN
+        "Completed ByEnable" := FALSE
+      ELSE BEGIN
+        "Completed ByEnable" := TRUE;
+        "Completed ByEditable" := NOT Closed
+      END
+    END;
+
+    LOCAL PROCEDURE TeamCodeOnAfterValidate@19070305();
+    BEGIN
+      SwitchCardControls;
+      CALCFIELDS(
+        "No. of Attendees",
+        "Attendees Accepted No.",
+        "Contact Name",
+        "Contact Company Name",
+        "Campaign Description",
+        "Opportunity Description")
+    END;
+
+    LOCAL PROCEDURE ContactNoOnAfterValidate@19009577();
+    BEGIN
+      CALCFIELDS("Contact Name","Contact Company Name");
+    END;
+
+    LOCAL PROCEDURE TypeOnAfterValidate@19069045();
+    BEGIN
+      EnableFields;
+    END;
+
+    LOCAL PROCEDURE AllDayEventOnAfterValidate@19020274();
+    BEGIN
+      EnableFields;
+    END;
+
+    LOCAL PROCEDURE SalespersonCodeOnAfterValidate@19011896();
+    BEGIN
+      SwitchCardControls;
+      CALCFIELDS(
+        "No. of Attendees",
+        "Attendees Accepted No.",
+        "Contact Name",
+        "Contact Company Name",
+        "Campaign Description",
+        "Opportunity Description");
+    END;
+
+    LOCAL PROCEDURE CampaignNoOnAfterValidate@19036822();
+    BEGIN
+      CALCFIELDS("Campaign Description");
+    END;
+
+    LOCAL PROCEDURE OpportunityNoOnAfterValidate@19076180();
+    BEGIN
+      CALCFIELDS("Opportunity Description");
+    END;
+
+    LOCAL PROCEDURE RecurringOnPush@19040619();
+    BEGIN
+      SetRecurringEditable;
+    END;
+
+    LOCAL PROCEDURE ContactNoOnFormat@19025756(Text@19019593 : Text[1024]);
+    BEGIN
+      IF Type = Type::Meeting THEN
+        Text := Text007;
+    END;
+
+    LOCAL PROCEDURE ContactNameOnFormat@19032823();
+    BEGIN
+      IF Type = Type::Meeting THEN
+        "Contact NameHideValue" := TRUE;
+    END;
+
+    LOCAL PROCEDURE ContactCompanyNameOnFormat@19053256();
+    BEGIN
+      IF Type = Type::Meeting THEN
+        "Contact Company NameHideValue" := TRUE;
+    END;
+
+    BEGIN
+    {
+      Lfd.Nr. Version   Datum       User  Beschreibung
+      ===========================================================================
+      1       TOP1.00   12.05.17    ST    Aufruf zur Musterberwachung, weitere Felder hinzugefgt
+      2       TOP1.00   02.06.17    ST    Karte ist nun immer editierbar siehe OnOpenPage() Anpasssung
+      3       TOP1.00   16.06.17    ST    Status und Closed OnValidate() Anpassungen
+      4       TOP1.00   24.07.17    ST    neues ActionItem Projekt
+    }
+    END.
+  }
+}
