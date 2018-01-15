@@ -2,8 +2,8 @@ OBJECT Page 50026 Service Positionen
 {
   OBJECT-PROPERTIES
   {
-    Date=07.12.17;
-    Time=12:18:16;
+    Date=11.01.18;
+    Time=17:42:10;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -46,14 +46,30 @@ OBJECT Page 50026 Service Positionen
 
                        //24.11.15 ST - Zeigt die jeweilige Rahmenauftragsnr. an
                        aur_nr := '';
-                       Lieferzeile.RESET;
-                       Lieferzeile.SETRANGE("Document No.","Nr.");
-                       Lieferzeile.SETRANGE("Line No.","Belegzeilennr.");
-                       IF Lieferzeile.FINDFIRST THEN
-                         aur_nr := Lieferzeile."Blanket Order No.";
+                       SalesShipmentLine.RESET;
+                       SalesShipmentLine.SETRANGE("Document No.","Nr.");
+                       SalesShipmentLine.SETRANGE("Line No.","Belegzeilennr.");
+                       IF SalesShipmentLine.FINDFIRST THEN
+                         aur_nr := SalesShipmentLine."Blanket Order No.";
 
                        //07.11.16 ST - Gibt die Laufzeit in Jahre und Tage aus
-                       laufzeit_text := TOPAS_API.RuntimeText_output(Lizenzdatum,"Ablaufdatum Serviceleistung")
+                       laufzeit_text := TOPAS_API.RuntimeText_output(Lizenzdatum,"Ablaufdatum Serviceleistung");
+
+                       //11.01.18 ST - Gibt Hinweis auf Auftrags Bemerkung aus
+                       SalesCommentLine.SETRANGE("Document Type",SalesCommentLine."Document Type"::Order);
+                       SalesCommentLine.SETRANGE("No.","Auftragsnr.");
+                       SalesCommentLine.SETRANGE("Document Line No.",0);
+                       IF SalesCommentLine.FINDFIRST THEN
+                         bemerkung_au := 'Ja'
+                       ELSE BEGIN
+                         SalesCommentLineArchive.SETRANGE("Document Type",SalesCommentLineArchive."Document Type"::Order);
+                         SalesCommentLineArchive.SETRANGE("No.","Auftragsnr.");
+                         SalesCommentLineArchive.SETRANGE("Document Line No.",0);
+                         IF SalesCommentLineArchive.FINDFIRST THEN
+                           bemerkung_au := 'Ja'
+                         ELSE
+                           bemerkung_au := 'Nein';
+                       END;
                      END;
 
     OnNewRecord=BEGIN
@@ -68,8 +84,8 @@ OBJECT Page 50026 Service Positionen
       { 1140055 ;1   ;ActionGroup;
                       CaptionML=DEU=Funktionen }
       { 1000000008;2 ;Action    ;
-                      Name=WartungsvertragsKarte;
-                      CaptionML=DEU=&Wartungsvertrag Karte;
+                      Name=Wartungsvertrag;
+                      CaptionML=DEU=&Wartungsvertrag;
                       Promoted=Yes;
                       PromotedIsBig=Yes;
                       Image=Agreement;
@@ -80,6 +96,37 @@ OBJECT Page 50026 Service Positionen
 
                                  Wartungsvertrag.GET("Wartungsvertragsnr.");
                                  PAGE.RUN(PAGE::"Wartungsvertrag Karte",Wartungsvertrag);
+                               END;
+                                }
+      { 1000000018;2 ;Action    ;
+                      Name=Lieferschein;
+                      CaptionML=DEU=&Lieferschein;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=Shipment;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 SalesShipmentHeader.GET("Nr.");
+                                 PageManagement.PageRun(SalesShipmentHeader);
+                               END;
+                                }
+      { 1000000003;2 ;Action    ;
+                      Name=Auftrag;
+                      CaptionML=DEU=&Auftrag;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=OrderList;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 SalesHeader.SETRANGE("No.","Auftragsnr.");
+                                 IF SalesHeader.FINDLAST THEN
+                                   PageManagement.PageRun(SalesHeader)
+                                 ELSE BEGIN
+                                   SalesHeaderArchive.SETRANGE("No.","Auftragsnr.");
+                                   IF SalesHeaderArchive.FINDLAST THEN
+                                     PageManagement.PageRun(SalesHeaderArchive)
+                                   ELSE MESSAGE(Text000);
+                                 END;
                                END;
                                 }
       { 1000000005;2 ;Action    ;
@@ -203,6 +250,13 @@ OBJECT Page 50026 Service Positionen
                 SourceExpr=preisinfo;
                 Editable=FALSE;
                 StyleExpr=preisinfo_style }
+
+    { 1000000019;2;Field  ;
+                CaptionML=DEU=Bemerkung Auftrag;
+                SourceExpr=bemerkung_au;
+                Editable=FALSE;
+                Style=Unfavorable;
+                StyleExpr=bemerkung_au = 'Ja' }
 
     { 1140001;2;Field     ;
                 SourceExpr="Lfd. Nr.";
@@ -467,9 +521,16 @@ OBJECT Page 50026 Service Positionen
       PrfeLizenzTab@1140017 : Record 50024;
       LizenzTab@1140016 : Record 50024;
       ServicePreise@1140014 : Record 50028;
-      Lieferzeile@1140018 : Record 111;
+      SalesHeader@1000000012 : Record 36;
+      SalesHeaderArchive@1000000013 : Record 5107;
+      SalesShipmentHeader@1000000010 : Record 110;
+      SalesShipmentLine@1140018 : Record 111;
+      SalesCommentLine@1000000016 : Record 44;
+      SalesCommentLineArchive@1000000017 : Record 5126;
       FileManagement@1000000004 : Codeunit 419;
+      PageManagement@1000000011 : Codeunit 700;
       LizenzAnzahl@1140013 : Decimal;
+      Text000@1000000014 : TextConst 'DEU=Beleg konnte nicht gefunden werden.';
       Text001@1140003 : TextConst 'DEU=Bitte geben Sie eine Lieferscheinnr. an.';
       Text002@1140004 : TextConst 'DEU=Bitte geben Sie eine %1 an.';
       Text003@1140005 : TextConst 'DEU=Bitte geben Sie die %1 an.';
@@ -495,6 +556,7 @@ OBJECT Page 50026 Service Positionen
       laufzeit_text@1140021 : Text;
       hinweis_style@1000000005 : Text;
       preisinfo_style@1000000006 : Text;
+      bemerkung_au@1000000015 : Text;
 
     PROCEDURE Export_Data_Excel@1140004();
     VAR
