@@ -2,8 +2,8 @@ OBJECT Report 50082 TOPAS-Bestellbestand
 {
   OBJECT-PROPERTIES
   {
-    Date=15.05.17;
-    Time=15:19:50;
+    Date=15.01.18;
+    Time=17:19:27;
     Modified=Yes;
     Version List=Topas Bericht,FORNAV2.0.0.1189/1189;
   }
@@ -24,6 +24,8 @@ OBJECT Report 50082 TOPAS-Bestellbestand
 
     OnPostReport=BEGIN
                    ReportForNav.Post;
+                   IF PrintToExcel THEN
+                     FinishExcel(Text001);
                  END;
 
   }
@@ -278,10 +280,6 @@ OBJECT Report 50082 TOPAS-Bestellbestand
   CODE
   {
     VAR
-      Excel@1140019 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00024500-0000-0000-C000-000000000046}:Unknown Automation Server.Application";
-      Book@1140018 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";
-      Range@1140017 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";
-      Sheet@1140016 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020820-0000-0000-C000-000000000046}:Unknown Automation Server.Worksheet";
       W„hrungWechKurs@1140000 : Record 330;
       W„hrungSummenPuffer@1140001 : TEMPORARY Record 332;
       W„hrungSummenPuffer2@1140002 : TEMPORARY Record 332;
@@ -299,12 +297,27 @@ OBJECT Report 50082 TOPAS-Bestellbestand
       Z„hler1@1140014 : Integer;
       W„hrungscode2@1140015 : Code[10];
       PrintToExcel@1140021 : Boolean;
-      j@1140020 : Text[10];
+      TempExcelBuffer@1000000010 : TEMPORARY Record 370;
+      FileMgt@1000000009 : Codeunit 419;
+      ServerFileName@1000000008 : Text;
+      SheetName@1000000007 : Text[250];
+      DoUpdateExistingWorksheet@1000000006 : Boolean;
+      Testmode@1000000005 : Boolean;
+      Window@1000000004 : Dialog;
+      RecNo@1000000003 : Integer;
+      TotalRecNo@1000000002 : Integer;
+      RowNo@1000000001 : Integer;
+      ColumnNo@1000000000 : Integer;
       ReportForNav@5000 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
       ReportForNavClient@5003 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
       ReportForNavDialog@5001 : Dialog;
       ReportForNavOpenDesigner@5002 : Boolean;
       ReportForNavAllowDesign@5004 : Boolean INDATASET;
+      Text000@1000000015 : TextConst 'DEU=Daten werden analysiert ...\\;ENU=Analyzing Data...\\';
+      Text001@1000000014 : TextConst 'DEU=Order Overview';
+      Text002@1000000013 : TextConst 'DEU=Arbeitsmappe aktualisieren;ENU=Update Workbook';
+      Text003@1000000012 : TextConst 'DEU=Excel Export erfolgreich abgeschlossen.';
+      ExcelFileExtensionTok@1000000011 : TextConst '@@@={Locked};DEU=.xlsx;ENU=.xlsx';
 
     LOCAL PROCEDURE OnPreSectionVendor_Header2@5010(VAR Vendor@1000000000 : Record 23);
     BEGIN
@@ -385,47 +398,115 @@ OBJECT Report 50082 TOPAS-Bestellbestand
 
     PROCEDURE CreateExcel@1140000();
     BEGIN
-      CLEAR(Excel);
-      CREATE(Excel,FALSE,TRUE);                                    //erzeugt excel
-      Book := Excel.Workbooks.Add(-4167);                          //legt neue datei in excel an
-      Sheet := Excel.ActiveSheet;                                  //definiert aktives worksheet
-      Sheet.Range('A1').Value := 'Document No.';                   // definiert die Beschriftung der berschriftszeile
-      Sheet.Range('B1').Value := 'Vendor No.';
-      Sheet.Range('C1').Value := 'Vendor';
-      Sheet.Range('D1').Value := 'Order Date';
-      Sheet.Range('E1').Value := 'Promised Receipt Date';
-      Sheet.Range('F1').Value := 'Item No.';
-      Sheet.Range('G1').Value := 'P.O.';
-      Sheet.Range('H1').Value := 'Quantity';
-      Sheet.Range('I1').Value := 'Outstanding Quantity';
-      Sheet.Range('J1').Value := 'Direct Unit Cost';
-      Sheet.Range('K1').Value := 'Amount';
-      Sheet.Range('L1').Value := 'Currency Code';
-      Sheet.Range('M1').Value := 'Customer';
-      j := '2';                                                    // <- Import in excel ab Zeile 2
-      Excel.Visible(TRUE);
+      IF DoUpdateExistingWorksheet THEN BEGIN
+        IF ServerFileName = '' THEN
+          ServerFileName := FileMgt.UploadFile(Text002,ExcelFileExtensionTok);
+        IF ServerFileName = '' THEN
+          EXIT;
+        SheetName := TempExcelBuffer.SelectSheetsName(ServerFileName);
+        IF SheetName = '' THEN
+          EXIT;
+      END;
+
+      Window.OPEN(
+        Text000 +
+        '@1@@@@@@@@@@@@@@@@@@@@@\');
+
+      TempExcelBuffer.DELETEALL;
+      CLEAR(TempExcelBuffer);
+
+      RowNo := 1;
+      //šberschriften
+      EnterCell(RowNo,1,'Document No.','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,2,'Vendor No.','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,3,'Vendor','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,4,'Order Date','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,5,'Promised Receipt Date','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,6,'Item No.','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,7,'P.O.','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,8,'Quantity','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,9,'Outstanding Quantity','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,10,'Direct Unit Cost','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,11,'Amount','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,12,'Currency Code','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,13,'Customer','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+
+      RowNo := 2;
+
+      TotalRecNo := Vendor.COUNT;
     END;
 
     PROCEDURE CopyToExcel@1140001();
     BEGIN
-      Sheet.Range('A'+j).Value := "Purchase Header"."No.";
-      Sheet.Range('B'+j).Value := "Purchase Header"."Buy-from Vendor No.";
-      Sheet.Range('C'+j).Value := "Purchase Header"."Buy-from Vendor Name";
-      Sheet.Range('D'+j).Value := "Purchase Header"."Order Date";
-      Sheet.Range('E'+j).Value := "Purchase Line"."Promised Receipt Date";
-      Sheet.Range('F'+j).Value := "Purchase Line"."No.";
-      Sheet.Range('G'+j).Value := "Purchase Header"."Vendor Order No.";
-      Sheet.Range('H'+j).Value := "Purchase Line".Quantity;
-      Sheet.Range('H'+j).NumberFormat := '#.##';
-      Sheet.Range('I'+j).Value := "Purchase Line"."Outstanding Quantity";
-      Sheet.Range('I'+j).NumberFormat := '#.##';
-      Sheet.Range('J'+j).Value := "Purchase Line"."Direct Unit Cost";
-      Sheet.Range('J'+j).NumberFormat := '#.##0,00';
-      Sheet.Range('K'+j).Value := EinkBestBetrag;
-      Sheet.Range('K'+j).NumberFormat := '#.##0,00';
-      Sheet.Range('L'+j).Value := "Purchase Line"."Currency Code";
-      Sheet.Range('M'+j).Value := "Purchase Line".Description;
-      j := INCSTR(j);
+      ColumnNo := 1;
+      EnterCell(RowNo,ColumnNo,"Purchase Header"."No.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,"Purchase Header"."Buy-from Vendor No.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,"Purchase Header"."Buy-from Vendor Name",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,FORMAT("Purchase Header"."Order Date"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Date);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,FORMAT("Purchase Line"."Promised Receipt Date"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Date);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,"Purchase Line"."No.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,"Purchase Header"."Vendor Order No.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,FORMAT("Purchase Line".Quantity),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,FORMAT("Purchase Line"."Outstanding Quantity"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,FORMAT("Purchase Line"."Direct Unit Cost"),'',FALSE,FALSE,FALSE,'#,##0.00',TempExcelBuffer."Cell Type"::Number);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,FORMAT(EinkBestBetrag),'',FALSE,FALSE,FALSE,'#,##0.00',TempExcelBuffer."Cell Type"::Number);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,"Purchase Line"."Currency Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,"Purchase Line".Description,'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      RowNo := RowNo + 1;
+      RecNo := RecNo + 1;
+      Window.UPDATE(1,ROUND(RecNo / TotalRecNo * 10000,1));
+    END;
+
+    LOCAL PROCEDURE FinishExcel@1000000018(SheetName@1000000000 : Text);
+    BEGIN
+      Window.CLOSE;
+
+      IF DoUpdateExistingWorksheet THEN BEGIN
+        TempExcelBuffer.UpdateBook(ServerFileName,SheetName);
+        TempExcelBuffer.WriteSheet('',COMPANYNAME,USERID);
+        TempExcelBuffer.CloseBook;
+        IF NOT Testmode THEN
+          TempExcelBuffer.DownloadAndOpenExcel;
+      END ELSE BEGIN
+        TempExcelBuffer.CreateBook(ServerFileName,SheetName);
+        TempExcelBuffer.WriteSheet(SheetName,COMPANYNAME,USERID);
+        //TempExcelBuffer.SetWidth(1,'A',20);
+        TempExcelBuffer.CloseBook;
+        IF NOT Testmode THEN BEGIN
+          TempExcelBuffer.OpenExcel; //hat Autofit drin der die Spaltenbreite wieder berschreibt, deshalb neue Fkt. nachfolgend
+          //TempExcelBuffer.OpenExcelWithoutAutoFit('','','',TRUE);
+        END;
+      END;
+      IF NOT Testmode THEN
+        TempExcelBuffer.GiveUserControl;
+    END;
+
+    LOCAL PROCEDURE EnterCell@2(RowNo@1000 : Integer;ColumnNo@1001 : Integer;CellValue@1002 : Text[250];Formular@1000000000 : Text[250];Bold@1003 : Boolean;Italic@1004 : Boolean;UnderLine@1005 : Boolean;NumberFormat@1006 : Text[30];CellType@1007 : Option);
+    BEGIN
+      TempExcelBuffer.INIT;
+      TempExcelBuffer.VALIDATE("Row No.",RowNo);
+      TempExcelBuffer.VALIDATE("Column No.",ColumnNo);
+      TempExcelBuffer."Cell Value as Text" := CellValue;
+      TempExcelBuffer.Formula := Formular;
+      TempExcelBuffer.Bold := Bold;
+      TempExcelBuffer.Italic := Italic;
+      TempExcelBuffer.Underline := UnderLine;
+      TempExcelBuffer.NumberFormat := NumberFormat;
+      TempExcelBuffer."Cell Type" := CellType;
+      TempExcelBuffer.INSERT;
     END;
 
     EVENT ReportForNav@5000::OnInit@5002();
@@ -659,366 +740,6 @@ OBJECT Report 50082 TOPAS-Bestellbestand
       END;
     END;
 
-    EVENT Sheet@1140016::SelectionChange@1543(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
-    BEGIN
-    END;
-
-    EVENT Sheet@1140016::BeforeDoubleClick@1537(Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range";VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Sheet@1140016::BeforeRightClick@1534(Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range";VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Sheet@1140016::Activate@304();
-    BEGIN
-    END;
-
-    EVENT Sheet@1140016::Deactivate@1530();
-    BEGIN
-    END;
-
-    EVENT Sheet@1140016::Calculate@279();
-    BEGIN
-    END;
-
-    EVENT Sheet@1140016::Change@1545(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
-    BEGIN
-    END;
-
-    EVENT Sheet@1140016::FollowHyperlink@1470(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00024431-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Hyperlink");
-    BEGIN
-    END;
-
-    EVENT Sheet@1140016::PivotTableUpdate@2156(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
-    BEGIN
-    END;
-
-    EVENT Sheet@1140016::PivotTableAfterValueChange@2886(TargetPivotTable@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";TargetRange@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
-    BEGIN
-    END;
-
-    EVENT Sheet@1140016::PivotTableBeforeAllocateChange@2889(TargetPivotTable@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1140002 : Integer;ValueChangeEnd@1140001 : Integer;VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Sheet@1140016::PivotTableBeforeCommitChanges@2892(TargetPivotTable@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1140002 : Integer;ValueChangeEnd@1140001 : Integer;VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Sheet@1140016::PivotTableBeforeDiscardChanges@2893(TargetPivotTable@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1140001 : Integer;ValueChangeEnd@1140000 : Integer);
-    BEGIN
-    END;
-
-    EVENT Sheet@1140016::PivotTableChangeSync@2894(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
-    BEGIN
-    END;
-
-    EVENT Book@1140018::Open@1923();
-    BEGIN
-    END;
-
-    EVENT Book@1140018::Activate@304();
-    BEGIN
-    END;
-
-    EVENT Book@1140018::Deactivate@1530();
-    BEGIN
-    END;
-
-    EVENT Book@1140018::BeforeClose@1546(VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Book@1140018::BeforeSave@1547(SaveAsUI@1140001 : Boolean;VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Book@1140018::BeforePrint@1549(VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Book@1140018::NewSheet@1550(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
-    BEGIN
-    END;
-
-    EVENT Book@1140018::AddinInstall@1552();
-    BEGIN
-    END;
-
-    EVENT Book@1140018::AddinUninstall@1553();
-    BEGIN
-    END;
-
-    EVENT Book@1140018::WindowResize@1554(Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Window");
-    BEGIN
-    END;
-
-    EVENT Book@1140018::WindowActivate@1556(Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Window");
-    BEGIN
-    END;
-
-    EVENT Book@1140018::WindowDeactivate@1557(Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Window");
-    BEGIN
-    END;
-
-    EVENT Book@1140018::SheetSelectionChange@1558(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
-    BEGIN
-    END;
-
-    EVENT Book@1140018::SheetBeforeDoubleClick@1559(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range";VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Book@1140018::SheetBeforeRightClick@1560(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range";VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Book@1140018::SheetActivate@1561(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
-    BEGIN
-    END;
-
-    EVENT Book@1140018::SheetDeactivate@1562(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
-    BEGIN
-    END;
-
-    EVENT Book@1140018::SheetCalculate@1563(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
-    BEGIN
-    END;
-
-    EVENT Book@1140018::SheetChange@1564(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
-    BEGIN
-    END;
-
-    EVENT Book@1140018::SheetFollowHyperlink@1854(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00024431-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Hyperlink");
-    BEGIN
-    END;
-
-    EVENT Book@1140018::SheetPivotTableUpdate@2157(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
-    BEGIN
-    END;
-
-    EVENT Book@1140018::PivotTableCloseConnection@2158(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
-    BEGIN
-    END;
-
-    EVENT Book@1140018::PivotTableOpenConnection@2159(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
-    BEGIN
-    END;
-
-    EVENT Book@1140018::Sync@2266(SyncEventType@1140000 : Integer);
-    BEGIN
-    END;
-
-    EVENT Book@1140018::BeforeXmlImport@2283(Map@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";Url@1140002 : Text[1024];IsRefresh@1140001 : Boolean;VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Book@1140018::AfterXmlImport@2285(Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";IsRefresh@1140001 : Boolean;Result@1140000 : Integer);
-    BEGIN
-    END;
-
-    EVENT Book@1140018::BeforeXmlExport@2287(Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";Url@1140001 : Text[1024];VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Book@1140018::AfterXmlExport@2288(Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";Url@1140001 : Text[1024];Result@1140000 : Integer);
-    BEGIN
-    END;
-
-    EVENT Book@1140018::RowsetComplete@2610(Description@1140002 : Text[1024];Sheet@1140001 : Text[1024];Success@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Book@1140018::SheetPivotTableAfterValueChang@2895(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";TargetRange@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
-    BEGIN
-    END;
-
-    EVENT Book@1140018::SheetPivotTableBeforeAllocateC@2896(Sh@1140004 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1140002 : Integer;ValueChangeEnd@1140001 : Integer;VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Book@1140018::SheetPivotTableBeforeCommitCha@2897(Sh@1140004 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1140002 : Integer;ValueChangeEnd@1140001 : Integer;VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Book@1140018::SheetPivotTableBeforeDiscardCh@2898(Sh@1140003 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1140001 : Integer;ValueChangeEnd@1140000 : Integer);
-    BEGIN
-    END;
-
-    EVENT Book@1140018::SheetPivotTableChangeSync@2899(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
-    BEGIN
-    END;
-
-    EVENT Book@1140018::AfterSave@2900(Success@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Book@1140018::NewChart@2901(Ch@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020821-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Chart");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::NewWorkbook@1565(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::SheetSelectionChange@1558(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::SheetBeforeDoubleClick@1559(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range";VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::SheetBeforeRightClick@1560(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range";VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::SheetActivate@1561(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::SheetDeactivate@1562(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::SheetCalculate@1563(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::SheetChange@1564(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WorkbookOpen@1567(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WorkbookActivate@1568(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WorkbookDeactivate@1569(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WorkbookBeforeClose@1570(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WorkbookBeforeSave@1571(Wb@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";SaveAsUI@1140001 : Boolean;VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WorkbookBeforePrint@1572(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WorkbookNewSheet@1573(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WorkbookAddinInstall@1574(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WorkbookAddinUninstall@1575(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WindowResize@1554(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Window");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WindowActivate@1556(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Window");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WindowDeactivate@1557(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Window");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::SheetFollowHyperlink@1854(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00024431-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Hyperlink");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::SheetPivotTableUpdate@2157(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WorkbookPivotTableCloseConnect@2160(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WorkbookPivotTableOpenConnecti@2161(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WorkbookSync@2289(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";SyncEventType@1140000 : Integer);
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WorkbookBeforeXmlImport@2290(Wb@1140004 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Map@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";Url@1140002 : Text[1024];IsRefresh@1140001 : Boolean;VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WorkbookAfterXmlImport@2291(Wb@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";IsRefresh@1140001 : Boolean;Result@1140000 : Integer);
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WorkbookBeforeXmlExport@2292(Wb@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";Url@1140001 : Text[1024];VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WorkbookAfterXmlExport@2293(Wb@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";Url@1140001 : Text[1024];Result@1140000 : Integer);
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WorkbookRowsetComplete@2611(Wb@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Description@1140002 : Text[1024];Sheet@1140001 : Text[1024];Success@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::AfterCalculate@2612();
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::SheetPivotTableAfterValueChang@2895(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";TargetRange@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::SheetPivotTableBeforeCommitCha@2897(Sh@1140004 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1140002 : Integer;ValueChangeEnd@1140001 : Integer;VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::ProtectedViewWindowOpen@2903(Pvw@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.ProtectedViewWindow");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::ProtectedViewWindowBeforeEdit@2905(Pvw@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.ProtectedViewWindow";VAR Cancel@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::ProtectedViewWindowResize@2908(Pvw@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.ProtectedViewWindow");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::ProtectedViewWindowActivate@2909(Pvw@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.ProtectedViewWindow");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::ProtectedViewWindowDeactivate@2910(Pvw@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.ProtectedViewWindow");
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WorkbookAfterSave@2911(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Success@1140000 : Boolean);
-    BEGIN
-    END;
-
-    EVENT Excel@1140019::WorkbookNewChart@2912(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Ch@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020821-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Chart");
-    BEGIN
-    END;
-
     BEGIN
     END.
   }
@@ -1176,3 +897,4 @@ OBJECT Report 50082 TOPAS-Bestellbestand
     END_OF_RDLDATA
   }
 }
+
