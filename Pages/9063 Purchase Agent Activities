@@ -2,9 +2,10 @@ OBJECT Page 9063 Purchase Agent Activities
 {
   OBJECT-PROPERTIES
   {
-    Date=15.09.15;
-    Time=12:00:00;
-    Version List=NAVW19.00;
+    Date=15.01.18;
+    Time=12:12:53;
+    Modified=Yes;
+    Version List=NAVW19.00,TOP1.0;
   }
   PROPERTIES
   {
@@ -21,6 +22,10 @@ OBJECT Page 9063 Purchase Agent Activities
 
                  SetRespCenterFilter;
                  SETFILTER("Date Filter",'>=%1',WORKDATE);
+
+                 //TOPAS 11.01.18 ST
+                 SalespersonCode := TOPAS_Funktionen.CheckUserSetup;
+                 //TOPAS Ende
                END;
 
     OnAfterGetRecord=BEGIN
@@ -79,6 +84,7 @@ OBJECT Page 9063 Purchase Agent Activities
                                   CaptionML=[DEU=Neue Einkaufsreklamation;
                                              ENU=New Purchase Return Order];
                                   RunObject=Page 6640;
+                                  Visible=FALSE;
                                   RunPageMode=Create }
                 }
                  }
@@ -96,6 +102,7 @@ OBJECT Page 9063 Purchase Agent Activities
 
     { 14  ;2   ;Field     ;
                 SourceExpr="Purchase Return Orders - All";
+                Visible=FALSE;
                 DrillDownPageID=Purchase Return Order List }
 
     { 18  ;1   ;Group     ;
@@ -125,9 +132,121 @@ OBJECT Page 9063 Purchase Agent Activities
                             END;
                              }
 
+    { 1000000002;1;Group  ;
+                CaptionML=DEU=F„lligkeiten und unbest„tigte Vorg„nge;
+                GroupType=CueGroup }
+
+    { 1000000005;2;Field  ;
+                Name=OverduePurchOrders;
+                CaptionML=DEU=F„llige Bestellungen;
+                SourceExpr=OverduePurchOrders;
+                OnDrillDown=BEGIN
+                              //TOPAS 11.01.18 ST
+                              ShowOverduePurchaseOrders;
+                              //TOPAS Ende
+                            END;
+
+                Image=Document }
+
+    { 1000000007;2;Field  ;
+                Name=OverdueSalesOrders;
+                CaptionML=DEU=F„llige Auftr„ge;
+                SourceExpr=OverdueSalesOrders;
+                OnDrillDown=BEGIN
+                              //TOPAS 11.01.18 ST
+                              ShowOverdueSalesOrders;
+                              //TOPAS Ende
+                            END;
+                             }
+
+    { 1000000011;2;Field  ;
+                Name=UnconfirmedPurchOrders;
+                CaptionML=DEU=Unbest„tigte Bestellungen;
+                SourceExpr=UnconfirmedPurchOrders;
+                OnDrillDown=BEGIN
+                              //TOPAS 11.01.18 ST
+                              ShowUnconfirmedPurchOrders;
+                              //TOPAS Ende
+                            END;
+                             }
+
+    { 1000000012;2;Field  ;
+                Name=UnconfirmedSalesOrders;
+                CaptionML=DEU=Unbest„tigte Auftr„ge;
+                SourceExpr=UnconfirmedSalesOrders;
+                OnDrillDown=BEGIN
+                              //TOPAS 11.01.18 ST
+                              ShowUnconfirmedSalesOrders;
+                              //TOPAS Ende
+                            END;
+                             }
+
+    { 1000000006;1;Group  ;
+                CaptionML=DEU=TOPAS;
+                GroupType=CueGroup }
+
+    { 1000000004;2;Field  ;
+                CaptionML=[DEU=Umsatz diesen Monat;
+                           ENU=Sales This Month];
+                ToolTipML=[DEU=Zeigt die Summe der Ums„tze im aktuellen Monat.;
+                           ENU=Shows the sum of sales in the current month.];
+                SourceExpr=SalesThisMonth;
+                DrillDownPageID=Mini Sales Invoice List;
+                OnDrillDown=BEGIN
+                              //TOPAS 05.09.17 ST
+                              MiniActivitiesMgt.DrillDownSalesThisMonth;
+                              //TOPAS Ende
+                            END;
+
+                Image=Chart }
+
+    { 1000000003;2;Field  ;
+                CaptionML=[DEU=Auftragseingang diesen Monat;
+                           ENU=Orders This Month];
+                SourceExpr=OrdersThisMonth;
+                Image=Chart }
+
+    { 1000000001;2;Field  ;
+                CaptionML=DEU=Freie Urlaubstage;
+                SourceExpr=FreieUrlaubstage;
+                OnDrillDown=BEGIN
+                              //TOPAS 05.09.17 ST
+                              MESSAGE(Statistiken.GetUserStatistics(SalespersonCode,'Urlaub_genommen_text'));
+                              //TOPAS Ende
+                            END;
+
+                Image=Calendar }
+
+    { 1000000000;2;Field  ;
+                CaptionML=DEU=Meine Aufgaben;
+                SourceExpr=MeineAufgaben;
+                OnDrillDown=BEGIN
+                              //TOPAS 05.09.17 ST
+                              Statistiken.DrillDownMyToDos(SalespersonCode);
+                              //TOPAS Ende
+                            END;
+
+                Image=Person }
+
   }
   CODE
   {
+    VAR
+      "***TOPAS_Var***"@1000000003 : Integer;
+      SalesCue@1000000004 : Record 9053;
+      Statistiken@1000000001 : Codeunit 50002;
+      MiniActivitiesMgt@1000000000 : Codeunit 1311;
+      Text50000@1000000005 : TextConst 'DEU=Fehlende Zuordnung zwischen %1 (%2) und %3 in der Tabelle %4. Bitte wenden Sie sich an Ihren Systemadministrator.';
+      TOPAS_Funktionen@1000000014 : Codeunit 50006;
+      SalespersonCode@1000000002 : Code[10];
+      SalesThisMonth@1000000006 : Decimal;
+      OrdersThisMonth@1000000007 : Decimal;
+      FreieUrlaubstage@1000000008 : Decimal;
+      MeineAufgaben@1000000009 : Integer;
+      OverduePurchOrders@1000000010 : Integer;
+      OverdueSalesOrders@1000000011 : Integer;
+      UnconfirmedPurchOrders@1000000012 : Integer;
+      UnconfirmedSalesOrders@1000000013 : Integer;
 
     LOCAL PROCEDURE CalculateCueFieldValues@6();
     BEGIN
@@ -139,9 +258,135 @@ OBJECT Page 9063 Purchase Agent Activities
 
       IF FIELDACTIVE("Partially Invoiced") THEN
         "Partially Invoiced" := CountOrders(FIELDNO("Partially Invoiced"));
+
+      //TOPAS 11.01.18 ST - Bedient sich an bisherigen Umsetzung in der Sales Cue, deshalb keine Anpassung in Purchase Cue n”tig
+      IF SalesCue.FIELDACTIVE("Sales This Month") THEN
+        SalesThisMonth := MiniActivitiesMgt.CalcSalesThisMonthAmount;
+
+      IF SalesCue.FIELDACTIVE("Orders This Month") THEN
+        EVALUATE(OrdersThisMonth, Statistiken.GetUserStatistics(SalespersonCode,'Auftragseingang'));
+
+      IF SalesCue.FIELDACTIVE("Urlaub offen") THEN
+        EVALUATE(FreieUrlaubstage, Statistiken.GetUserStatistics(SalespersonCode,'Urlaub_offen'));
+
+      IF SalesCue.FIELDACTIVE("Meine Aufgaben") THEN
+        EVALUATE(MeineAufgaben, Statistiken.GetUserStatistics(SalespersonCode,'Aufgaben'));
+
+      OverduePurchOrders := CalcOverduePurchaseOrders;
+
+      OverdueSalesOrders := CalcOverdueSalesOrders;
+
+      UnconfirmedPurchOrders := CalcUnconfirmedPurchOrders;
+
+      UnconfirmedSalesOrders := CalcUnconfirmedSalesOrders;
+
+      //TOPAS Ende
+    END;
+
+    LOCAL PROCEDURE "***TOPAS_Func***"@1000000001();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE CalcOverduePurchaseOrders@1000000002() : Integer;
+    VAR
+      PurchaseLine@1000000000 : Record 39;
+    BEGIN
+      PurchaseLine.SETRANGE(Type,PurchaseLine.Type::Item);
+      PurchaseLine.SETRANGE("Document Type",PurchaseLine."Document Type"::Order);
+      PurchaseLine.SETFILTER("Outstanding Quantity",'<>%1',0);
+      PurchaseLine.SETFILTER("Promised Receipt Date",'<=%1',WORKDATE);
+      EXIT(PurchaseLine.COUNT);
+    END;
+
+    LOCAL PROCEDURE ShowOverduePurchaseOrders@1000000006();
+    VAR
+      PurchaseLine@1000000000 : Record 39;
+    BEGIN
+      PurchaseLine.SETRANGE(Type,PurchaseLine.Type::Item);
+      PurchaseLine.SETRANGE("Document Type",PurchaseLine."Document Type"::Order);
+      PurchaseLine.SETFILTER("Outstanding Quantity",'<>%1',0);
+      PurchaseLine.SETFILTER("Promised Receipt Date",'<=%1',WORKDATE);
+      PAGE.RUN(PAGE::"Purchase Orders",PurchaseLine);
+    END;
+
+    LOCAL PROCEDURE CalcOverdueSalesOrders@1000000009() : Integer;
+    VAR
+      SalesLine@1000000000 : Record 37;
+    BEGIN
+      SalesLine.RESET;
+      SalesLine.SETRANGE("Document Type",SalesLine."Document Type"::Order);
+      SalesLine.SETRANGE(Type,SalesLine.Type::Item);
+      SalesLine.SETFILTER("Promised Delivery Date",'<=%1',WORKDATE);
+      SalesLine.SETFILTER("Outstanding Quantity",'<>%1',0);
+      EXIT(SalesLine.COUNT);
+    END;
+
+    LOCAL PROCEDURE ShowOverdueSalesOrders@1000000010();
+    VAR
+      SalesLine@1000000000 : Record 37;
+    BEGIN
+      SalesLine.RESET;
+      SalesLine.SETCURRENTKEY("Document Type","Document No.","Line No.");
+      SalesLine.SETRANGE("Document Type",SalesLine."Document Type"::Order);
+      SalesLine.SETRANGE(Type,SalesLine.Type::Item);
+      SalesLine.SETFILTER("Promised Delivery Date",'<=%1',WORKDATE);
+      SalesLine.SETFILTER("Outstanding Quantity",'<>%1',0);
+      PAGE.RUN(PAGE::"Sales Lines",SalesLine);
+    END;
+
+    LOCAL PROCEDURE CalcUnconfirmedPurchOrders@1000000008() : Integer;
+    VAR
+      PurchaseLine@1000000000 : Record 39;
+    BEGIN
+      PurchaseLine.SETRANGE(Type,PurchaseLine.Type::Item);
+      PurchaseLine.SETRANGE("Document Type",PurchaseLine."Document Type"::Order);
+      PurchaseLine.SETFILTER("Outstanding Quantity",'<>%1',0);
+      PurchaseLine.SETFILTER("Promised Receipt Date",'%1',31122055D);
+      EXIT(PurchaseLine.COUNT);
+    END;
+
+    LOCAL PROCEDURE ShowUnconfirmedPurchOrders@1000000012();
+    VAR
+      PurchaseLine@1000000000 : Record 39;
+    BEGIN
+      PurchaseLine.SETRANGE(Type,PurchaseLine.Type::Item);
+      PurchaseLine.SETRANGE("Document Type",PurchaseLine."Document Type"::Order);
+      PurchaseLine.SETFILTER("Outstanding Quantity",'<>%1',0);
+      PurchaseLine.SETFILTER("Promised Receipt Date",'%1',31122055D);
+      PAGE.RUN(PAGE::"Purchase Orders",PurchaseLine);
+    END;
+
+    LOCAL PROCEDURE CalcUnconfirmedSalesOrders@1000000011() : Integer;
+    VAR
+      SalesLine@1000000000 : Record 37;
+    BEGIN
+      SalesLine.RESET;
+      SalesLine.SETRANGE("Document Type",SalesLine."Document Type"::Order);
+      SalesLine.SETRANGE(Type,SalesLine.Type::Item);
+      SalesLine.SETFILTER("Promised Delivery Date",'%1',31122055D);
+      SalesLine.SETFILTER("Outstanding Quantity",'<>%1',0);
+      EXIT(SalesLine.COUNT);
+    END;
+
+    LOCAL PROCEDURE ShowUnconfirmedSalesOrders@1000000013();
+    VAR
+      SalesLine@1000000000 : Record 37;
+    BEGIN
+      SalesLine.RESET;
+      SalesLine.SETCURRENTKEY("Document Type","Document No.","Line No.");
+      SalesLine.SETRANGE("Document Type",SalesLine."Document Type"::Order);
+      SalesLine.SETRANGE(Type,SalesLine.Type::Item);
+      SalesLine.SETFILTER("Promised Delivery Date",'%1',31122055D);
+      SalesLine.SETFILTER("Outstanding Quantity",'<>%1',0);
+      PAGE.RUN(PAGE::"Sales Lines",SalesLine);
     END;
 
     BEGIN
+    {
+      Lfd.Nr. Version   Datum       User  Beschreibung
+      ===========================================================================
+      1       TOP1.00   11.01.18    ST    neue Gesch„ftszahlen aus "Sales Cue" (9055): "Sales This Month", "Orders This Month", neue Anzeigen: "Urlaub offen", "Meine Aufgaben"
+    }
     END.
   }
 }
