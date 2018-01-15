@@ -1,0 +1,1178 @@
+OBJECT Report 50082 TOPAS-Bestellbestand
+{
+  OBJECT-PROPERTIES
+  {
+    Date=15.05.17;
+    Time=15:19:50;
+    Modified=Yes;
+    Version List=Topas Bericht,FORNAV2.0.0.1189/1189;
+  }
+  PROPERTIES
+  {
+    OnInitReport=BEGIN
+                   ReportForNav:= ReportForNav.Report(CurrReport.OBJECTID,CurrReport.LANGUAGE,SERIALNUMBER,USERID,COMPANYNAME);ReportForNav.Init;
+                 END;
+
+    OnPreReport=BEGIN
+                  KredFilter := Vendor.GETFILTERS;
+                  EinkZeileFilter := "Purchase Line".GETFILTERS;
+                  PeriodeText := "Purchase Line".GETFILTER("Expected Receipt Date");
+                  IF PrintToExcel THEN
+                    CreateExcel;
+                  ;ReportForNav.OpenDesigner:=ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
+                END;
+
+    OnPostReport=BEGIN
+                   ReportForNav.Post;
+                 END;
+
+  }
+  DATASET
+  {
+    { 1   ;    ;DataItem;                    ;
+               DataItemTable=Table23;
+               PrintOnlyIfDetail=Yes;
+               OnPreDataItem=BEGIN
+                               ReportForNav.GetDataItem('Vendor').NewPagePerRecord := NurEinProSeiteDrucken;
+                             END;
+
+               ReqFilterFields=No.,Search Name,Priority }
+
+    { 2   ;1   ;Column  ;USERID              ;
+               SourceExpr=USERID }
+
+    { 3   ;1   ;Column  ;COMPANYNAME         ;
+               SourceExpr=COMPANYNAME }
+
+    { 4   ;1   ;Column  ;ReportForNavPageNo  ;
+               SourceExpr=ReportForNav.PageNo }
+
+    { 5   ;1   ;Column  ;STRSUBSTNO_Wareneingangsdatum_Pct1_PeriodeText;
+               SourceExpr=STRSUBSTNO('Wareneingangsdatum: %1',PeriodeText) }
+
+    { 6   ;1   ;Column  ;TODAY_0_4           ;
+               SourceExpr=FORMAT(TODAY,0,4) }
+
+    { 7   ;1   ;Column  ;STRSUBSTNO_Pct1_Pct2_VendorTABLENAME_KredFilter;
+               SourceExpr=STRSUBSTNO('%1: %2',Vendor.TABLENAME,KredFilter) }
+
+    { 8   ;1   ;Column  ;STRSUBSTNO_Bestellzeile_Pct1_EinkZeileFilter;
+               SourceExpr=STRSUBSTNO('Bestellzeile: %1',EinkZeileFilter) }
+
+    { 9   ;1   ;Column  ;PurchaseLineFIELDCAPTION_DirectUnitCost;
+               SourceExpr="Purchase Line".FIELDCAPTION("Direct Unit Cost") }
+
+    { 10  ;1   ;Column  ;PurchaseLineFIELDCAPTION_OutstandingQuantity;
+               SourceExpr="Purchase Line".FIELDCAPTION("Outstanding Quantity") }
+
+    { 11  ;1   ;Column  ;PurchaseLineFIELDCAPTION_Quantity;
+               SourceExpr="Purchase Line".FIELDCAPTION(Quantity) }
+
+    { 12  ;1   ;Column  ;PurchaseLineFIELDCAPTION_Artikelnr2;
+               SourceExpr="Purchase Line".FIELDCAPTION("Artikelnr. 2") }
+
+    { 13  ;1   ;Column  ;Name_Vendor         ;
+               SourceExpr=Name }
+
+    { 14  ;1   ;Column  ;No_Vendor           ;
+               SourceExpr="No." }
+
+    { 15  ;1   ;DataItem;                    ;
+               DataItemTable=Table38;
+               PrintOnlyIfDetail=Yes;
+               ReqFilterFields=Vendor Order No.,Buy-from Vendor No.;
+               DataItemLink=Buy-from Vendor No.=FIELD(No.) }
+
+    { 16  ;2   ;DataItem;                    ;
+               DataItemTable=Table39;
+               DataItemTableView=SORTING(Document Type,Pay-to Vendor No.,Currency Code)
+                                 WHERE(Document Type=CONST(Order),
+                                       Outstanding Quantity=FILTER(<>0));
+               ReqFilterHeadingML=DEU=Bestellzeile;
+               OnAfterGetRecord=BEGIN
+                                  NeuerAuftrag := "Document No." <> EinkBestKopf."No.";
+                                  IF NeuerAuftrag THEN
+                                    EinkBestKopf.GET(EinkBestKopf."Document Type"::Order,"Document No.");
+                                  IF "Expected Receipt Date" <= WORKDATE THEN
+                                    RckstandMenge := "Outstanding Quantity"
+                                  ELSE
+                                    RckstandMenge := 0;
+                                  EinkBestBetrag := ROUND("Outstanding Quantity" * "Line Amount" / Quantity);
+                                  EinkBestBetragMW := EinkBestBetrag;
+                                  IF Vendor."Currency Code" <> '' THEN BEGIN
+                                    IF EinkBestKopf."Currency Factor" <> 0 THEN
+                                      EinkBestBetragMW :=
+                                        ROUND(
+                                          W„hrungWechKurs.ExchangeAmtFCYToLCY(
+                                            WORKDATE,EinkBestKopf."Currency Code",
+                                            EinkBestBetragMW,EinkBestKopf."Currency Factor"));
+                                    IF Betr„geDruckInMW THEN BEGIN
+                                      "Direct Unit Cost" :=
+                                        ROUND(
+                                          W„hrungWechKurs.ExchangeAmtFCYToLCY(
+                                            WORKDATE,EinkBestKopf."Currency Code",
+                                            "Direct Unit Cost",EinkBestKopf."Currency Factor"));
+                                      EinkBestBetrag := EinkBestBetragMW;
+                                    END;
+                                  END;
+                                  W„hrungscode2 := EinkBestKopf."Currency Code";
+                                  IF Betr„geDruckInMW THEN
+                                    W„hrungscode2 := '';
+                                  W„hrungSummenPuffer.UpdateTotal(
+                                    W„hrungscode2,
+                                    EinkBestBetrag,
+                                    Z„hler1,
+                                    Z„hler1);
+                                  IF PrintToExcel THEN
+                                    CopyToExcel;
+                                END;
+
+               ReqFilterFields=Promised Receipt Date;
+               DataItemLink=Document No.=FIELD(No.) }
+
+    { 17  ;3   ;Column  ;Description_PurchaseLine;
+               SourceExpr=Description }
+
+    { 18  ;3   ;Column  ;VendorOrderNo_PurchaseHeader;
+               SourceExpr="Purchase Header"."Vendor Order No." }
+
+    { 19  ;3   ;Column  ;EinkBestBetrag      ;
+               SourceExpr=EinkBestBetrag;
+               AutoFormatType=1;
+               AutoFormatExpr="Currency Code" }
+
+    { 20  ;3   ;Column  ;DirectUnitCost_PurchaseLine;
+               SourceExpr="Direct Unit Cost";
+               AutoFormatType=2;
+               AutoFormatExpr="Currency Code" }
+
+    { 21  ;3   ;Column  ;OutstandingQuantity_PurchaseLine;
+               SourceExpr="Outstanding Quantity" }
+
+    { 22  ;3   ;Column  ;Quantity_PurchaseLine;
+               SourceExpr=Quantity }
+
+    { 23  ;3   ;Column  ;Artikelnr2_PurchaseLine;
+               SourceExpr="Artikelnr. 2" }
+
+    { 24  ;3   ;Column  ;PromisedReceiptDate_PurchaseLine;
+               SourceExpr="Promised Receipt Date" }
+
+    { 25  ;3   ;Column  ;OrderDate_EinkBestKopf;
+               SourceExpr=EinkBestKopf."Order Date" }
+
+    { 26  ;3   ;Column  ;No_EinkBestKopf     ;
+               SourceExpr=EinkBestKopf."No." }
+
+    { 27  ;3   ;Column  ;CurrencyCode_EinkBestKopf;
+               SourceExpr=EinkBestKopf."Currency Code" }
+
+    { 28  ;1   ;DataItem;                    ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=FILTER(1..));
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN
+                                    OK := W„hrungSummenPuffer.FIND('-')
+                                  ELSE
+                                    OK := W„hrungSummenPuffer.NEXT <> 0;
+                                  IF NOT OK THEN
+                                    CurrReport.BREAK;
+                                  W„hrungSummenPuffer2.UpdateTotal(
+                                    W„hrungSummenPuffer."Currency Code",
+                                    W„hrungSummenPuffer."Total Amount",
+                                    Z„hler1,
+                                    Z„hler1);
+                                END;
+
+               OnPostDataItem=BEGIN
+                                W„hrungSummenPuffer.DELETEALL;
+                              END;
+                               }
+
+    { 29  ;2   ;Column  ;TotalAmount_WahrungSummenPuffer;
+               SourceExpr=W„hrungSummenPuffer."Total Amount";
+               AutoFormatType=1;
+               AutoFormatExpr=W„hrungSummenPuffer."Currency Code" }
+
+    { 30  ;2   ;Column  ;Name_Vendor2        ;
+               SourceExpr=Vendor.Name }
+
+    { 31  ;2   ;Column  ;CurrencyCode_WahrungSummenPuffer;
+               SourceExpr=W„hrungSummenPuffer."Currency Code" }
+
+    { 32  ;    ;DataItem;Integer2            ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=FILTER(1..));
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN
+                                    OK := W„hrungSummenPuffer2.FIND('-')
+                                  ELSE
+                                    OK := W„hrungSummenPuffer2.NEXT <> 0;
+                                  IF NOT OK THEN
+                                    CurrReport.BREAK;
+                                END;
+
+               OnPostDataItem=BEGIN
+                                W„hrungSummenPuffer2.DELETEALL;
+                              END;
+                               }
+
+    { 33  ;1   ;Column  ;TotalAmount_WahrungSummenPuffer22;
+               SourceExpr=W„hrungSummenPuffer2."Total Amount";
+               AutoFormatType=1;
+               AutoFormatExpr=W„hrungSummenPuffer2."Currency Code" }
+
+    { 34  ;1   ;Column  ;CurrencyCode_WahrungSummenPuffer2;
+               SourceExpr=W„hrungSummenPuffer2."Currency Code" }
+
+  }
+  REQUESTPAGE
+  {
+    PROPERTIES
+    {
+      SaveValues=Yes;
+    }
+    CONTROLS
+    {
+      { 1900000001;0;Container;
+                  ContainerType=ContentArea }
+
+      { 1900000002;1;Group  ;
+                  CaptionML=[CSY=Moznosti;
+                             DAN=Indstillinger;
+                             DEU=Optionen;
+                             ENU=Options;
+                             FIN=Vaihtoehdot;
+                             ISL=Valkostir;
+                             NLD=Opties;
+                             NOR=Alternativer;
+                             SVE=Alternativ;
+                             ITS=Opzioni;
+                             NLB=Opties] }
+
+      { 1   ;2   ;Field     ;
+                  CaptionML=DEU=Betr„ge in MW anzeigen;
+                  SourceExpr=Betr„geDruckInMW }
+
+      { 2   ;2   ;Field     ;
+                  CaptionML=DEU=Neue Seite pro Kreditor;
+                  SourceExpr=NurEinProSeiteDrucken }
+
+      { 1140001;2;Field     ;
+                  CaptionML=DEU=Excel Ausgabe;
+                  SourceExpr=PrintToExcel }
+
+      { 5000;2   ;Field     ;
+                  Name=ForNavOpenDesigner;
+                  CaptionML=ENU=Open Designer;
+                  SourceExpr=ReportForNavOpenDesigner;
+                  Visible=ReportForNavAllowDesign }
+
+    }
+  }
+  LABELS
+  {
+  }
+  CODE
+  {
+    VAR
+      Excel@1140019 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00024500-0000-0000-C000-000000000046}:Unknown Automation Server.Application";
+      Book@1140018 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";
+      Range@1140017 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";
+      Sheet@1140016 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020820-0000-0000-C000-000000000046}:Unknown Automation Server.Worksheet";
+      W„hrungWechKurs@1140000 : Record 330;
+      W„hrungSummenPuffer@1140001 : TEMPORARY Record 332;
+      W„hrungSummenPuffer2@1140002 : TEMPORARY Record 332;
+      EinkBestKopf@1140003 : Record 38;
+      Betr„geDruckInMW@1140004 : Boolean;
+      PeriodeText@1140005 : Text[30];
+      NurEinProSeiteDrucken@1140006 : Boolean;
+      KredFilter@1140007 : Text[250];
+      EinkZeileFilter@1140008 : Text[250];
+      RckstandMenge@1140009 : Decimal;
+      EinkBestBetrag@1140010 : Decimal;
+      EinkBestBetragMW@1140011 : Decimal;
+      NeuerAuftrag@1140012 : Boolean;
+      OK@1140013 : Boolean;
+      Z„hler1@1140014 : Integer;
+      W„hrungscode2@1140015 : Code[10];
+      PrintToExcel@1140021 : Boolean;
+      j@1140020 : Text[10];
+      ReportForNav@5000 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
+      ReportForNavClient@5003 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
+      ReportForNavDialog@5001 : Dialog;
+      ReportForNavOpenDesigner@5002 : Boolean;
+      ReportForNavAllowDesign@5004 : Boolean INDATASET;
+
+    LOCAL PROCEDURE OnPreSectionVendor_Header2@5010(VAR Vendor@1000000000 : Record 23);
+    BEGIN
+      WITH Vendor DO BEGIN
+        ReportForNav.ShowOutput(Betr„geDruckInMW);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionVendor_Header3@5011(VAR Vendor@1000000000 : Record 23);
+    BEGIN
+      WITH Vendor DO BEGIN
+        ReportForNav.ShowOutput((ReportForNav.PageNo = 1) AND (KredFilter <> ''));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionVendor_Header4@5012(VAR Vendor@1000000000 : Record 23);
+    BEGIN
+      WITH Vendor DO BEGIN
+        ReportForNav.ShowOutput((ReportForNav.PageNo = 1) AND (EinkZeileFilter <> ''));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionPurchaseLine_Body7@5013(VAR "Purchase Line"@1000000000 : Record 39);
+    BEGIN
+      WITH "Purchase Line" DO BEGIN
+        ReportForNav.ShowOutput((NeuerAuftrag) AND (Betr„geDruckInMW));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionPurchaseLine_Body8@5014(VAR "Purchase Line"@1000000000 : Record 39);
+    BEGIN
+      WITH "Purchase Line" DO BEGIN
+        ReportForNav.ShowOutput((NOT NeuerAuftrag) AND (Betr„geDruckInMW));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionPurchaseLine_Body9@5015(VAR "Purchase Line"@1000000000 : Record 39);
+    BEGIN
+      WITH "Purchase Line" DO BEGIN
+        ReportForNav.ShowOutput((NeuerAuftrag) AND (NOT Betr„geDruckInMW));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionPurchaseLine_Body10@5016(VAR "Purchase Line"@1000000000 : Record 39);
+    BEGIN
+      WITH "Purchase Line" DO BEGIN
+        ReportForNav.ShowOutput((NOT NeuerAuftrag) AND (NOT Betr„geDruckInMW));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionInteger_Body11@5017(VAR Integer@1000000000 : Record 2000000026);
+    BEGIN
+      WITH Integer DO BEGIN
+        ReportForNav.ShowOutput(Betr„geDruckInMW);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionInteger_Body12@5018(VAR Integer@1000000000 : Record 2000000026);
+    BEGIN
+      WITH Integer DO BEGIN
+        ReportForNav.ShowOutput(NOT Betr„geDruckInMW);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionInteger2_Body14@5019(VAR Integer2@1000000000 : Record 2000000026);
+    BEGIN
+      WITH Integer2 DO BEGIN
+        ReportForNav.ShowOutput(Betr„geDruckInMW);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionInteger2_Body15@5020(VAR Integer2@1000000000 : Record 2000000026);
+    BEGIN
+      WITH Integer2 DO BEGIN
+        ReportForNav.ShowOutput(NOT Betr„geDruckInMW);
+      END;
+    END;
+
+    PROCEDURE CreateExcel@1140000();
+    BEGIN
+      CLEAR(Excel);
+      CREATE(Excel,FALSE,TRUE);                                    //erzeugt excel
+      Book := Excel.Workbooks.Add(-4167);                          //legt neue datei in excel an
+      Sheet := Excel.ActiveSheet;                                  //definiert aktives worksheet
+      Sheet.Range('A1').Value := 'Document No.';                   // definiert die Beschriftung der berschriftszeile
+      Sheet.Range('B1').Value := 'Vendor No.';
+      Sheet.Range('C1').Value := 'Vendor';
+      Sheet.Range('D1').Value := 'Order Date';
+      Sheet.Range('E1').Value := 'Promised Receipt Date';
+      Sheet.Range('F1').Value := 'Item No.';
+      Sheet.Range('G1').Value := 'P.O.';
+      Sheet.Range('H1').Value := 'Quantity';
+      Sheet.Range('I1').Value := 'Outstanding Quantity';
+      Sheet.Range('J1').Value := 'Direct Unit Cost';
+      Sheet.Range('K1').Value := 'Amount';
+      Sheet.Range('L1').Value := 'Currency Code';
+      Sheet.Range('M1').Value := 'Customer';
+      j := '2';                                                    // <- Import in excel ab Zeile 2
+      Excel.Visible(TRUE);
+    END;
+
+    PROCEDURE CopyToExcel@1140001();
+    BEGIN
+      Sheet.Range('A'+j).Value := "Purchase Header"."No.";
+      Sheet.Range('B'+j).Value := "Purchase Header"."Buy-from Vendor No.";
+      Sheet.Range('C'+j).Value := "Purchase Header"."Buy-from Vendor Name";
+      Sheet.Range('D'+j).Value := "Purchase Header"."Order Date";
+      Sheet.Range('E'+j).Value := "Purchase Line"."Promised Receipt Date";
+      Sheet.Range('F'+j).Value := "Purchase Line"."No.";
+      Sheet.Range('G'+j).Value := "Purchase Header"."Vendor Order No.";
+      Sheet.Range('H'+j).Value := "Purchase Line".Quantity;
+      Sheet.Range('H'+j).NumberFormat := '#.##';
+      Sheet.Range('I'+j).Value := "Purchase Line"."Outstanding Quantity";
+      Sheet.Range('I'+j).NumberFormat := '#.##';
+      Sheet.Range('J'+j).Value := "Purchase Line"."Direct Unit Cost";
+      Sheet.Range('J'+j).NumberFormat := '#.##0,00';
+      Sheet.Range('K'+j).Value := EinkBestBetrag;
+      Sheet.Range('K'+j).NumberFormat := '#.##0,00';
+      Sheet.Range('L'+j).Value := "Purchase Line"."Currency Code";
+      Sheet.Range('M'+j).Value := "Purchase Line".Description;
+      j := INCSTR(j);
+    END;
+
+    EVENT ReportForNav@5000::OnInit@5002();
+    VAR
+      ReportLayoutSelection@1000 : Record 9651;
+      CustomReportLayout@1001 : Record 9650;
+      CustomLayoutID@1002 : Variant;
+      InStream@1004 : InStream;
+      EmptyLayout@1003 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+      ReportForNav.OData := GETURL(CLIENTTYPE::OData, COMPANYNAME, OBJECTTYPE::Page, 7702);
+      IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN
+        CustomLayoutID := ReportLayoutSelection.GetTempLayoutSelected
+      ELSE
+        IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN
+          CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+
+      IF (FORMAT(CustomLayoutID) <> EmptyLayout) AND CustomReportLayout.GET(CustomLayoutID) THEN BEGIN
+        CustomReportLayout.TESTFIELD(Type,CustomReportLayout.Type::RDLC);
+        CustomReportLayout.CALCFIELDS(Layout);
+        CustomReportLayout.Layout.CREATEINSTREAM(InStream,TEXTENCODING::UTF8);
+        ReportForNav.IsCustomLayout := TRUE;
+      END ELSE
+        REPORT.RDLCLAYOUT(ReportForNav.ReportID,InStream);
+
+      ReportForNav.LoadRdlc(InStream);
+      IF COPYSTR(LOWERCASE(GETURL(CLIENTTYPE::Current, COMPANYNAME, OBJECTTYPE::Codeunit, 1)), 1, 14) = 'dynamicsnav://' THEN BEGIN
+        ReportForNav.CheckClientAddIn();
+        ReportForNavClient := ReportForNavClient.Report(ReportForNav.Definition);
+        ReportForNavAllowDesign := ReportForNavClient.HasDesigner AND NOT ReportForNav.ParameterMode;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnSave@5010(Base64Layout@1000 : Text);
+    VAR
+      CustomReportLayout@1002 : Record 9650;
+      ReportLayoutSelection@1003 : Record 9651;
+      LayoutId@1004 : Variant;
+      TempBlob@1007 : Record 99008535;
+      OutStream@1006 : OutStream;
+      Bstr@1005 : BigText;
+      EmptyLayout@1001 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+      IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN BEGIN
+        IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN BEGIN
+          LayoutId := ReportLayoutSelection.GetTempLayoutSelected;
+        END ELSE BEGIN
+          IF ReportLayoutSelection.GET(ReportForNav.ReportID, COMPANYNAME) THEN BEGIN
+          LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+          END;
+        END;
+      END ELSE BEGIN
+        IF CONFIRM('Default custom layout not found. Create one?') THEN;
+      END;
+      IF FORMAT(LayoutId) <> EmptyLayout THEN BEGIN
+        TempBlob.Blob.CREATEOUTSTREAM(OutStream);
+        Bstr.ADDTEXT(Base64Layout);
+        Bstr.WRITE(OutStream);
+        CustomReportLayout.GET(LayoutId);
+        CustomReportLayout.ImportLayoutBlob(TempBlob, 'RDL');
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnParameters@5008(Parameters@1000 : Text);
+    BEGIN
+      ReportForNav.Parameters := REPORT.RUNREQUESTPAGE(ReportForNav.ReportID, Parameters);
+    END;
+
+    EVENT ReportForNav@5000::OnPreview@5009(Parameters@1000 : Text;FileName@1005 : Text);
+    VAR
+      PdfFile@1002 : File;
+      InStream@1003 : InStream;
+      OutStream@1004 : OutStream;
+    BEGIN
+      COMMIT;
+      PdfFile.CREATETEMPFILE;
+      PdfFile.CREATEOUTSTREAM(OutStream);
+      REPORT.SAVEAS(ReportForNav.ReportID, Parameters, REPORTFORMAT::Pdf, OutStream);
+      PdfFile.CREATEINSTREAM(InStream);
+      ReportForNavClient.ShowDesigner;
+      IF ReportForNav.IsValidPdf(PdfFile.NAME) THEN DOWNLOADFROMSTREAM(InStream, '', '', '', FileName);
+      PdfFile.CLOSE;
+    END;
+
+    EVENT ReportForNav@5000::OnPreSection@5012(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+      CASE DataItemId OF
+        'Vendor': CASE SectionId OF
+          'Header2': OnPreSectionVendor_Header2(Vendor);
+          'Header3': OnPreSectionVendor_Header3(Vendor);
+          'Header4': OnPreSectionVendor_Header4(Vendor);
+        END;
+        'PurchaseLine': CASE SectionId OF
+          'Body7': OnPreSectionPurchaseLine_Body7("Purchase Line");
+          'Body8': OnPreSectionPurchaseLine_Body8("Purchase Line");
+          'Body9': OnPreSectionPurchaseLine_Body9("Purchase Line");
+          'Body10': OnPreSectionPurchaseLine_Body10("Purchase Line");
+        END;
+        'Integer': CASE SectionId OF
+          'Body11': OnPreSectionInteger_Body11(Integer);
+          'Body12': OnPreSectionInteger_Body12(Integer);
+        END;
+        'Integer2': CASE SectionId OF
+          'Body14': OnPreSectionInteger2_Body14(Integer2);
+          'Body15': OnPreSectionInteger2_Body15(Integer2);
+        END;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPostSection@50013(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+    END;
+
+    EVENT ReportForNav@5000::OnClientOperation@5008(Args@1000 : DotNet "'mscorlib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Array");
+    VAR
+      op@1001 : Text;
+      FileMgmt@1002 : Codeunit 419;
+      Process@1006 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.Process" RUNONCLIENT;
+      PathObj@1005 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Path" RUNONCLIENT;
+      FileVersionInfo@1003 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.FileVersionInfo" RUNONCLIENT;
+      DirectoryHelper@1004 : DotNet "'mscorlib'.System.IO.Directory" RUNONCLIENT;
+    BEGIN
+      op := Args.GetValue(0);
+      CASE op OF
+        'TempPath': ReportForNav.Result := PathObj.GetTempPath();
+        'FileExists': ReportForNav.Result := FileMgmt.ClientFileExists(Args.GetValue(1));
+        'DirectoryExists': ReportForNav.Result := FileMgmt.ClientDirectoryExists(Args.GetValue(1));
+        'ProcessLocation': ReportForNav.Result := Process.GetCurrentProcess().MainModule.FileName;
+        'FileVersion': ReportForNav.Result := FileVersionInfo.GetVersionInfo(Args.GetValue(1)).FileVersion;
+        'DeleteFile': FileMgmt.DeleteClientFile(Args.GetValue(1));
+        'DeleteDirectory': IF STRLEN(Args.GetValue(1)) > 20 THEN
+          IF FileMgmt.ClientDirectoryExists(Args.GetValue(1)) THEN
+            DirectoryHelper.Delete(FORMAT(Args.GetValue(1)), TRUE);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnCheckForNavClientVersion@5007();
+    BEGIN
+      ReportForNavClient := ReportForNavClient.Report();
+      IF ReportForNav.MyFileVersion <> ReportForNavClient.MyFileVersion THEN
+        ERROR('You have version %1 of the Reports ForNAV assembly here:\\%2\\Please close your NAV client and update it to version %3.',
+              ReportForNavClient.MyFileVersion, ReportForNavClient.MyFileName, ReportForNav.MyFileVersion);
+    END;
+
+    EVENT ReportForNav@5000::OnSelectPrinter@5006();
+    BEGIN
+      ReportForNav.PrinterSettings.PageSettings := ReportForNavClient.SelectPrinter(ReportForNav.PrinterSettings.PrinterName,ReportForNav.PrinterSettings.ShowPrinterDialog,ReportForNav.PrinterSettings.PageSettings);
+    END;
+
+    EVENT ReportForNav@5000::OnPrint@5005(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream");
+    VAR
+      ClientFileName@1000000001 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      ReportForNavClient.Print(ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnDesign@5007(Data@1001 : Text);
+    BEGIN
+      ReportForNavClient.Data := Data;
+      WHILE ReportForNavClient.DesignReport DO BEGIN
+        ReportForNav.HandleRequest(ReportForNavClient.GetRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnView@5008(ClientFileName@1000000000 : Text;Parameters@1000000001 : Text;ServerFileName@1000000002 : Text);
+    VAR
+      ServerFile@1000000003 : File;
+      ServerInStream@1000000004 : InStream;
+    BEGIN
+      ServerFile.OPEN(ServerFileName);
+      ServerFile.CREATEINSTREAM(ServerInStream);
+      DOWNLOADFROMSTREAM(ServerInStream,'','','',ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnMessage@5009(Operation@1000000000 : Text;Parameter@1000000001 : Text;ParameterNo@1000000002 : Integer);
+    BEGIN
+      CASE Operation OF
+        'Open'    : ReportForNavDialog.OPEN(Parameter);
+        'Update'  : ReportForNavDialog.UPDATE(ParameterNo,Parameter);
+        'Close'   : ReportForNavDialog.CLOSE();
+        'Message' : MESSAGE(Parameter);
+        'Error'   : ERROR(Parameter);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPrintPreview@5011(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream";Preview@1000000001 : Boolean);
+    VAR
+      ClientFileName@1000000002 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      WHILE ReportForNavClient.PrintPreviewDialog(ClientFileName,ReportForNav.PrinterSettings.PrinterName,Preview) DO BEGIN
+        ReportForNav.HandlePrintPreviewRequest(ReportForNavClient.GetPrintPreviewRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnTotals@5004(DataItemId@1000000000 : Text;Operation@1000000001 : Text;GroupTotalFieldNo@1000000002 : Integer);
+    VAR
+      CurrRecRef@1000000003 : RecordRef;
+      NextRecRef@1000000004 : RecordRef;
+      CurrKeyRef@1000000005 : KeyRef;
+      NextKeyRef@1000000006 : KeyRef;
+      FieldIndex@1000000007 : Integer;
+      GroupFieldIndex@1000000008 : Integer;
+    BEGIN
+      // Do not change (Autogenerated by Reports ForNAV) - Instead change the Create Totals, Total Fields or Group Total Fields properties on the Data item in the ForNAV designer
+      CASE DataItemId OF
+        'Vendor': WITH Vendor DO CASE Operation OF
+           'Add': BEGIN
+                ReportForNav.AddTotal(DataItemId,0,EinkBestBetragMW);
+              END;
+           'Restore': BEGIN
+                 EinkBestBetragMW := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
+              END;
+        END;  'PurchaseLine': WITH "Purchase Line" DO CASE Operation OF
+           'Add': BEGIN
+                ReportForNav.AddTotal(DataItemId,0,EinkBestBetragMW);
+                ReportForNav.AddTotal(DataItemId,1,EinkBestBetrag);
+              END;
+           'Restore': BEGIN
+                 EinkBestBetragMW := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
+                 EinkBestBetrag := ReportForNav.RestoreTotal(DataItemId,1,GroupTotalFieldNo);
+              END;
+        END;
+      END;
+    END;
+
+    EVENT Sheet@1140016::SelectionChange@1543(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
+    BEGIN
+    END;
+
+    EVENT Sheet@1140016::BeforeDoubleClick@1537(Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Sheet@1140016::BeforeRightClick@1534(Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Sheet@1140016::Activate@304();
+    BEGIN
+    END;
+
+    EVENT Sheet@1140016::Deactivate@1530();
+    BEGIN
+    END;
+
+    EVENT Sheet@1140016::Calculate@279();
+    BEGIN
+    END;
+
+    EVENT Sheet@1140016::Change@1545(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
+    BEGIN
+    END;
+
+    EVENT Sheet@1140016::FollowHyperlink@1470(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00024431-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Hyperlink");
+    BEGIN
+    END;
+
+    EVENT Sheet@1140016::PivotTableUpdate@2156(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Sheet@1140016::PivotTableAfterValueChange@2886(TargetPivotTable@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";TargetRange@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
+    BEGIN
+    END;
+
+    EVENT Sheet@1140016::PivotTableBeforeAllocateChange@2889(TargetPivotTable@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1140002 : Integer;ValueChangeEnd@1140001 : Integer;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Sheet@1140016::PivotTableBeforeCommitChanges@2892(TargetPivotTable@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1140002 : Integer;ValueChangeEnd@1140001 : Integer;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Sheet@1140016::PivotTableBeforeDiscardChanges@2893(TargetPivotTable@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1140001 : Integer;ValueChangeEnd@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Sheet@1140016::PivotTableChangeSync@2894(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1140018::Open@1923();
+    BEGIN
+    END;
+
+    EVENT Book@1140018::Activate@304();
+    BEGIN
+    END;
+
+    EVENT Book@1140018::Deactivate@1530();
+    BEGIN
+    END;
+
+    EVENT Book@1140018::BeforeClose@1546(VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140018::BeforeSave@1547(SaveAsUI@1140001 : Boolean;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140018::BeforePrint@1549(VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140018::NewSheet@1550(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1140018::AddinInstall@1552();
+    BEGIN
+    END;
+
+    EVENT Book@1140018::AddinUninstall@1553();
+    BEGIN
+    END;
+
+    EVENT Book@1140018::WindowResize@1554(Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Window");
+    BEGIN
+    END;
+
+    EVENT Book@1140018::WindowActivate@1556(Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Window");
+    BEGIN
+    END;
+
+    EVENT Book@1140018::WindowDeactivate@1557(Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Window");
+    BEGIN
+    END;
+
+    EVENT Book@1140018::SheetSelectionChange@1558(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
+    BEGIN
+    END;
+
+    EVENT Book@1140018::SheetBeforeDoubleClick@1559(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140018::SheetBeforeRightClick@1560(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140018::SheetActivate@1561(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1140018::SheetDeactivate@1562(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1140018::SheetCalculate@1563(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1140018::SheetChange@1564(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
+    BEGIN
+    END;
+
+    EVENT Book@1140018::SheetFollowHyperlink@1854(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00024431-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Hyperlink");
+    BEGIN
+    END;
+
+    EVENT Book@1140018::SheetPivotTableUpdate@2157(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1140018::PivotTableCloseConnection@2158(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1140018::PivotTableOpenConnection@2159(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1140018::Sync@2266(SyncEventType@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Book@1140018::BeforeXmlImport@2283(Map@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";Url@1140002 : Text[1024];IsRefresh@1140001 : Boolean;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140018::AfterXmlImport@2285(Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";IsRefresh@1140001 : Boolean;Result@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Book@1140018::BeforeXmlExport@2287(Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";Url@1140001 : Text[1024];VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140018::AfterXmlExport@2288(Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";Url@1140001 : Text[1024];Result@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Book@1140018::RowsetComplete@2610(Description@1140002 : Text[1024];Sheet@1140001 : Text[1024];Success@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140018::SheetPivotTableAfterValueChang@2895(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";TargetRange@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
+    BEGIN
+    END;
+
+    EVENT Book@1140018::SheetPivotTableBeforeAllocateC@2896(Sh@1140004 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1140002 : Integer;ValueChangeEnd@1140001 : Integer;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140018::SheetPivotTableBeforeCommitCha@2897(Sh@1140004 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1140002 : Integer;ValueChangeEnd@1140001 : Integer;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140018::SheetPivotTableBeforeDiscardCh@2898(Sh@1140003 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1140001 : Integer;ValueChangeEnd@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Book@1140018::SheetPivotTableChangeSync@2899(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1140018::AfterSave@2900(Success@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140018::NewChart@2901(Ch@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020821-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Chart");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::NewWorkbook@1565(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::SheetSelectionChange@1558(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::SheetBeforeDoubleClick@1559(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::SheetBeforeRightClick@1560(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::SheetActivate@1561(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::SheetDeactivate@1562(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::SheetCalculate@1563(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::SheetChange@1564(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WorkbookOpen@1567(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WorkbookActivate@1568(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WorkbookDeactivate@1569(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WorkbookBeforeClose@1570(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WorkbookBeforeSave@1571(Wb@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";SaveAsUI@1140001 : Boolean;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WorkbookBeforePrint@1572(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WorkbookNewSheet@1573(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WorkbookAddinInstall@1574(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WorkbookAddinUninstall@1575(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WindowResize@1554(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Window");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WindowActivate@1556(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Window");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WindowDeactivate@1557(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Window");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::SheetFollowHyperlink@1854(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00024431-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Hyperlink");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::SheetPivotTableUpdate@2157(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WorkbookPivotTableCloseConnect@2160(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WorkbookPivotTableOpenConnecti@2161(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WorkbookSync@2289(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";SyncEventType@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WorkbookBeforeXmlImport@2290(Wb@1140004 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Map@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";Url@1140002 : Text[1024];IsRefresh@1140001 : Boolean;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WorkbookAfterXmlImport@2291(Wb@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";IsRefresh@1140001 : Boolean;Result@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WorkbookBeforeXmlExport@2292(Wb@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";Url@1140001 : Text[1024];VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WorkbookAfterXmlExport@2293(Wb@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";Url@1140001 : Text[1024];Result@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WorkbookRowsetComplete@2611(Wb@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Description@1140002 : Text[1024];Sheet@1140001 : Text[1024];Success@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::AfterCalculate@2612();
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::SheetPivotTableAfterValueChang@2895(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";TargetRange@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::SheetPivotTableBeforeCommitCha@2897(Sh@1140004 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1140002 : Integer;ValueChangeEnd@1140001 : Integer;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::ProtectedViewWindowOpen@2903(Pvw@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.ProtectedViewWindow");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::ProtectedViewWindowBeforeEdit@2905(Pvw@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.ProtectedViewWindow";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::ProtectedViewWindowResize@2908(Pvw@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.ProtectedViewWindow");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::ProtectedViewWindowActivate@2909(Pvw@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.ProtectedViewWindow");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::ProtectedViewWindowDeactivate@2910(Pvw@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.ProtectedViewWindow");
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WorkbookAfterSave@2911(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Success@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140019::WorkbookNewChart@2912(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Ch@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020821-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Chart");
+    BEGIN
+    END;
+
+    BEGIN
+    END.
+  }
+  RDLDATA
+  {
+    <?xml version="1.0" encoding="utf-8"?>
+<Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
+  <Description>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</Description>
+  <AutoRefresh>0</AutoRefresh>
+  <DataSources>
+    <DataSource Name="DataSource">
+      <ConnectionProperties>
+        <DataProvider>SQL</DataProvider>
+        <ConnectString />
+      </ConnectionProperties>
+      <rd:SecurityType>None</rd:SecurityType>
+      <rd:DataSourceID>35a0cdf4-dd4b-4616-9274-91df26dddbc0</rd:DataSourceID>
+    </DataSource>
+  </DataSources>
+  <ReportSections>
+    <ReportSection>
+      <Body>
+        <Height>2in</Height>
+        <Style />
+      </Body>
+      <Width>6.5in</Width>
+      <Page>
+        <Style />
+      </Page>
+    </ReportSection>
+  </ReportSections>
+  <rd:ReportUnitType>Invalid</rd:ReportUnitType>
+  <rd:ReportID>cf3d8151-4f97-4dbc-8c18-63bf2034bf7e</rd:ReportID>
+  <DataSets>
+    <DataSet Name="DataSet_Result">
+      <Fields>
+        <Field Name="USERID">
+          <DataField>USERID</DataField>
+        </Field>
+        <Field Name="COMPANYNAME">
+          <DataField>COMPANYNAME</DataField>
+        </Field>
+        <Field Name="ReportForNavPageNo">
+          <DataField>ReportForNavPageNo</DataField>
+        </Field>
+        <Field Name="STRSUBSTNO_Wareneingangsdatum_Pct1_PeriodeText">
+          <DataField>STRSUBSTNO_Wareneingangsdatum_Pct1_PeriodeText</DataField>
+        </Field>
+        <Field Name="TODAY_0_4">
+          <DataField>TODAY_0_4</DataField>
+        </Field>
+        <Field Name="STRSUBSTNO_Pct1_Pct2_VendorTABLENAME_KredFilter">
+          <DataField>STRSUBSTNO_Pct1_Pct2_VendorTABLENAME_KredFilter</DataField>
+        </Field>
+        <Field Name="STRSUBSTNO_Bestellzeile_Pct1_EinkZeileFilter">
+          <DataField>STRSUBSTNO_Bestellzeile_Pct1_EinkZeileFilter</DataField>
+        </Field>
+        <Field Name="PurchaseLineFIELDCAPTION_DirectUnitCost">
+          <DataField>PurchaseLineFIELDCAPTION_DirectUnitCost</DataField>
+        </Field>
+        <Field Name="PurchaseLineFIELDCAPTION_OutstandingQuantity">
+          <DataField>PurchaseLineFIELDCAPTION_OutstandingQuantity</DataField>
+        </Field>
+        <Field Name="PurchaseLineFIELDCAPTION_Quantity">
+          <DataField>PurchaseLineFIELDCAPTION_Quantity</DataField>
+        </Field>
+        <Field Name="PurchaseLineFIELDCAPTION_Artikelnr2">
+          <DataField>PurchaseLineFIELDCAPTION_Artikelnr2</DataField>
+        </Field>
+        <Field Name="Name_Vendor">
+          <DataField>Name_Vendor</DataField>
+        </Field>
+        <Field Name="No_Vendor">
+          <DataField>No_Vendor</DataField>
+        </Field>
+        <Field Name="Description_PurchaseLine">
+          <DataField>Description_PurchaseLine</DataField>
+        </Field>
+        <Field Name="VendorOrderNo_PurchaseHeader">
+          <DataField>VendorOrderNo_PurchaseHeader</DataField>
+        </Field>
+        <Field Name="EinkBestBetrag">
+          <DataField>EinkBestBetrag</DataField>
+        </Field>
+        <Field Name="EinkBestBetragFormat">
+          <DataField>EinkBestBetragFormat</DataField>
+        </Field>
+        <Field Name="DirectUnitCost_PurchaseLine">
+          <DataField>DirectUnitCost_PurchaseLine</DataField>
+        </Field>
+        <Field Name="DirectUnitCost_PurchaseLineFormat">
+          <DataField>DirectUnitCost_PurchaseLineFormat</DataField>
+        </Field>
+        <Field Name="OutstandingQuantity_PurchaseLine">
+          <DataField>OutstandingQuantity_PurchaseLine</DataField>
+        </Field>
+        <Field Name="OutstandingQuantity_PurchaseLineFormat">
+          <DataField>OutstandingQuantity_PurchaseLineFormat</DataField>
+        </Field>
+        <Field Name="Quantity_PurchaseLine">
+          <DataField>Quantity_PurchaseLine</DataField>
+        </Field>
+        <Field Name="Quantity_PurchaseLineFormat">
+          <DataField>Quantity_PurchaseLineFormat</DataField>
+        </Field>
+        <Field Name="Artikelnr2_PurchaseLine">
+          <DataField>Artikelnr2_PurchaseLine</DataField>
+        </Field>
+        <Field Name="PromisedReceiptDate_PurchaseLine">
+          <DataField>PromisedReceiptDate_PurchaseLine</DataField>
+        </Field>
+        <Field Name="OrderDate_EinkBestKopf">
+          <DataField>OrderDate_EinkBestKopf</DataField>
+        </Field>
+        <Field Name="No_EinkBestKopf">
+          <DataField>No_EinkBestKopf</DataField>
+        </Field>
+        <Field Name="CurrencyCode_EinkBestKopf">
+          <DataField>CurrencyCode_EinkBestKopf</DataField>
+        </Field>
+        <Field Name="TotalAmount_WahrungSummenPuffer">
+          <DataField>TotalAmount_WahrungSummenPuffer</DataField>
+        </Field>
+        <Field Name="TotalAmount_WahrungSummenPufferFormat">
+          <DataField>TotalAmount_WahrungSummenPufferFormat</DataField>
+        </Field>
+        <Field Name="Name_Vendor2">
+          <DataField>Name_Vendor2</DataField>
+        </Field>
+        <Field Name="CurrencyCode_WahrungSummenPuffer">
+          <DataField>CurrencyCode_WahrungSummenPuffer</DataField>
+        </Field>
+        <Field Name="TotalAmount_WahrungSummenPuffer22">
+          <DataField>TotalAmount_WahrungSummenPuffer22</DataField>
+        </Field>
+        <Field Name="TotalAmount_WahrungSummenPuffer22Format">
+          <DataField>TotalAmount_WahrungSummenPuffer22Format</DataField>
+        </Field>
+        <Field Name="CurrencyCode_WahrungSummenPuffer2">
+          <DataField>CurrencyCode_WahrungSummenPuffer2</DataField>
+        </Field>
+      </Fields>
+      <Query>
+        <DataSourceName>DataSource</DataSourceName>
+        <CommandText />
+      </Query>
+      <rd:DataSetInfo>
+        <rd:DataSetName>DataSet</rd:DataSetName>
+        <rd:SchemaPath>Report.xsd</rd:SchemaPath>
+        <rd:TableName>Result</rd:TableName>
+      </rd:DataSetInfo>
+    </DataSet>
+  </DataSets>
+</Report>
+    END_OF_RDLDATA
+  }
+}
