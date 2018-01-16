@@ -1,0 +1,1141 @@
+OBJECT Report 50042 Kundenauswertung Branchen
+{
+  OBJECT-PROPERTIES
+  {
+    Date=06.11.17;
+    Time=13:37:32;
+    Modified=Yes;
+    Version List=FORNAV2.0.0.1189/1189;
+  }
+  PROPERTIES
+  {
+    OnInitReport=BEGIN
+                   ReportForNav:= ReportForNav.Report(CurrReport.OBJECTID,CurrReport.LANGUAGE,SERIALNUMBER,USERID,COMPANYNAME);ReportForNav.Init;
+                 END;
+
+    OnPreReport=BEGIN
+                  //*******************************************************************************************************
+                  //                    Sicherheitsabfrage ob Temp Tabelle auch Berichtstabelle ist
+                  //*******************************************************************************************************
+                  IF Berichtstabelle.TABLECAPTION <> 'Berichtstabelle' THEN
+                    ERROR('Eine Sicherheitssperre verhindert die Ausfhrung dieses Berichtes.'+
+                          'Stellen Sie sicher, dass die TABLECAPTION der Berichtstabelle auch auf Berichtstabelle lautet.');
+                  Berichtstabelle.RESET;
+                  IF Berichtstabelle.ISEMPTY = FALSE THEN BEGIN
+                    REPEAT
+                      IF Berichtstabelle.ISEMPTY = FALSE THEN BEGIN
+                        SLEEP(500);
+                        counter += 1;
+                      END;
+                      IF counter MOD 30 = 0 THEN BEGIN
+                        Berichtstabelle.FINDFIRST;
+                        IF CONFIRM('Die Berichtstabelle ist seit %1 durch Anwender %2 gesperrt. Wollen Sie die Anwendung abbrechen?',
+                        TRUE,Berichtstabelle.Uhrzeit,Berichtstabelle.User,counter,TRUE) THEN
+                          ERROR('');
+                      END;
+                    UNTIL Berichtstabelle.ISEMPTY = TRUE;
+                  END;
+                  //*******************************************************************************************************
+                  //                                  Vorbereitung der Excel Tabelle
+                  //*******************************************************************************************************
+                  IF check_Ansprech = check_Ansprech::ja THEN
+                    Excel_definieren;
+                  //*******************************************************************************************************
+                  //                         Kontakte und deren Klassifizierung werden geprft
+                  //*******************************************************************************************************
+                  IF check_klassifizierung = check_klassifizierung::ja THEN BEGIN
+                    IF text_branchencode <> '' THEN
+                      text_branchencode := '*' + text_branchencode + '*';
+                    Suche_Kontakte_mit_Branchen;
+                    Anzeigefilter := v_betreuer + ', ' + v_verkcode + ', ' + v_gebietscode + ', ' +text_branchencode;
+                  END;
+                  IF check_klassifizierung = check_klassifizierung::nein THEN BEGIN
+                    IF Monate = Monate :: "0M" THEN
+                    Suche_Kontakte_ohne_Umsatz
+                      ELSE
+                    Suche_Kontakte_ohne_Branchen;
+                    Anzeigefilter := v_betreuer + ', ' + v_verkcode + ', ' + v_gebietscode;
+                  END;
+                  IF check_Ansprech = check_Ansprech::ja THEN BEGIN
+                    IF check_klassifizierung = check_klassifizierung::ja THEN BEGIN
+                      IF text_branchencode <> '' THEN BEGIN
+                        text_branchencode := '*' + text_branchencode + '*';
+                        Ansprech_Kontakte_mit_Branchen
+                      END ELSE BEGIN
+                        ERROR('- Kunde mit Klassifizierung -  muss gesetzt sein');
+                        END;
+                    END;
+                  END;
+                  ;ReportForNav.OpenDesigner:=ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
+                END;
+
+    OnPostReport=BEGIN
+                   IF Berichtstabelle.TABLECAPTION = 'Berichtstabelle' THEN
+                     Berichtstabelle.DELETEALL;
+                   IF check_Ansprech = check_Ansprech::ja THEN
+                     Excel.Visible (TRUE);
+                   ;ReportForNav.Post;
+                 END;
+
+  }
+  DATASET
+  {
+    { 1   ;    ;DataItem;Klassifizierung     ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Feld 10,Datum,Index)
+                                 WHERE(Tabelle=FILTER(KLASSIFIZIERUNG));
+               OnAfterGetRecord=BEGIN
+                                  IF check_Ansprech = check_Ansprech::ja THEN BEGIN
+                                    IF check_klassifizierung = check_klassifizierung::ja THEN BEGIN
+                                      Sheet.Range('A'+j).Value := Klassifizierung.Index;
+                                      Sheet.Range('B'+j).Value := Klassifizierung."Feld 10";
+                                      Sheet.Range('C'+j).Value := Klassifizierung."Feld 13";
+                                      Sheet.Range('D'+j).Value := Klassifizierung."Feld 6";
+                                      Sheet.Range('E'+j).Value := Klassifizierung."Feld 7";
+                                      Sheet.Range('F'+j).Value := Klassifizierung."Feld 9";
+                                      Sheet.Range('G'+j).Value := Klassifizierung."Belegnr.";
+                                      Sheet.Range('H'+j).Value := Klassifizierung."Feld 12";
+                                      j := INCSTR(j);
+                                    END;
+                                    IF check_klassifizierung = check_klassifizierung::nein THEN BEGIN
+                                      Sheet.Range('A'+j).Value := Klassifizierung.Index;
+                                      Sheet.Range('B'+j).Value := Klassifizierung."Feld 10";
+                                      Sheet.Range('C'+j).Value := Klassifizierung."Feld 13";
+                                      Sheet.Range('D'+j).Value := Klassifizierung."Feld 6";
+                                      Sheet.Range('E'+j).Value := Klassifizierung."Feld 7";
+                                      Sheet.Range('F'+j).Value := Klassifizierung."Feld 9";
+                                      Sheet.Range('G'+j).Value := FORMAT(Klassifizierung."Feld 4");
+                                      Sheet.Range('H'+j).Value := Klassifizierung."Feld 5";
+                                      j := INCSTR(j);
+                                    END;
+                                  END;
+                                END;
+                                 }
+
+    { 2   ;1   ;Column  ;ReportForNavPageNo  ;
+               SourceExpr=ReportForNav.PageNo }
+
+    { 3   ;1   ;Column  ;WORKDATE            ;
+               SourceExpr=WORKDATE }
+
+    { 4   ;1   ;Column  ;USERID              ;
+               SourceExpr=USERID }
+
+    { 5   ;1   ;Column  ;Anzeigefilter       ;
+               SourceExpr=Anzeigefilter }
+
+    { 6   ;1   ;Column  ;Feld12_Klassifizierung;
+               SourceExpr="Feld 12" }
+
+    { 7   ;1   ;Column  ;Feld9_Klassifizierung;
+               SourceExpr="Feld 9" }
+
+    { 8   ;1   ;Column  ;Feld7_Klassifizierung;
+               SourceExpr="Feld 7" }
+
+    { 9   ;1   ;Column  ;Feld6_Klassifizierung;
+               SourceExpr="Feld 6" }
+
+    { 10  ;1   ;Column  ;Belegnr_Klassifizierung;
+               SourceExpr="Belegnr." }
+
+    { 11  ;1   ;Column  ;Feld13_Klassifizierung;
+               SourceExpr="Feld 13" }
+
+    { 12  ;1   ;Column  ;Feld10_Klassifizierung;
+               SourceExpr="Feld 10" }
+
+    { 13  ;1   ;Column  ;Index_Klassifizierung;
+               SourceExpr=Index }
+
+    { 14  ;1   ;Column  ;Feld5_Klassifizierung;
+               SourceExpr="Feld 5" }
+
+    { 15  ;1   ;Column  ;Feld4_Klassifizierung;
+               DecimalPlaces=0:0;
+               SourceExpr="Feld 4" }
+
+  }
+  REQUESTPAGE
+  {
+    PROPERTIES
+    {
+      SaveValues=Yes;
+      OnOpenPage=BEGIN
+                   EnableFields;
+                 END;
+
+    }
+    CONTROLS
+    {
+      { 1900000001;0;Container;
+                  ContainerType=ContentArea }
+
+      { 1900000002;1;Group  ;
+                  CaptionML=[CSY=Moznosti;
+                             DAN=Indstillinger;
+                             DEU=Optionen;
+                             ENU=Options;
+                             FIN=Vaihtoehdot;
+                             ISL=Valkostir;
+                             NLD=Opties;
+                             NOR=Alternativer;
+                             SVE=Alternativ;
+                             ITS=Opzioni;
+                             NLB=Opties] }
+
+      { 1140008;2;Field     ;
+                  Name=v_betreuer;
+                  CaptionML=DEU=Betreuer Innendienst;
+                  SourceExpr=v_betreuer;
+                  TableRelation=Salesperson/Purchaser }
+
+      { 1140009;2;Field     ;
+                  Name=v_verkcode;
+                  CaptionML=DEU=Verk„ufercode;
+                  SourceExpr=v_verkcode;
+                  TableRelation=Salesperson/Purchaser }
+
+      { 1140010;2;Field     ;
+                  Name=v_gebietscode;
+                  CaptionML=DEU=Gebietscode;
+                  SourceExpr=v_gebietscode;
+                  TableRelation=Territory }
+
+      { 1140004;2;Field     ;
+                  Name=check_klassifizierung;
+                  CaptionML=DEU=Klassifizierung;
+                  OptionCaptionML=DEU=Kunde besitzt Klassifizierung,Kunde hat keine Klassifizierung;
+                  SourceExpr=check_klassifizierung;
+                  OnValidate=BEGIN
+                               EnableFields;
+                             END;
+                              }
+
+      { 1000000002;2;Group  ;
+                  CaptionML=DEU=Hilfe;
+                  GroupType=Group }
+
+      { 1000000003;3;Field  ;
+                  CaptionML=DEU=Hier nach wird nicht gesucht, bitte das Feld darunter fr die Suche benutzen! (> Suche nach Branche);
+                  Style=StrongAccent;
+                  StyleExpr=TRUE }
+
+      { 1000000001;3;Field  ;
+                  CaptionML=DEU=Hilfestellung Brachencode;
+                  SourceExpr=hilfe_branchencode;
+                  TableRelation="Industry Group";
+                  Style=Favorable;
+                  StyleExpr=TRUE }
+
+      { 1140005;2;Field     ;
+                  Name=txbox_suche_branchencode;
+                  CaptionML=DEU=Suche nach Branche;
+                  SourceExpr=text_branchencode;
+                  Enabled=show_branchencode }
+
+      { 1140016;2;Field     ;
+                  Name=rdbutn_12Monate;
+                  CaptionML=DEU=Umsatzauswertung;
+                  OptionCaptionML=DEU=Umsatz in letzten 12 Monaten,Umsatz in letzten 24 Monaten,Kein Umsatz;
+                  SourceExpr=Monate;
+                  Enabled=show_branchencode = FALSE }
+
+      { 1140018;2;Field     ;
+                  Name=check_Ansprech;
+                  CaptionML=DEU=Ausgabe;
+                  OptionCaptionML=DEU=Ansprechpartner nach Excel ausgeben,Ansprechpartner nicht nach Excel ausgeben;
+                  SourceExpr=check_Ansprech }
+
+      { 5000;2   ;Field     ;
+                  Name=ForNavOpenDesigner;
+                  CaptionML=ENU=Open Designer;
+                  SourceExpr=ReportForNavOpenDesigner;
+                  Visible=ReportForNavAllowDesign }
+
+      { 1000000000;2;Field  ;
+                  Name=show_branchencode;
+                  SourceExpr=show_branchencode;
+                  Enabled=FALSE }
+
+    }
+  }
+  LABELS
+  {
+  }
+  CODE
+  {
+    VAR
+      Berichtstabelle@1140013 : Record 50037;
+      Kontakt@1140014 : Record 5050;
+      Projekt_Ansprech@1140001 : Record 50005;
+      RE_Kopf@1140016 : Record 112;
+      RE_Zeile@1140017 : Record 113;
+      AN_Kopf@1140020 : Record 36;
+      Arch_AN_Kopf@1140021 : Record 5107;
+      Branchen@1140015 : Record 5058;
+      Anzeigefilter@1140000 : Text[250];
+      check_klassifizierung@1140007 : 'ja,nein';
+      v_betreuer@1140008 : Code[10];
+      v_verkcode@1140009 : Code[10];
+      v_gebietscode@1140010 : Code[10];
+      Monate@1140019 : '12M,24M,0M';
+      text_branchencode@1140011 : Code[80];
+      hilfe_branchencode@1000000001 : Code[10];
+      kumuliert@1140018 : Decimal;
+      Umsatz@1140012 : Boolean;
+      keinUmsatz_aberAngebote@1140022 : Boolean;
+      Excel@1140006 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00024500-0000-0000-C000-000000000046}:Unknown Automation Server.Application";
+      Book@1140005 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";
+      Range@1140004 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";
+      Sheet@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020820-0000-0000-C000-000000000046}:Unknown Automation Server.Worksheet";
+      j@1140002 : Text[30];
+      check_Ansprech@1140023 : 'ja,nein';
+      Kontakt_Ansprech@1140024 : Record 5050;
+      Mail_gru@1140025 : Record 5056;
+      counter@1140026 : Integer;
+      show_branchencode@1000000000 : Boolean;
+      ReportForNav@5000 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
+      ReportForNavClient@5003 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
+      ReportForNavDialog@5001 : Dialog;
+      ReportForNavOpenDesigner@5002 : Boolean;
+      ReportForNavAllowDesign@5004 : Boolean INDATASET;
+
+    LOCAL PROCEDURE OnPreSectionKlassifizierung_Header2@5089(VAR Klassifizierung@1000000000 : Record 50037);
+    BEGIN
+      WITH Klassifizierung DO BEGIN
+        ReportForNav.ShowOutput(check_klassifizierung = check_klassifizierung::ja);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionKlassifizierung_Header3@5090(VAR Klassifizierung@1000000000 : Record 50037);
+    BEGIN
+      WITH Klassifizierung DO BEGIN
+        ReportForNav.ShowOutput(check_klassifizierung = check_klassifizierung::nein);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionKlassifizierung_Body4@5091(VAR Klassifizierung@1000000000 : Record 50037);
+    BEGIN
+      WITH Klassifizierung DO BEGIN
+        ReportForNav.ShowOutput(check_klassifizierung = check_klassifizierung::ja);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionKlassifizierung_Body5@5092(VAR Klassifizierung@1000000000 : Record 50037);
+    BEGIN
+      WITH Klassifizierung DO BEGIN
+        ReportForNav.ShowOutput(check_klassifizierung = check_klassifizierung::nein);
+      END;
+    END;
+
+    PROCEDURE EnableFields@1140000();
+    BEGIN
+      IF check_klassifizierung = check_klassifizierung :: ja THEN BEGIN
+        show_branchencode := TRUE;
+        ; // TODO RequestRequestOptionsPage.txbox_suche_branchencode.EDITABLE := TRUE;
+        ; // TODO RequestRequestOptionsPage.txbox_suche_branchencode.ENABLED := TRUE;
+        ; // TODO RequestRequestOptionsPage.rdbutn_12Monate.EDITABLE := FALSE;
+        ; // TODO RequestRequestOptionsPage.rdbutn_24Monate.EDITABLE := FALSE;
+        ; // TODO RequestRequestOptionsPage.rdbutn_keinUmsatz.EDITABLE := FALSE;
+      END;
+      IF check_klassifizierung = check_klassifizierung::nein THEN BEGIN
+        show_branchencode := FALSE;
+        ; // TODO RequestRequestOptionsPage.txbox_suche_branchencode.EDITABLE := FALSE;
+        ; // TODO RequestRequestOptionsPage.txbox_suche_branchencode.ENABLED := FALSE;
+        ; // TODO RequestRequestOptionsPage.rdbutn_12Monate.EDITABLE := TRUE;
+        ; // TODO RequestRequestOptionsPage.rdbutn_24Monate.EDITABLE := TRUE;
+        ; // TODO RequestRequestOptionsPage.rdbutn_keinUmsatz.EDITABLE := TRUE;
+      END;
+    END;
+
+    PROCEDURE Excel_definieren@1140015();
+    BEGIN
+      CREATE(Excel,FALSE,TRUE);                                   //erzeugt excel
+      Book := Excel.Workbooks.Add(-4167);                          //legt neue datei in excel an
+      Sheet := Excel.ActiveSheet;                                  //definiert aktives worksheet
+      Sheet.Range('A1').Value := 'Kontaktnr.';
+      Sheet.Range('B1').Value := 'Kunde';
+      Sheet.Range('C1').Value := 'Ort';
+      Sheet.Range('D1').Value := 'Betreuer';
+      Sheet.Range('E1').Value := 'Verk„ufer';
+      Sheet.Range('F1').Value := 'Gebietscode';
+      IF check_klassifizierung = check_klassifizierung::ja THEN BEGIN
+        Sheet.Range('G1').Value := 'Branchencode';
+        Sheet.Range('H1').Value := 'Branchenbeschreibung';
+      END;
+      IF check_klassifizierung = check_klassifizierung::nein THEN BEGIN
+        Sheet.Range('G1').Value := 'Projekte';
+        Sheet.Range('H1').Value := 'Umsatz in °';
+      END;
+      j := '2';                                                    // <- Import in excel ab Zeile 2
+    END;
+
+    PROCEDURE Suche_Kontakte_mit_Branchen@1140010();
+    BEGIN
+      Branchen.RESET;
+      Branchen.SETFILTER("Industry Group Code",text_branchencode);
+      IF Branchen.FINDFIRST THEN BEGIN
+        REPEAT
+          Kontakt.RESET;
+          Kontakt.SETFILTER(Type,'%1',Kontakt.Type::Company);
+          Kontakt.SETFILTER("No.",Branchen."Contact No.");
+          Kontakt.SETFILTER("Betreuer Innendienst",v_betreuer);
+          Kontakt.SETFILTER("Salesperson Code",v_verkcode);
+          Kontakt.SETFILTER("Territory Code",v_gebietscode);
+          IF Kontakt.FINDFIRST THEN BEGIN
+            Berichtstabelle.INIT;
+            Berichtstabelle.Tabelle := 'KLASSIFIZIERUNG';
+            Berichtstabelle.Index := Kontakt."No.";
+            Berichtstabelle."Feld 10" := Kontakt.Name;
+            Berichtstabelle."Feld 13" := Kontakt.City;
+            Berichtstabelle."Feld 6" := Kontakt."Betreuer Innendienst";
+            Berichtstabelle."Feld 7" := Kontakt."Salesperson Code";
+            Berichtstabelle."Feld 9" := Kontakt."Territory Code";
+            Berichtstabelle."Belegnr." := Branchen."Industry Group Code";
+            Branchen.CALCFIELDS("Industry Group Description");
+            Berichtstabelle."Feld 12" := Branchen."Industry Group Description";
+            Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+            Berichtstabelle.User := USERID;
+            Berichtstabelle.INSERT;
+          END;
+        UNTIL Branchen.NEXT = 0;
+      END;
+    END;
+
+    PROCEDURE Suche_Kontakte_ohne_Branchen@1140011();
+    BEGIN
+      Kontakt.RESET;
+      Kontakt.SETFILTER(Type,'%1',Kontakt.Type::Company);
+      Kontakt.SETFILTER("Betreuer Innendienst",v_betreuer);
+      Kontakt.SETFILTER("Salesperson Code",v_verkcode);
+      Kontakt.SETFILTER("Territory Code",v_gebietscode);
+      IF Kontakt.FIND('-') THEN BEGIN
+        REPEAT
+          Branchen.RESET;
+          Branchen.SETFILTER("Contact No.",Kontakt."No.");
+          IF NOT Branchen.FINDFIRST THEN BEGIN
+            kumuliert := 0;
+            RE_Kopf.RESET;
+            RE_Kopf.SETFILTER("Sell-to Contact No.",'%1',Kontakt."No.");
+            RE_Kopf.SETFILTER("Posting Date",'>%1',CALCDATE('-' + FORMAT(Monate),WORKDATE));
+            IF RE_Kopf.FINDFIRST THEN BEGIN
+              REPEAT
+                RE_Zeile.SETFILTER("Document No.",'%1',RE_Kopf."No.");
+                RE_Zeile.SETFILTER(Type,'%1',RE_Zeile.Type :: Item);
+                RE_Zeile.SETFILTER(RE_Zeile.Quantity,'<>%1',0);
+                IF RE_Zeile.FINDFIRST THEN
+                  REPEAT
+                    kumuliert := kumuliert + (RE_Zeile.Quantity * RE_Zeile."VK-Preis (MW)");
+                  UNTIL RE_Zeile.NEXT = 0;
+              UNTIL RE_Kopf.NEXT = 0;
+              IF kumuliert <> 0 THEN BEGIN
+                Berichtstabelle.INIT;
+                Berichtstabelle.Tabelle := 'KLASSIFIZIERUNG';
+                Berichtstabelle.Index := Kontakt."No.";
+                Berichtstabelle."Feld 10" := Kontakt.Name;
+                Berichtstabelle."Feld 13" := Kontakt.City;
+                Berichtstabelle."Feld 6" := Kontakt."Betreuer Innendienst";
+                Berichtstabelle."Feld 7" := Kontakt."Salesperson Code";
+                Berichtstabelle."Feld 9" := Kontakt."Territory Code";
+                Projekt_Ansprech.RESET;
+                Projekt_Ansprech.SETFILTER("Kampagnennr.",'<>%1','');
+                Projekt_Ansprech.SETFILTER("Kontaktnr.",Kontakt."No.");
+                IF Projekt_Ansprech.FINDFIRST THEN
+                  Berichtstabelle."Feld 4" := Projekt_Ansprech.COUNT
+                ELSE
+                  Berichtstabelle."Feld 4" := 0;
+                Berichtstabelle."Feld 5" := kumuliert;
+                Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                Berichtstabelle.User := USERID;
+                Berichtstabelle.INSERT;
+              END;
+            END;
+          END;
+        UNTIL Kontakt.NEXT = 0;
+      END;
+    END;
+
+    PROCEDURE Suche_Kontakte_ohne_Umsatz@1140001();
+    BEGIN
+      Kontakt.RESET;
+      Kontakt.SETFILTER(Type,'%1',Kontakt.Type::Company);
+      Kontakt.SETFILTER("Betreuer Innendienst",v_betreuer);
+      Kontakt.SETFILTER("Salesperson Code",v_verkcode);
+      Kontakt.SETFILTER("Territory Code",v_gebietscode);
+      IF Kontakt.FIND('-') THEN BEGIN
+        REPEAT
+          keinUmsatz_aberAngebote := FALSE;
+          Branchen.RESET;
+          Branchen.SETFILTER("Contact No.",Kontakt."No.");
+          IF NOT Branchen.FINDFIRST THEN BEGIN
+            RE_Kopf.RESET;
+            RE_Kopf.SETFILTER("Sell-to Contact No.",'%1',Kontakt."No.");
+            //RE_Kopf.SETFILTER("Posting Date",'>%1',CALCDATE('-' + FORMAT(Monate),WORKDATE));
+            IF NOT RE_Kopf.FINDFIRST THEN BEGIN
+              AN_Kopf.RESET;
+              AN_Kopf.SETFILTER("Document Type",'%1',AN_Kopf."Document Type"::Quote);
+              AN_Kopf.SETFILTER("Sell-to Contact No.",'%1',Kontakt."No.");
+              IF AN_Kopf.FINDFIRST THEN
+                keinUmsatz_aberAngebote := TRUE;
+              Arch_AN_Kopf.RESET;
+              Arch_AN_Kopf.SETFILTER("Document Type",'%1',Arch_AN_Kopf."Document Type"::Quote);
+              Arch_AN_Kopf.SETFILTER("Sell-to Contact No.",'%1',Kontakt."No.");
+              IF Arch_AN_Kopf.FINDFIRST THEN
+                keinUmsatz_aberAngebote := TRUE;
+              IF keinUmsatz_aberAngebote THEN BEGIN
+                Berichtstabelle.INIT;
+                Berichtstabelle.Tabelle := 'KLASSIFIZIERUNG';
+                Berichtstabelle.Index := Kontakt."No.";
+                Berichtstabelle."Feld 10" := Kontakt.Name;
+                Berichtstabelle."Feld 13" := Kontakt.City;
+                Berichtstabelle."Feld 6" := Kontakt."Betreuer Innendienst";
+                Berichtstabelle."Feld 7" := Kontakt."Salesperson Code";
+                Berichtstabelle."Feld 9" := Kontakt."Territory Code";
+                Projekt_Ansprech.RESET;
+                Projekt_Ansprech.SETFILTER("Kampagnennr.",'<>%1','');
+                Projekt_Ansprech.SETFILTER("Kontaktnr.",Kontakt."No.");
+                IF Projekt_Ansprech.FINDFIRST THEN
+                  Berichtstabelle."Feld 4" := Projekt_Ansprech.COUNT
+                ELSE
+                  Berichtstabelle."Feld 4" := 0;
+                Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                Berichtstabelle.User := USERID;
+                Berichtstabelle.INSERT;
+              END;
+            END;
+          END;
+        UNTIL Kontakt.NEXT = 0;
+      END;
+    END;
+
+    PROCEDURE Ansprech_Kontakte_mit_Branchen@1140002();
+    BEGIN
+      //CREATE (Excel);                                              //erzeugt excel
+      //Book := Excel.Workbooks.Add(-4167);                          //legt neue datei in excel an
+      //Sheet := Excel.ActiveSheet;                                  //definiert aktives worksheet
+      Sheet.Range('A1').Value:='Kontaktnr.';
+      Sheet.Range('B1').Value:='Kunde';
+      Sheet.Range('C1').Value:='Ort';
+      Sheet.Range('D1').Value:='Betreuer';
+      Sheet.Range('E1').Value:='Verk„ufer';
+      Sheet.Range('F1').Value:='Gebietscode';
+      Sheet.Range('G1').Value:='Branchencode';
+      Sheet.Range('H1').Value:='Branchenbeschreibung';
+      Sheet.Range('I1').Value:='Anrede';
+      Sheet.Range('J1').Value:='Vorname';
+      Sheet.Range('K1').Value:='Nachname';
+      Sheet.Range('L1').Value:='Position';
+      Sheet.Range('M1').Value:='Email';
+      j := '2';                                                    // <- Import in excel ab Zeile 2
+      Branchen.RESET;
+      Branchen.SETFILTER("Industry Group Code",text_branchencode);
+      IF Branchen.FINDFIRST THEN BEGIN
+        REPEAT
+          Kontakt.RESET;
+          Kontakt.SETFILTER(Type,'%1',Kontakt.Type::Company);
+          Kontakt.SETFILTER("No.",Branchen."Contact No.");
+          Kontakt.SETFILTER("Betreuer Innendienst",v_betreuer);
+          Kontakt.SETFILTER("Salesperson Code",v_verkcode);
+          Kontakt.SETFILTER("Territory Code",v_gebietscode);
+          IF Kontakt.FIND('-') THEN BEGIN
+            REPEAT
+              Kontakt_Ansprech.RESET;
+              Kontakt_Ansprech.SETFILTER("Company No.",'%1',Kontakt."No.");
+              Kontakt_Ansprech.SETFILTER(Type,'%1',Kontakt_Ansprech.Type::Person);
+              Kontakt_Ansprech.SETFILTER("Unternehmen verlassen",'%1',FALSE);
+              IF Kontakt_Ansprech.FINDFIRST THEN BEGIN
+                REPEAT
+                  Sheet.Range('A'+j).Value := Kontakt."No.";
+                  Sheet.Range('B'+j).Value := Kontakt.Name;
+                  Sheet.Range('C'+j).Value := Kontakt.City;
+                  Sheet.Range('D'+j).Value := Kontakt."Betreuer Innendienst";
+                  Sheet.Range('E'+j).Value := Kontakt."Salesperson Code";
+                  Sheet.Range('F'+j).Value := Kontakt."Territory Code";
+                    Branchen.CALCFIELDS("Industry Group Description");
+                  Sheet.Range('G'+j).Value := Branchen."Industry Group Code";
+                  Sheet.Range('H'+j).Value := Branchen."Industry Group Description";
+                  Sheet.Range('I'+j).Value := Kontakt_Ansprech."Salutation Code";
+                  Sheet.Range('J'+j).Value := Kontakt_Ansprech."First Name";
+                  Sheet.Range('K'+j).Value := Kontakt_Ansprech.Surname;
+                  Sheet.Range('L'+j).Value := Kontakt_Ansprech."Organizational Level Code";
+                  Mail_gru.RESET;
+                  Mail_gru.SETFILTER(Mail_gru."Contact No.",'%1',Kontakt_Ansprech."No.");
+                  Mail_gru.SETFILTER(Mail_gru."Mailing Group Code",'%1|%2','UNSUB','NO EMAIL');
+                  IF Mail_gru.FINDFIRST THEN
+                    Sheet.Range('M'+j).Value := 'Keine Email gewnscht'
+                  ELSE
+                    Sheet.Range('M'+j).Value := Kontakt_Ansprech."E-Mail 2";
+                  j := INCSTR(j);
+                UNTIL Kontakt_Ansprech.NEXT=0;
+              END;
+            UNTIL Kontakt.NEXT=0;
+          END;
+        UNTIL Branchen.NEXT = 0;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnInit@5002();
+    VAR
+      ReportLayoutSelection@1000 : Record 9651;
+      CustomReportLayout@1001 : Record 9650;
+      CustomLayoutID@1002 : Variant;
+      InStream@1004 : InStream;
+      EmptyLayout@1003 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+      ReportForNav.OData := GETURL(CLIENTTYPE::OData, COMPANYNAME, OBJECTTYPE::Page, 7702);
+      IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN
+        CustomLayoutID := ReportLayoutSelection.GetTempLayoutSelected
+      ELSE
+        IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN
+          CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+
+      IF (FORMAT(CustomLayoutID) <> EmptyLayout) AND CustomReportLayout.GET(CustomLayoutID) THEN BEGIN
+        CustomReportLayout.TESTFIELD(Type,CustomReportLayout.Type::RDLC);
+        CustomReportLayout.CALCFIELDS(Layout);
+        CustomReportLayout.Layout.CREATEINSTREAM(InStream,TEXTENCODING::UTF8);
+        ReportForNav.IsCustomLayout := TRUE;
+      END ELSE
+        REPORT.RDLCLAYOUT(ReportForNav.ReportID,InStream);
+
+      ReportForNav.LoadRdlc(InStream);
+      IF COPYSTR(LOWERCASE(GETURL(CLIENTTYPE::Current, COMPANYNAME, OBJECTTYPE::Codeunit, 1)), 1, 14) = 'dynamicsnav://' THEN BEGIN
+        ReportForNav.CheckClientAddIn();
+        ReportForNavClient := ReportForNavClient.Report(ReportForNav.Definition);
+        ReportForNavAllowDesign := ReportForNavClient.HasDesigner AND NOT ReportForNav.ParameterMode;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnSave@5010(Base64Layout@1000 : Text);
+    VAR
+      CustomReportLayout@1002 : Record 9650;
+      ReportLayoutSelection@1003 : Record 9651;
+      LayoutId@1004 : Variant;
+      TempBlob@1007 : Record 99008535;
+      OutStream@1006 : OutStream;
+      Bstr@1005 : BigText;
+      EmptyLayout@1001 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+      IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN BEGIN
+        IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN BEGIN
+          LayoutId := ReportLayoutSelection.GetTempLayoutSelected;
+        END ELSE BEGIN
+          IF ReportLayoutSelection.GET(ReportForNav.ReportID, COMPANYNAME) THEN BEGIN
+          LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+          END;
+        END;
+      END ELSE BEGIN
+        IF CONFIRM('Default custom layout not found. Create one?') THEN;
+      END;
+      IF FORMAT(LayoutId) <> EmptyLayout THEN BEGIN
+        TempBlob.Blob.CREATEOUTSTREAM(OutStream);
+        Bstr.ADDTEXT(Base64Layout);
+        Bstr.WRITE(OutStream);
+        CustomReportLayout.GET(LayoutId);
+        CustomReportLayout.ImportLayoutBlob(TempBlob, 'RDL');
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnParameters@5008(Parameters@1000 : Text);
+    BEGIN
+      ReportForNav.Parameters := REPORT.RUNREQUESTPAGE(ReportForNav.ReportID, Parameters);
+    END;
+
+    EVENT ReportForNav@5000::OnPreview@5009(Parameters@1000 : Text;FileName@1005 : Text);
+    VAR
+      PdfFile@1002 : File;
+      InStream@1003 : InStream;
+      OutStream@1004 : OutStream;
+    BEGIN
+      COMMIT;
+      PdfFile.CREATETEMPFILE;
+      PdfFile.CREATEOUTSTREAM(OutStream);
+      REPORT.SAVEAS(ReportForNav.ReportID, Parameters, REPORTFORMAT::Pdf, OutStream);
+      PdfFile.CREATEINSTREAM(InStream);
+      ReportForNavClient.ShowDesigner;
+      IF ReportForNav.IsValidPdf(PdfFile.NAME) THEN DOWNLOADFROMSTREAM(InStream, '', '', '', FileName);
+      PdfFile.CLOSE;
+    END;
+
+    EVENT ReportForNav@5000::OnPreSection@5012(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+      CASE DataItemId OF
+        'Klassifizierung': CASE SectionId OF
+          'Header2': OnPreSectionKlassifizierung_Header2(Klassifizierung);
+          'Header3': OnPreSectionKlassifizierung_Header3(Klassifizierung);
+          'Body4': OnPreSectionKlassifizierung_Body4(Klassifizierung);
+          'Body5': OnPreSectionKlassifizierung_Body5(Klassifizierung);
+        END;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPostSection@50013(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+    END;
+
+    EVENT ReportForNav@5000::OnClientOperation@5008(Args@1000 : DotNet "'mscorlib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Array");
+    VAR
+      op@1001 : Text;
+      FileMgmt@1002 : Codeunit 419;
+      Process@1006 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.Process" RUNONCLIENT;
+      PathObj@1005 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Path" RUNONCLIENT;
+      FileVersionInfo@1003 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.FileVersionInfo" RUNONCLIENT;
+      DirectoryHelper@1004 : DotNet "'mscorlib'.System.IO.Directory" RUNONCLIENT;
+    BEGIN
+      op := Args.GetValue(0);
+      CASE op OF
+        'TempPath': ReportForNav.Result := PathObj.GetTempPath();
+        'FileExists': ReportForNav.Result := FileMgmt.ClientFileExists(Args.GetValue(1));
+        'DirectoryExists': ReportForNav.Result := FileMgmt.ClientDirectoryExists(Args.GetValue(1));
+        'ProcessLocation': ReportForNav.Result := Process.GetCurrentProcess().MainModule.FileName;
+        'FileVersion': ReportForNav.Result := FileVersionInfo.GetVersionInfo(Args.GetValue(1)).FileVersion;
+        'DeleteFile': FileMgmt.DeleteClientFile(Args.GetValue(1));
+        'DeleteDirectory': IF STRLEN(Args.GetValue(1)) > 20 THEN
+          IF FileMgmt.ClientDirectoryExists(Args.GetValue(1)) THEN
+            DirectoryHelper.Delete(FORMAT(Args.GetValue(1)), TRUE);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnCheckForNavClientVersion@5007();
+    BEGIN
+      ReportForNavClient := ReportForNavClient.Report();
+      IF ReportForNav.MyFileVersion <> ReportForNavClient.MyFileVersion THEN
+        ERROR('You have version %1 of the Reports ForNAV assembly here:\\%2\\Please close your NAV client and update it to version %3.',
+              ReportForNavClient.MyFileVersion, ReportForNavClient.MyFileName, ReportForNav.MyFileVersion);
+    END;
+
+    EVENT ReportForNav@5000::OnSelectPrinter@5006();
+    BEGIN
+      ReportForNav.PrinterSettings.PageSettings := ReportForNavClient.SelectPrinter(ReportForNav.PrinterSettings.PrinterName,ReportForNav.PrinterSettings.ShowPrinterDialog,ReportForNav.PrinterSettings.PageSettings);
+    END;
+
+    EVENT ReportForNav@5000::OnPrint@5005(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream");
+    VAR
+      ClientFileName@1000000001 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      ReportForNavClient.Print(ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnDesign@5007(Data@1001 : Text);
+    BEGIN
+      ReportForNavClient.Data := Data;
+      WHILE ReportForNavClient.DesignReport DO BEGIN
+        ReportForNav.HandleRequest(ReportForNavClient.GetRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnView@5008(ClientFileName@1000000000 : Text;Parameters@1000000001 : Text;ServerFileName@1000000002 : Text);
+    VAR
+      ServerFile@1000000003 : File;
+      ServerInStream@1000000004 : InStream;
+    BEGIN
+      ServerFile.OPEN(ServerFileName);
+      ServerFile.CREATEINSTREAM(ServerInStream);
+      DOWNLOADFROMSTREAM(ServerInStream,'','','',ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnMessage@5009(Operation@1000000000 : Text;Parameter@1000000001 : Text;ParameterNo@1000000002 : Integer);
+    BEGIN
+      CASE Operation OF
+        'Open'    : ReportForNavDialog.OPEN(Parameter);
+        'Update'  : ReportForNavDialog.UPDATE(ParameterNo,Parameter);
+        'Close'   : ReportForNavDialog.CLOSE();
+        'Message' : MESSAGE(Parameter);
+        'Error'   : ERROR(Parameter);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPrintPreview@5011(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream";Preview@1000000001 : Boolean);
+    VAR
+      ClientFileName@1000000002 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      WHILE ReportForNavClient.PrintPreviewDialog(ClientFileName,ReportForNav.PrinterSettings.PrinterName,Preview) DO BEGIN
+        ReportForNav.HandlePrintPreviewRequest(ReportForNavClient.GetPrintPreviewRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    EVENT Sheet@1140003::SelectionChange@1543(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Sheet@1140003::BeforeDoubleClick@1537(Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Sheet@1140003::BeforeRightClick@1534(Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Sheet@1140003::Activate@304();
+    BEGIN
+    END;
+
+    EVENT Sheet@1140003::Deactivate@1530();
+    BEGIN
+    END;
+
+    EVENT Sheet@1140003::Calculate@279();
+    BEGIN
+    END;
+
+    EVENT Sheet@1140003::Change@1545(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Sheet@1140003::FollowHyperlink@1470(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00024431-0000-0000-C000-000000000046}:Unknown Automation Server.Hyperlink");
+    BEGIN
+    END;
+
+    EVENT Sheet@1140003::PivotTableUpdate@2156(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1140005::Open@1923();
+    BEGIN
+    END;
+
+    EVENT Book@1140005::Activate@304();
+    BEGIN
+    END;
+
+    EVENT Book@1140005::Deactivate@1530();
+    BEGIN
+    END;
+
+    EVENT Book@1140005::BeforeClose@1546(VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140005::BeforeSave@1547(SaveAsUI@1140001 : Boolean;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140005::BeforePrint@1549(VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140005::NewSheet@1550(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1140005::AddinInstall@1552();
+    BEGIN
+    END;
+
+    EVENT Book@1140005::AddinUninstall@1553();
+    BEGIN
+    END;
+
+    EVENT Book@1140005::WindowResize@1554(Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020893-0000-0000-C000-000000000046}:Unknown Automation Server.Window");
+    BEGIN
+    END;
+
+    EVENT Book@1140005::WindowActivate@1556(Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020893-0000-0000-C000-000000000046}:Unknown Automation Server.Window");
+    BEGIN
+    END;
+
+    EVENT Book@1140005::WindowDeactivate@1557(Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020893-0000-0000-C000-000000000046}:Unknown Automation Server.Window");
+    BEGIN
+    END;
+
+    EVENT Book@1140005::SheetSelectionChange@1558(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Book@1140005::SheetBeforeDoubleClick@1559(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140005::SheetBeforeRightClick@1560(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140005::SheetActivate@1561(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1140005::SheetDeactivate@1562(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1140005::SheetCalculate@1563(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1140005::SheetChange@1564(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Book@1140005::SheetFollowHyperlink@1854(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00024431-0000-0000-C000-000000000046}:Unknown Automation Server.Hyperlink");
+    BEGIN
+    END;
+
+    EVENT Book@1140005::SheetPivotTableUpdate@2157(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1140005::PivotTableCloseConnection@2158(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1140005::PivotTableOpenConnection@2159(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1140005::Sync@2266(SyncEventType@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Book@1140005::BeforeXmlImport@2283(Map@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";Url@1140002 : Text[1024];IsRefresh@1140001 : Boolean;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140005::AfterXmlImport@2285(Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";IsRefresh@1140001 : Boolean;Result@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Book@1140005::BeforeXmlExport@2287(Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";Url@1140001 : Text[1024];VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140005::AfterXmlExport@2288(Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";Url@1140001 : Text[1024];Result@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Book@1140005::RowsetComplete@2610(Description@1140002 : Text[1024];Sheet@1140001 : Text[1024];Success@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::NewWorkbook@1565(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::SheetSelectionChange@1558(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::SheetBeforeDoubleClick@1559(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::SheetBeforeRightClick@1560(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::SheetActivate@1561(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::SheetDeactivate@1562(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::SheetCalculate@1563(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::SheetChange@1564(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WorkbookOpen@1567(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WorkbookActivate@1568(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WorkbookDeactivate@1569(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WorkbookBeforeClose@1570(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WorkbookBeforeSave@1571(Wb@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";SaveAsUI@1140001 : Boolean;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WorkbookBeforePrint@1572(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WorkbookNewSheet@1573(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WorkbookAddinInstall@1574(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WorkbookAddinUninstall@1575(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WindowResize@1554(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020893-0000-0000-C000-000000000046}:Unknown Automation Server.Window");
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WindowActivate@1556(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020893-0000-0000-C000-000000000046}:Unknown Automation Server.Window");
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WindowDeactivate@1557(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020893-0000-0000-C000-000000000046}:Unknown Automation Server.Window");
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::SheetFollowHyperlink@1854(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00024431-0000-0000-C000-000000000046}:Unknown Automation Server.Hyperlink");
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::SheetPivotTableUpdate@2157(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WorkbookPivotTableCloseConnection@2160(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WorkbookPivotTableOpenConnection@2161(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WorkbookSync@2289(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";SyncEventType@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WorkbookBeforeXmlImport@2290(Wb@1140004 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Map@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";Url@1140002 : Text[1024];IsRefresh@1140001 : Boolean;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WorkbookAfterXmlImport@2291(Wb@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";IsRefresh@1140001 : Boolean;Result@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WorkbookBeforeXmlExport@2292(Wb@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";Url@1140001 : Text[1024];VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WorkbookAfterXmlExport@2293(Wb@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";Url@1140001 : Text[1024];Result@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::WorkbookRowsetComplete@2611(Wb@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.6:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Description@1140002 : Text[1024];Sheet@1140001 : Text[1024];Success@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140006::AfterCalculate@2612();
+    BEGIN
+    END;
+
+    BEGIN
+    END.
+  }
+  RDLDATA
+  {
+    <?xml version="1.0" encoding="utf-8"?>
+<Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
+  <Description>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</Description>
+  <AutoRefresh>0</AutoRefresh>
+  <DataSources>
+    <DataSource Name="DataSource">
+      <ConnectionProperties>
+        <DataProvider>SQL</DataProvider>
+        <ConnectString />
+      </ConnectionProperties>
+      <rd:SecurityType>None</rd:SecurityType>
+      <rd:DataSourceID>c7409339-9a33-49bc-bd6a-eedf1f66b50c</rd:DataSourceID>
+    </DataSource>
+  </DataSources>
+  <ReportSections>
+    <ReportSection>
+      <Body>
+        <Height>2in</Height>
+        <Style />
+      </Body>
+      <Width>6.5in</Width>
+      <Page>
+        <Style />
+      </Page>
+    </ReportSection>
+  </ReportSections>
+  <rd:ReportUnitType>Invalid</rd:ReportUnitType>
+  <rd:ReportID>987af575-f177-4e6a-a948-913fb135ed7e</rd:ReportID>
+  <DataSets>
+    <DataSet Name="DataSet_Result">
+      <Fields>
+        <Field Name="ReportForNavPageNo">
+          <DataField>ReportForNavPageNo</DataField>
+        </Field>
+        <Field Name="WORKDATE">
+          <DataField>WORKDATE</DataField>
+        </Field>
+        <Field Name="USERID">
+          <DataField>USERID</DataField>
+        </Field>
+        <Field Name="Anzeigefilter">
+          <DataField>Anzeigefilter</DataField>
+        </Field>
+        <Field Name="Feld12_Klassifizierung">
+          <DataField>Feld12_Klassifizierung</DataField>
+        </Field>
+        <Field Name="Feld9_Klassifizierung">
+          <DataField>Feld9_Klassifizierung</DataField>
+        </Field>
+        <Field Name="Feld7_Klassifizierung">
+          <DataField>Feld7_Klassifizierung</DataField>
+        </Field>
+        <Field Name="Feld6_Klassifizierung">
+          <DataField>Feld6_Klassifizierung</DataField>
+        </Field>
+        <Field Name="Belegnr_Klassifizierung">
+          <DataField>Belegnr_Klassifizierung</DataField>
+        </Field>
+        <Field Name="Feld13_Klassifizierung">
+          <DataField>Feld13_Klassifizierung</DataField>
+        </Field>
+        <Field Name="Feld10_Klassifizierung">
+          <DataField>Feld10_Klassifizierung</DataField>
+        </Field>
+        <Field Name="Index_Klassifizierung">
+          <DataField>Index_Klassifizierung</DataField>
+        </Field>
+        <Field Name="Feld5_Klassifizierung">
+          <DataField>Feld5_Klassifizierung</DataField>
+        </Field>
+        <Field Name="Feld5_KlassifizierungFormat">
+          <DataField>Feld5_KlassifizierungFormat</DataField>
+        </Field>
+        <Field Name="Feld4_Klassifizierung">
+          <DataField>Feld4_Klassifizierung</DataField>
+        </Field>
+        <Field Name="Feld4_KlassifizierungFormat">
+          <DataField>Feld4_KlassifizierungFormat</DataField>
+        </Field>
+      </Fields>
+      <Query>
+        <DataSourceName>DataSource</DataSourceName>
+        <CommandText />
+      </Query>
+      <rd:DataSetInfo>
+        <rd:DataSetName>DataSet</rd:DataSetName>
+        <rd:SchemaPath>Report.xsd</rd:SchemaPath>
+        <rd:TableName>Result</rd:TableName>
+      </rd:DataSetInfo>
+    </DataSet>
+  </DataSets>
+</Report>
+    END_OF_RDLDATA
+  }
+}
+
