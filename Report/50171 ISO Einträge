@@ -2,8 +2,8 @@ OBJECT Report 50171 ISO Eintr„ge
 {
   OBJECT-PROPERTIES
   {
-    Date=17.01.18;
-    Time=10:42:18;
+    Date=18.01.18;
+    Time=11:54:27;
     Modified=Yes;
     Version List=TOPAS,FORNAV2.0.0.1189/1189;
   }
@@ -14,17 +14,6 @@ OBJECT Report 50171 ISO Eintr„ge
                  END;
 
     OnPreReport=BEGIN
-                  IF Berichtstabelle.TABLECAPTION <> 'Berichtstabelle' THEN
-                    ERROR('Sicherheitssperre verhindert Ausfhrung dieses Berichtes.');
-                  Berichtstabelle.RESET;
-                  IF Berichtstabelle.ISEMPTY = FALSE THEN BEGIN
-                    REPEAT
-                      Berichtstabelle.RESET;
-                      IF Berichtstabelle.ISEMPTY = FALSE THEN
-                      SLEEP(500);
-                    UNTIL Berichtstabelle.ISEMPTY = TRUE;
-                  END;
-
                   Memokopf.RESET;
                   Memokopf.SETFILTER(ISO,'%1',TRUE);
                   Memokopf.SETFILTER("Kampagnennr.",'<>%1','');
@@ -101,11 +90,11 @@ OBJECT Report 50171 ISO Eintr„ge
                       IF Memozeile.FINDFIRST THEN BEGIN
                         REPEAT
                           Berichtstabelle.INIT;
-                            Berichtstabelle.Tabelle := 'MEMOZEILE';
-                            Berichtstabelle.Index := Memozeile."Memonr.";
-                            Berichtstabelle."Belegnr." := Memozeile."Memonr.";
-                            Berichtstabelle."Zeilennr." := Memozeile."Zeilennr.";
-                            Berichtstabelle."Feld 1" := Memozeile.Bemerkung;
+                          Berichtstabelle.Tabelle := 'MEMOZEILE';
+                          Berichtstabelle.Index := Memozeile."Memonr.";
+                          Berichtstabelle."Belegnr." := Memozeile."Memonr.";
+                          Berichtstabelle."Zeilennr." := Memozeile."Zeilennr.";
+                          Berichtstabelle."Feld 1" := Memozeile.Bemerkung;
                           Berichtstabelle.INSERT;
                         UNTIL Memozeile.NEXT = 0;
                       END;
@@ -156,6 +145,8 @@ OBJECT Report 50171 ISO Eintr„ge
                     UNTIL Aufgabe.NEXT = 0;
                   END;
                   z„hler := 0;
+                  Berichtstabelle_zeilen.COPY(Berichtstabelle,TRUE);
+
                   ;ReportForNav.OpenDesigner:=ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
                 END;
 
@@ -172,9 +163,26 @@ OBJECT Report 50171 ISO Eintr„ge
     { 1   ;    ;DataItem;Textkopf            ;
                DataItemTable=Table50037;
                DataItemTableView=SORTING(Datum,Index)
-                                 WHERE(Tabelle=FILTER(PROJEKTMEMO|KONTAKTMEMO|AUFGABE));
+                                 WHERE(Tabelle=FILTER(PROJEKTMEMO|KONTAKTMEMO|AUFGABE)) }
+
+    { 1000000000;;DataItem;CopyHeader        ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number);
+               OnPreDataItem=BEGIN
+                               Berichtstabelle.RESET;
+                               Berichtstabelle.SETCURRENTKEY(Datum,Index);
+                               Berichtstabelle.SETFILTER(Tabelle,'%1|%2|%3','PROJEKTMEMO','KONTAKTMEMO','AUFGABE');
+                               SETRANGE(Number,1,Berichtstabelle.COUNT);
+                             END;
+
                OnAfterGetRecord=BEGIN
                                   z„hler := z„hler + 1;
+
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle.NEXT;
+                                  END;
                                 END;
                                  }
 
@@ -194,25 +202,25 @@ OBJECT Report 50171 ISO Eintr„ge
                SourceExpr=ReportForNav.PageNo }
 
     { 7   ;1   ;Column  ;Index_Textkopf      ;
-               SourceExpr=Index }
+               SourceExpr=Berichtstabelle.Index }
 
     { 8   ;1   ;Column  ;Feld2_Textkopf      ;
-               SourceExpr="Feld 2" }
+               SourceExpr=Berichtstabelle."Feld 2" }
 
     { 9   ;1   ;Column  ;Feld1_Textkopf      ;
-               SourceExpr="Feld 1" }
+               SourceExpr=Berichtstabelle."Feld 1" }
 
-    { 10  ;1   ;Column  ;Feld11_Textkopf     ;
-               SourceExpr="Feld 11" }
+    { 10  ;1   ;Column  ;Feld11_Feld2_Textkopf;
+               SourceExpr=Berichtstabelle."Feld 11"+' (Nr. '+Berichtstabelle."Feld 2"+')' }
 
     { 11  ;1   ;Column  ;Feld18_Textkopf     ;
-               SourceExpr="Feld 18" }
+               SourceExpr=Berichtstabelle."Feld 18" }
 
     { 12  ;1   ;Column  ;Feld10_Textkopf     ;
-               SourceExpr="Feld 10" }
+               SourceExpr=Berichtstabelle."Feld 10" }
 
     { 13  ;1   ;Column  ;Feld6_Textkopf      ;
-               SourceExpr="Feld 6" }
+               SourceExpr=Berichtstabelle."Feld 6" }
 
     { 14  ;1   ;Column  ;zahler              ;
                SourceExpr=z„hler }
@@ -221,10 +229,31 @@ OBJECT Report 50171 ISO Eintr„ge
                DataItemTable=Table50037;
                DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
                                  WHERE(Tabelle=FILTER(MEMOZEILE|BEMERKUNG));
+               DataItemLinkReference=Textkopf;
                DataItemLink=Index=FIELD(Index) }
 
+    { 1000000001;1;DataItem;CopyLine         ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number);
+               OnPreDataItem=BEGIN
+                               Berichtstabelle_zeilen.RESET;
+                               Berichtstabelle_zeilen.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               Berichtstabelle_zeilen.SETFILTER(Tabelle,'%1|%2','MEMOZEILE','BEMERKUNG');
+                               Berichtstabelle_zeilen.SETFILTER(Index,'%1',Berichtstabelle.Index);
+                               SETRANGE(Number,1,Berichtstabelle_zeilen.COUNT);
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_zeilen.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_zeilen.NEXT;
+                                  END;
+                                END;
+                                 }
+
     { 16  ;2   ;Column  ;Feld1_Textzeile     ;
-               SourceExpr="Feld 1" }
+               SourceExpr=Berichtstabelle_zeilen."Feld 1" }
 
   }
   REQUESTPAGE
@@ -280,7 +309,8 @@ OBJECT Report 50171 ISO Eintr„ge
       Bemerkung@1140012 : Record 5061;
       Memokopf@1140006 : Record 50003;
       Memozeile@1140009 : Record 50004;
-      Berichtstabelle@1140010 : Record 50037;
+      Berichtstabelle@1140010 : TEMPORARY Record 50037;
+      Berichtstabelle_zeilen@1000000000 : TEMPORARY Record 50037;
       Projektname@1140003 : Text[50];
       Fhrungsname@1140005 : Text[50];
       Startdatum@1140000 : Date;
@@ -292,28 +322,28 @@ OBJECT Report 50171 ISO Eintr„ge
       ReportForNavOpenDesigner@5002 : Boolean;
       ReportForNavAllowDesign@5004 : Boolean INDATASET;
 
-    LOCAL PROCEDURE OnPreSectionTextkopf_Body2@5082(VAR Textkopf@1000000000 : Record 50037);
+    LOCAL PROCEDURE OnPreSectionCopyHeader_Body1@5082(VAR Textkopf@1000000000 : Record 50037);
     BEGIN
       WITH Textkopf DO BEGIN
         ReportForNav.ShowOutput(Textkopf.Tabelle = 'PROJEKTMEMO');
       END;
     END;
 
-    LOCAL PROCEDURE OnPreSectionTextkopf_Body3@5083(VAR Textkopf@1000000000 : Record 50037);
+    LOCAL PROCEDURE OnPreSectionCopyHeader_Body2@5083(VAR Textkopf@1000000000 : Record 50037);
     BEGIN
       WITH Textkopf DO BEGIN
         ReportForNav.ShowOutput(Textkopf.Tabelle = 'KONTAKTMEMO');
       END;
     END;
 
-    LOCAL PROCEDURE OnPreSectionTextkopf_Body4@5084(VAR Textkopf@1000000000 : Record 50037);
+    LOCAL PROCEDURE OnPreSectionCopyHeader_Body3@5084(VAR Textkopf@1000000000 : Record 50037);
     BEGIN
       WITH Textkopf DO BEGIN
         ReportForNav.ShowOutput(Textkopf.Tabelle = 'AUFGABE');
       END;
     END;
 
-    LOCAL PROCEDURE OnPreSectionTextkopf_Footer5@5085(VAR Textkopf@1000000000 : Record 50037);
+    LOCAL PROCEDURE OnPreSectionCopyHeader_Footer1@5085(VAR Textkopf@1000000000 : Record 50037);
     BEGIN
       WITH Textkopf DO BEGIN
         IF Enddatum = 0D THEN
@@ -410,11 +440,11 @@ OBJECT Report 50171 ISO Eintr„ge
     EVENT ReportForNav@5000::OnPreSection@5012(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
     BEGIN
       CASE DataItemId OF
-        'Textkopf': CASE SectionId OF
-          'Body2': OnPreSectionTextkopf_Body2(Textkopf);
-          'Body3': OnPreSectionTextkopf_Body3(Textkopf);
-          'Body4': OnPreSectionTextkopf_Body4(Textkopf);
-          'Footer5': OnPreSectionTextkopf_Footer5(Textkopf);
+        'Integer': CASE SectionId OF
+          'Body1': OnPreSectionCopyHeader_Body1(Berichtstabelle);
+          'Body2': OnPreSectionCopyHeader_Body2(Berichtstabelle);
+          'Body3': OnPreSectionCopyHeader_Body3(Berichtstabelle);
+          'Footer1': OnPreSectionCopyHeader_Footer1(Berichtstabelle);
         END;
       END;
     END;
@@ -515,7 +545,7 @@ OBJECT Report 50171 ISO Eintr„ge
   {
     <?xml version="1.0" encoding="utf-8"?>
 <Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
-  <Description>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</Description>
+  <Description>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</Description>
   <AutoRefresh>0</AutoRefresh>
   <DataSources>
     <DataSource Name="DataSource">
@@ -524,7 +554,7 @@ OBJECT Report 50171 ISO Eintr„ge
         <ConnectString />
       </ConnectionProperties>
       <rd:SecurityType>None</rd:SecurityType>
-      <rd:DataSourceID>90f22772-c293-44c6-80de-2b05abcfcc19</rd:DataSourceID>
+      <rd:DataSourceID>82e182fe-5e91-4a0a-82be-7e00cebe9476</rd:DataSourceID>
     </DataSource>
   </DataSources>
   <ReportSections>
@@ -540,7 +570,7 @@ OBJECT Report 50171 ISO Eintr„ge
     </ReportSection>
   </ReportSections>
   <rd:ReportUnitType>Invalid</rd:ReportUnitType>
-  <rd:ReportID>a65df41a-1daf-4084-9079-934cdbba2c4b</rd:ReportID>
+  <rd:ReportID>177c9c34-80b7-44fb-a9ff-4a548f9ee9a8</rd:ReportID>
   <DataSets>
     <DataSet Name="DataSet_Result">
       <Fields>
@@ -568,8 +598,8 @@ OBJECT Report 50171 ISO Eintr„ge
         <Field Name="Feld1_Textkopf">
           <DataField>Feld1_Textkopf</DataField>
         </Field>
-        <Field Name="Feld11_Textkopf">
-          <DataField>Feld11_Textkopf</DataField>
+        <Field Name="Feld11_Feld2_Textkopf">
+          <DataField>Feld11_Feld2_Textkopf</DataField>
         </Field>
         <Field Name="Feld18_Textkopf">
           <DataField>Feld18_Textkopf</DataField>
