@@ -1,0 +1,1534 @@
+OBJECT Report 50055 TOPAS Service Auswertung
+{
+  OBJECT-PROPERTIES
+  {
+    Date=10.08.17;
+    Time=08:30:15;
+    Modified=Yes;
+    Version List=FORNAV2.0.0.1189/1189;
+  }
+  PROPERTIES
+  {
+    OnInitReport=BEGIN
+                   ReportForNav:= ReportForNav.Report(CurrReport.OBJECTID,CurrReport.LANGUAGE,SERIALNUMBER,USERID,COMPANYNAME);ReportForNav.Init;
+                 END;
+
+    OnPreReport=BEGIN
+                  //*******************************************************************************************************
+                  //                    Sicherheitsabfrage ob Temp Tabelle auch Berichtstabelle ist
+                  //*******************************************************************************************************
+                  IF Berichtstabelle.TABLECAPTION <> 'Berichtstabelle' THEN
+                    ERROR('Eine Sicherheitssperre verhindert die Ausfhrung dieses Berichtes.'+
+                          'Stellen Sie sicher, dass die TABLECAPTION der Berichtstabelle auch auf Berichtstabelle lautet.');
+                  Berichtstabelle.RESET;
+                  IF Berichtstabelle.ISEMPTY = FALSE THEN BEGIN
+                    REPEAT
+                      Berichtstabelle.RESET;
+                      //Berichtstabelle.SETRANGE(User,'%1',USERID);
+                      IF Berichtstabelle.ISEMPTY = FALSE THEN BEGIN
+                        SLEEP(500);
+                        counter += 1;
+                      END;
+                      IF counter MOD 30 = 0 THEN BEGIN
+                        Berichtstabelle.FINDFIRST;
+                        IF CONFIRM('Die Berichtstabelle ist seit %1 durch Anwender %2 gesperrt. Wollen Sie die Anwendung abbrechen?',
+                        TRUE,Berichtstabelle.Uhrzeit,Berichtstabelle.User,counter,TRUE) THEN
+                          ERROR('');
+                      END;
+                    UNTIL Berichtstabelle.ISEMPTY = TRUE;
+                  END;
+                  IF auswertungs_mode = auswertungs_mode :: Einfach THEN
+                    Auswertung_einfach;
+                  IF auswertungs_mode = auswertungs_mode :: Detailliert THEN
+                    Auswertung_detailliert;
+                  ;ReportForNav.OpenDesigner:=ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
+                END;
+
+    OnPostReport=BEGIN
+                   IF Berichtstabelle.TABLECAPTION = 'Berichtstabelle' THEN BEGIN
+                     //Berichtstabelle.SETRANGE(User,USERID);
+                     Berichtstabelle.DELETEALL;
+                   END;
+
+                   COMMIT;
+
+                   ;ReportForNav.Post;
+                 END;
+
+  }
+  DATASET
+  {
+    { 1   ;    ;DataItem;Artikel             ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(ARTIKEL_E));
+               OnAfterGetRecord=BEGIN
+                                  IF umsatz_acs_champf„hig > 0 THEN BEGIN
+                                    ratio_umsatz_art_umsatz_acs_champfaehig := ROUND(("Feld 4" / umsatz_acs_champf„hig) * 100,2);
+                                    ratio_umsatz_champ_acs_champfaehig := ROUND((umsatz_champ / umsatz_acs_champf„hig) * 100,2);
+                                  END ELSE BEGIN
+                                    ratio_umsatz_art_umsatz_acs_champfaehig := 0;
+                                    ratio_umsatz_champ_acs_champfaehig := 0;
+                                  END;
+
+                                  IF umsatz_acs_supf„hig > 0 THEN BEGIN
+                                    ratio_umsatz_sup_umsatz_acs_supfaehig := ROUND((umsatz_sup / umsatz_acs_supf„hig) * 100,2);
+                                    ratio_umsatz_art_umsatz_acs_supfaehig := ROUND(("Feld 4" / umsatz_acs_supf„hig) * 100,2);
+                                  END ELSE BEGIN
+                                    ratio_umsatz_sup_umsatz_acs_supfaehig := 0;
+                                    ratio_umsatz_art_umsatz_acs_supfaehig := 0;
+                                  END;
+                                END;
+                                 }
+
+    { 2   ;1   ;Column  ;Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Teams;
+               SourceExpr='Verk„ufercode: '+verk„ufer+' Betreuer Innendienst: ' + betreuer + ' Teams: ' + teams + ' Gebietscode: ' + gebietscode + '  Belegdatum: ' + FORMAT(Startdatum) + '..' + FORMAT(Enddatum) }
+
+    { 3   ;1   ;Column  ;USERID              ;
+               SourceExpr=USERID }
+
+    { 4   ;1   ;Column  ;TODAY_0_4           ;
+               SourceExpr=FORMAT(TODAY,0,4) }
+
+    { 5   ;1   ;Column  ;ReportForNavPageNo  ;
+               SourceExpr=FORMAT(ReportForNav.PageNo) }
+
+    { 6   ;1   ;Column  ;FORMAT_ROUND_Feld4_umsatz_acs_champfahig_100_000_Pct;
+               SourceExpr=FORMAT(ratio_umsatz_art_umsatz_acs_champfaehig)+'%' }
+
+    { 7   ;1   ;Column  ;V_                  ;
+               SourceExpr='°' }
+
+    { 8   ;1   ;Column  ;Feld4_Artikel       ;
+               SourceExpr="Feld 4" }
+
+    { 9   ;1   ;Column  ;Feld3_Artikel       ;
+               SourceExpr="Feld 3" }
+
+    { 10  ;1   ;Column  ;FORMAT_ROUND_Feld4_umsatz_acs_supfahig_100_000_Pct;
+               SourceExpr=FORMAT(ratio_umsatz_art_umsatz_acs_supfaehig)+'%' }
+
+    { 11  ;1   ;Column  ;umsatz_acs_supfahig ;
+               SourceExpr=umsatz_acs_supf„hig }
+
+    { 12  ;1   ;Column  ;umsatz_acs_champfahig;
+               SourceExpr=umsatz_acs_champf„hig }
+
+    { 13  ;1   ;Column  ;FORMAT_ROUND_umsatz_sup_umsatz_acs_supfahig_100_000_Pct;
+               SourceExpr=FORMAT(umsatz_acs_supf„hig )+'%' }
+
+    { 14  ;1   ;Column  ;umsatz_sup          ;
+               SourceExpr=umsatz_sup }
+
+    { 15  ;1   ;Column  ;FORMAT_ROUND_umsatz_champ_umsatz_acs_champfahig_100_000_Pct;
+               SourceExpr=FORMAT(ratio_umsatz_champ_acs_champfaehig)+'%' }
+
+    { 16  ;1   ;Column  ;umsatz_acs_champfahig_umsatz_acs_supfahig;
+               SourceExpr=umsatz_acs_champf„hig+umsatz_acs_supf„hig }
+
+    { 17  ;1   ;Column  ;umsatz_champ        ;
+               SourceExpr=umsatz_champ }
+
+    { 18  ;1   ;DataItem;Debitor             ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(DEBITOR_E));
+               DataItemLink=Feld 3=FIELD(Feld 3) }
+
+    { 19  ;2   ;Column  ;V_8                 ;
+               SourceExpr='°' }
+
+    { 20  ;2   ;Column  ;Feld4_Debitor       ;
+               SourceExpr="Feld 4" }
+
+    { 21  ;2   ;Column  ;Feld7_Debitor       ;
+               SourceExpr="Feld 7" }
+
+    { 22  ;2   ;Column  ;Feld6_Debitor       ;
+               SourceExpr="Feld 6" }
+
+    { 23  ;2   ;Column  ;Feld10_Debitor      ;
+               SourceExpr="Feld 10" }
+
+    { 24  ;2   ;Column  ;Index_Debitor       ;
+               SourceExpr=Index }
+
+    { 25  ;    ;DataItem;Header2             ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(HEADER2)) }
+
+    { 26  ;1   ;Column  ;Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Team2;
+               SourceExpr='Verk„ufercode: '+verk„ufer+' Betreuer Innendienst: ' + betreuer + ' Teams: ' + teams + ' Gebietscode: ' + gebietscode + '  Belegdatum: ' + FORMAT(Startdatum) + '..' + FORMAT(Enddatum) }
+
+    { 27  ;1   ;Column  ;USERID2             ;
+               SourceExpr=USERID }
+
+    { 28  ;1   ;Column  ;TODAY_0_42          ;
+               SourceExpr=FORMAT(TODAY,0,4) }
+
+    { 29  ;1   ;Column  ;ReportForNavPageNo2 ;
+               SourceExpr=FORMAT(ReportForNav.PageNo) }
+
+    { 30  ;    ;DataItem;Einkauf1            ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Feld 2,Index)
+                                 WHERE(Tabelle=FILTER(EINKAUF1)) }
+
+    { 31  ;1   ;Column  ;Feld5_Einkauf1      ;
+               SourceExpr="Feld 5" }
+
+    { 32  ;1   ;Column  ;Feld4_Einkauf1      ;
+               DecimalPlaces=0:0;
+               SourceExpr="Feld 4" }
+
+    { 33  ;1   ;Column  ;Feld3_Einkauf1      ;
+               SourceExpr="Feld 3" }
+
+    { 34  ;1   ;Column  ;Belegnr_Einkauf1    ;
+               SourceExpr="Belegnr." }
+
+    { 35  ;1   ;Column  ;Datum_Einkauf1      ;
+               SourceExpr=Datum }
+
+    { 36  ;1   ;Column  ;ek_gesamt_supfahig  ;
+               SourceExpr=ek_gesamt_supf„hig }
+
+    { 37  ;    ;DataItem;Einkauf2            ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Feld 2,Index)
+                                 WHERE(Tabelle=FILTER(EINKAUF2));
+               OnAfterGetRecord=BEGIN
+                                  totale_EK_Menge := totale_EK_Menge + "Feld 4";
+                                END;
+                                 }
+
+    { 38  ;1   ;Column  ;Feld5_Einkauf2      ;
+               SourceExpr="Feld 5" }
+
+    { 39  ;1   ;Column  ;Feld4_Einkauf2      ;
+               DecimalPlaces=0:0;
+               SourceExpr="Feld 4" }
+
+    { 40  ;1   ;Column  ;Feld3_Einkauf2      ;
+               SourceExpr="Feld 3" }
+
+    { 41  ;1   ;Column  ;Belegnr_Einkauf2    ;
+               SourceExpr="Belegnr." }
+
+    { 42  ;1   ;Column  ;Datum_Einkauf2      ;
+               SourceExpr=Datum }
+
+    { 43  ;1   ;Column  ;ek_gesamt_champfahig;
+               SourceExpr=ek_gesamt_champf„hig }
+
+    { 44  ;    ;DataItem;Debitor2            ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(DEBITOR_D));
+               OnAfterGetRecord=BEGIN
+                                  IF totale_EK_Menge > 0 THEN
+                                    ratio_VK_Menge_EK_Menge := (totale_VK_Menge / totale_EK_Menge) * 100
+                                  ELSE
+                                    ratio_VK_Menge_EK_Menge := 0;
+
+                                  IF totale_VK_Menge > 0 THEN
+                                    ratio_Champ_Menge_VK_Menge := (totale_CHAMP_Menge / totale_VK_Menge) * 100
+                                  ELSE
+                                    ratio_Champ_Menge_VK_Menge := 0;
+                                END;
+                                 }
+
+    { 45  ;1   ;Column  ;Feld7_Debitor2      ;
+               SourceExpr="Feld 7" }
+
+    { 46  ;1   ;Column  ;Feld6_Debitor2      ;
+               SourceExpr="Feld 6" }
+
+    { 47  ;1   ;Column  ;Feld10_Debitor2     ;
+               SourceExpr="Feld 10" }
+
+    { 48  ;1   ;Column  ;Index_Debitor2      ;
+               SourceExpr=Index }
+
+    { 49  ;1   ;Column  ;totale_VK_Menge_totale_EK_Menge_100;
+               SourceExpr=FORMAT(ratio_VK_Menge_EK_Menge) }
+
+    { 50  ;1   ;Column  ;totale_VK_Menge     ;
+               DecimalPlaces=0:0;
+               SourceExpr=totale_VK_Menge }
+
+    { 51  ;1   ;Column  ;totale_EK_Menge     ;
+               DecimalPlaces=0:0;
+               SourceExpr=totale_EK_Menge }
+
+    { 52  ;1   ;Column  ;totaler_betrag_geraete;
+               DecimalPlaces=0:0;
+               SourceExpr=totaler_betrag_geraete }
+
+    { 53  ;1   ;Column  ;totale_CHAMP_Menge_totale_VK_Menge_100;
+               SourceExpr=FORMAT(ratio_Champ_Menge_VK_Menge) }
+
+    { 54  ;1   ;Column  ;totale_CHAMP_Menge  ;
+               DecimalPlaces=0:0;
+               SourceExpr=totale_CHAMP_Menge }
+
+    { 55  ;1   ;DataItem;Verkauf1            ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(VERKAUF1));
+               OnAfterGetRecord=BEGIN
+                                  totale_VK_Menge := totale_VK_Menge + "Feld 4";
+                                  totale_CHAMP_Menge := totale_CHAMP_Menge + "Feld 20";
+                                  totaler_betrag_geraete := totaler_betrag_geraete + "Feld 21";
+                                END;
+
+               DataItemLink=Feld 2=FIELD(Index) }
+
+    { 56  ;2   ;Column  ;V__Feld10__         ;
+               SourceExpr='('+"Feld 10"+')' }
+
+    { 57  ;2   ;Column  ;Feld20_Feld4_100    ;
+               SourceExpr=("Feld 20"/"Feld 4")*100 }
+
+    { 58  ;2   ;Column  ;Feld20_Verkauf1     ;
+               DecimalPlaces=0:0;
+               SourceExpr="Feld 20" }
+
+    { 59  ;2   ;Column  ;Feld5_Verkauf1      ;
+               SourceExpr="Feld 5" }
+
+    { 60  ;2   ;Column  ;Feld4_Verkauf1      ;
+               DecimalPlaces=0:0;
+               SourceExpr="Feld 4" }
+
+    { 61  ;2   ;Column  ;Feld3_Verkauf1      ;
+               SourceExpr="Feld 3" }
+
+    { 62  ;2   ;Column  ;Feld21_Verkauf1     ;
+               SourceExpr="Feld 21" }
+
+    { 63  ;1   ;DataItem;Verkauf2            ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(VERKAUF2));
+               DataItemLink=Feld 2=FIELD(Index) }
+
+    { 64  ;2   ;Column  ;posten_fehlen       ;
+               DecimalPlaces=0:0;
+               SourceExpr=posten_fehlen }
+
+    { 65  ;2   ;Column  ;Artikelnr_Textkette ;
+               SourceExpr=Artikelnr_Textkette }
+
+    { 66  ;2   ;Column  ;Liefermenge_gesamt  ;
+               DecimalPlaces=0:0;
+               SourceExpr=Liefermenge_gesamt }
+
+    { 67  ;2   ;Column  ;Feld17_Verkauf2     ;
+               SourceExpr="Feld 17" }
+
+    { 68  ;2   ;Column  ;Belegnr_Verkauf2    ;
+               SourceExpr="Belegnr." }
+
+  }
+  REQUESTPAGE
+  {
+    PROPERTIES
+    {
+    }
+    CONTROLS
+    {
+      { 1900000001;0;Container;
+                  ContainerType=ContentArea }
+
+      { 1900000002;1;Group  ;
+                  CaptionML=[CSY=Moznosti;
+                             DAN=Indstillinger;
+                             DEU=Optionen;
+                             ENU=Options;
+                             FIN=Vaihtoehdot;
+                             ISL=Valkostir;
+                             NLD=Opties;
+                             NOR=Alternativer;
+                             SVE=Alternativ;
+                             ITS=Opzioni;
+                             NLB=Opties] }
+
+      { 1140014;2;Field     ;
+                  CaptionML=DEU=Auswertung;
+                  OptionCaptionML=DEU=Einfach,Detailliert;
+                  SourceExpr=auswertungs_mode }
+
+      { 1140004;2;Field     ;
+                  CaptionML=DEU=Belegdatum von;
+                  SourceExpr=Startdatum }
+
+      { 1140012;2;Field     ;
+                  CaptionML=DEU=bis;
+                  SourceExpr=Enddatum }
+
+      { 1140005;2;Field     ;
+                  CaptionML=DEU=Betreuer Innendienst;
+                  SourceExpr=betreuer;
+                  TableRelation=Salesperson/Purchaser }
+
+      { 1140006;2;Field     ;
+                  CaptionML=DEU=Verk„ufercode;
+                  SourceExpr=verk„ufer;
+                  TableRelation=Salesperson/Purchaser }
+
+      { 1140007;2;Field     ;
+                  CaptionML=DEU=Teams;
+                  SourceExpr=teams;
+                  TableRelation=Team }
+
+      { 1140009;2;Field     ;
+                  CaptionML=DEU=Gebietscode;
+                  SourceExpr=gebietscode;
+                  TableRelation=Territory }
+
+      { 5000;2   ;Field     ;
+                  Name=ForNavOpenDesigner;
+                  CaptionML=ENU=Open Designer;
+                  SourceExpr=ReportForNavOpenDesigner;
+                  Visible=ReportForNavAllowDesign }
+
+    }
+  }
+  LABELS
+  {
+  }
+  CODE
+  {
+    VAR
+      Berichtstabelle@1140000 : Record 50037;
+      Berichtstabelle_temp@1140015 : Record 50037;
+      Lieferzeile@1140032 : Record 111;
+      Artikelnr_Textkette@1140033 : Text[250];
+      "RE-Kopf"@1140001 : Record 112;
+      "RE-Zeile"@1140002 : Record 113;
+      "BET-Kopf"@1140018 : Record 38;
+      "BET-Zeile"@1140019 : Record 39;
+      "EK-Liefkopf"@1140041 : Record 120;
+      "EK-Liefzeile"@1140042 : Record 121;
+      Champs@1140030 : Record 50024;
+      Wertpostenverb@1140027 : Record 6508;
+      Wertposten@1140028 : Record 5802;
+      Artikelposten@1140029 : Record 32;
+      EK_Artikelposten@1140035 : Record 32;
+      ArtikelAusglPosten@1140034 : Record 339;
+      Item@1140010 : Record 27;
+      Startdatum@1140004 : Date;
+      Enddatum@1140005 : Date;
+      betreuer@1140006 : Code[20];
+      verk„ufer@1140007 : Code[20];
+      teams@1140008 : Code[20];
+      gebietscode@1140009 : Code[20];
+      umsatz_acs_champf„hig@1140012 : Decimal;
+      umsatz_acs_supf„hig@1140016 : Decimal;
+      umsatz_item@1140013 : Decimal;
+      umsatz_champ@1140014 : Decimal;
+      umsatz_sup@1140011 : Decimal;
+      InvoiceRowID@1140026 : Text[250];
+      vk_gesamt_champf„hig@1140024 : Decimal;
+      vk_gesamt_supf„hig@1140025 : Decimal;
+      ek_gesamt_champf„hig@1140022 : Decimal;
+      ek_gesamt_supf„hig@1140023 : Decimal;
+      totale_VK_Menge@1140036 : Decimal;
+      totale_EK_Menge@1140021 : Decimal;
+      totale_CHAMP_Menge@1140037 : Decimal;
+      totaler_betrag_geraete@1140020 : Decimal;
+      liefermenge_zeile@1140038 : Decimal;
+      Liefermenge_gesamt@1140039 : Decimal;
+      ratio_VK_Menge_EK_Menge@1000000000 : Decimal;
+      ratio_Champ_Menge_VK_Menge@1000000005 : Decimal;
+      ratio_umsatz_sup_umsatz_acs_supfaehig@1000000001 : Decimal;
+      ratio_umsatz_art_umsatz_acs_champfaehig@1000000002 : Decimal;
+      ratio_umsatz_art_umsatz_acs_supfaehig@1000000003 : Decimal;
+      ratio_umsatz_champ_acs_champfaehig@1000000004 : Decimal;
+      service_gebucht@1140031 : Integer;
+      auswertungs_mode@1140017 : 'Einfach,Detailliert';
+      posten_fehlen@1140040 : Text[10];
+      counter@1140003 : Integer;
+      artikel_zunull@1140043 : Integer;
+      ReportForNav@5000 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
+      ReportForNavClient@5003 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
+      ReportForNavDialog@5001 : Dialog;
+      ReportForNavOpenDesigner@5002 : Boolean;
+      ReportForNavAllowDesign@5004 : Boolean INDATASET;
+
+    LOCAL PROCEDURE OnPreSectionArtikel_Body2@5021(VAR Artikel@1000000000 : Record 50037);
+    BEGIN
+      WITH Artikel DO BEGIN
+        ReportForNav.ShowOutput(STRPOS("Feld 3",'CHAMPS') <> 0);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionArtikel_Body3@5022(VAR Artikel@1000000000 : Record 50037);
+    BEGIN
+      WITH Artikel DO BEGIN
+        ReportForNav.ShowOutput(STRPOS("Feld 3",'CHAMPS') = 0);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionDebitor2_Header12@5023(VAR Debitor2@1000000000 : Record 50037);
+    BEGIN
+      WITH Debitor2 DO BEGIN
+        Berichtstabelle_temp.RESET;
+        Berichtstabelle_temp.SETFILTER(Tabelle,'%1|%2','EINKAUF1','EINKAUF2');
+        IF Berichtstabelle_temp.FINDFIRST THEN
+          ReportForNav.NewPageWithoutTransportTotals;
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionVerkauf2_Body19@5024(VAR Verkauf2@1000000000 : Record 50037);
+    BEGIN
+      WITH Verkauf2 DO BEGIN
+        Artikelnr_Textkette := '';
+        Liefermenge_gesamt := 0;
+        posten_fehlen := '';
+        Lieferzeile.RESET;
+        Lieferzeile.SETFILTER("Document No.",'%1',"Belegnr.");
+        Lieferzeile.SETFILTER(Type,'%1',Lieferzeile.Type :: Item);
+        Lieferzeile.SETFILTER(Quantity,'>%1',0);
+        IF Lieferzeile.FINDFIRST THEN
+          REPEAT
+            liefermenge_zeile := 0;
+            Item.GET(Lieferzeile."No.");
+            IF Item."Software Upgrade Protection" = FALSE THEN BEGIN
+              Berichtstabelle_temp.RESET;
+              Berichtstabelle_temp.SETFILTER(Tabelle,'%1','VERKAUF3');
+              Berichtstabelle_temp.SETFILTER("Belegnr.",'%1',Lieferzeile."Document No.");
+              Berichtstabelle_temp.SETFILTER("Zeilennr.",'%1',Lieferzeile."Line No.");
+              Berichtstabelle_temp.SETFILTER("Feld 3",'%1',Lieferzeile."Artikelnr. 2");
+              IF Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                REPEAT
+                  liefermenge_zeile := liefermenge_zeile + Berichtstabelle_temp."Feld 4";
+                  Liefermenge_gesamt := Liefermenge_gesamt + Berichtstabelle_temp."Feld 4";
+                UNTIL Berichtstabelle_temp.NEXT = 0;
+                IF Artikelnr_Textkette <> '' THEN
+                  Artikelnr_Textkette := Artikelnr_Textkette + ', ';
+                Artikelnr_Textkette := Artikelnr_Textkette + Lieferzeile."Artikelnr. 2" + ' (' + FORMAT(liefermenge_zeile) + ')';
+              END;
+              Berichtstabelle_temp.RESET;
+              Berichtstabelle_temp.SETFILTER(Tabelle,'%1','POSTEN_WEGFALL');
+              Berichtstabelle_temp.SETFILTER("Feld 7",'%1',Lieferzeile."Document No.");
+              IF Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                posten_fehlen := '*';
+              END;
+            END;
+          UNTIL Lieferzeile.NEXT = 0;
+      END;
+    END;
+
+    PROCEDURE Auswertung_einfach@1140000();
+    BEGIN
+      //*******************************************************************************************************
+      //                        CHAMPS bzw. SUP Artikel werden in Rechnungen durchsucht
+      //*******************************************************************************************************
+      umsatz_acs_champf„hig := 0;
+      umsatz_acs_supf„hig := 0;
+      umsatz_item := 0;
+      umsatz_champ := 0;
+      umsatz_sup := 0;
+      //*******************************************************************************************************
+      //                                       CHAMPS Betrachtung
+      //*******************************************************************************************************
+      Item.RESET;
+      Item.SETFILTER("Software Upgrade Protection",'%1',TRUE);
+      IF Item.FINDFIRST THEN
+        REPEAT
+          umsatz_item := 0;
+          "RE-Kopf".RESET;
+          "RE-Kopf".SETCURRENTKEY("Sell-to Customer No.","Order Date");
+          IF (Startdatum<>0D) AND (Enddatum=0D) THEN
+            "RE-Kopf".SETFILTER("Posting Date",'>=%1',Startdatum);
+          IF (Startdatum<>0D) AND (Enddatum<>0D) THEN
+            "RE-Kopf".SETFILTER("Posting Date",'>=%1&<=%2',Startdatum,Enddatum);
+          IF (Startdatum=0D) AND (Enddatum<>0D) THEN
+            "RE-Kopf".SETFILTER("Posting Date",'<=%1',Enddatum);
+          "RE-Kopf".SETFILTER("Betreuer Innendienst",betreuer);
+          "RE-Kopf".SETFILTER("Salesperson Code",verk„ufer);
+          "RE-Kopf".SETFILTER(Teams,teams);
+          "RE-Kopf".SETFILTER("Territory Code",gebietscode);
+          IF "RE-Kopf".FINDFIRST THEN
+            REPEAT
+              "RE-Zeile".RESET;
+              "RE-Zeile".SETFILTER("Document No.",'%1',"RE-Kopf"."No.");
+              "RE-Zeile".SETFILTER("Location Code",'%1|%2|%3','ZENT','KONSI','ERSATZ');
+              "RE-Zeile".SETFILTER(Type,'%1',"RE-Zeile".Type::Item);
+              "RE-Zeile".SETFILTER("No.",'%1',Item."No.");
+              "RE-Zeile".SETFILTER(Quantity,'>%1',0);
+              IF "RE-Zeile".FINDFIRST THEN
+                REPEAT
+                  //Nur ein Datensatz pro SUP/CHAMPS Artikel und Debitor
+                  Berichtstabelle_temp.RESET;
+                  Berichtstabelle_temp.SETFILTER(Tabelle,'%1','DEBITOR_E');
+                  Berichtstabelle_temp.SETFILTER(Index,'%1',"RE-Zeile"."Sell-to Customer No.");
+                  Berichtstabelle_temp.SETFILTER("Belegnr.",'%1',Item."No.");
+                  IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                    Berichtstabelle.INIT;
+                    Berichtstabelle.Tabelle := 'DEBITOR_E';
+                    Berichtstabelle.Index := "RE-Zeile"."Sell-to Customer No.";
+                    Berichtstabelle."Belegnr." := "RE-Zeile"."No.";
+                    Berichtstabelle."Feld 3" := "RE-Zeile"."Artikelnr. 2";
+                    Berichtstabelle."Feld 6" := "RE-Kopf"."Betreuer Innendienst";
+                    Berichtstabelle."Feld 7" := "RE-Kopf"."Salesperson Code";
+                    Berichtstabelle."Feld 9" := "RE-Kopf"."Territory Code";
+                    Berichtstabelle."Feld 10" := "RE-Kopf"."Sell-to Customer Name";
+                    Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                    Berichtstabelle.User := USERID;
+                    Berichtstabelle.INSERT;
+                  END;
+                  Berichtstabelle."Feld 4" := Berichtstabelle."Feld 4" + ("RE-Zeile"."VK-Preis (MW)" * "RE-Zeile".Quantity);
+                  Berichtstabelle.MODIFY;
+                  umsatz_item := umsatz_item + ("RE-Zeile"."VK-Preis (MW)" * "RE-Zeile".Quantity);
+                  IF Item.Artikelgruppe = 'CHAMPS' THEN
+                    umsatz_champ := umsatz_champ + ("RE-Zeile"."VK-Preis (MW)" * "RE-Zeile".Quantity)
+                  ELSE
+                    umsatz_sup := umsatz_sup + ("RE-Zeile"."VK-Preis (MW)" * "RE-Zeile".Quantity);
+                UNTIL "RE-Zeile".NEXT = 0;
+            UNTIL "RE-Kopf".NEXT = 0;
+            IF umsatz_item <> 0 THEN BEGIN
+              Berichtstabelle.INIT;
+              Berichtstabelle.Tabelle := 'ARTIKEL_E';
+              Berichtstabelle.Index := Item."No.";
+              Berichtstabelle."Feld 3" := Item."No. 2";
+              Berichtstabelle."Feld 4" := umsatz_item;
+              Berichtstabelle."Feld 17" := Item."Software Upgrade Protection";
+              Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+              Berichtstabelle.User := USERID;
+              Berichtstabelle.INSERT;
+            END;
+        UNTIL Item.NEXT = 0;
+      //*******************************************************************************************************
+      //                                        AudioCodes Gesamtumsatz
+      //*******************************************************************************************************
+      umsatz_acs_champf„hig := umsatz_acs_champf„hig + umsatz_champ;
+      umsatz_acs_supf„hig := umsatz_acs_supf„hig + umsatz_sup;
+      "RE-Kopf".RESET;
+      "RE-Kopf".SETCURRENTKEY("Sell-to Customer No.","Order Date");
+      IF (Startdatum<>0D) AND (Enddatum=0D) THEN
+        "RE-Kopf".SETFILTER("Posting Date",'>=%1',Startdatum);
+      IF (Startdatum<>0D) AND (Enddatum<>0D) THEN
+        "RE-Kopf".SETFILTER("Posting Date",'>=%1&<=%2',Startdatum,Enddatum);
+      IF (Startdatum=0D) AND (Enddatum<>0D) THEN
+        "RE-Kopf".SETFILTER("Posting Date",'<=%1',Enddatum);
+      "RE-Kopf".SETFILTER("Betreuer Innendienst",betreuer);
+      "RE-Kopf".SETFILTER("Salesperson Code",verk„ufer);
+      "RE-Kopf".SETFILTER(Teams,teams);
+      "RE-Kopf".SETFILTER("Territory Code",gebietscode);
+      IF "RE-Kopf".FINDFIRST THEN
+        REPEAT
+          "RE-Zeile".RESET;
+          "RE-Zeile".SETFILTER("Document No.",'%1',"RE-Kopf"."No.");
+          "RE-Zeile".SETFILTER("Location Code",'%1|%2|%3','ZENT','KONSI','ERSATZ');
+          "RE-Zeile".SETFILTER("Manufacturer Code",'%1','59');
+          "RE-Zeile".SETFILTER(Type,'%1',"RE-Zeile".Type::Item);
+          "RE-Zeile".SETFILTER(Quantity,'>%1',0);
+          IF "RE-Zeile".FINDFIRST THEN
+            REPEAT
+              Item.GET("RE-Zeile"."No.");
+              IF Item."Software Upgrade Protection" = FALSE THEN BEGIN
+                IF Item.Serviceklassifizierung <> 'SYSTEM FLAT' THEN
+                  umsatz_acs_champf„hig := umsatz_acs_champf„hig + ("RE-Zeile"."VK-Preis (MW)" * "RE-Zeile".Quantity)
+                ELSE
+                  umsatz_acs_supf„hig := umsatz_acs_supf„hig + ("RE-Zeile"."VK-Preis (MW)" * "RE-Zeile".Quantity);
+              END;
+            UNTIL "RE-Zeile".NEXT = 0;
+        UNTIL "RE-Kopf".NEXT = 0;
+    END;
+
+    PROCEDURE Auswertung_detailliert@1140001();
+    BEGIN
+      //*******************************************************************************************************
+      //              ACS und CHAMPS bzw. SUP Artikel werden in VK und EK Rechnungen ausgewertet
+      //*******************************************************************************************************
+      //*******************************************************************************************************
+      // Einkauf
+      //*******************************************************************************************************
+      ek_gesamt_champf„hig := 0;
+      ek_gesamt_supf„hig := 0;
+      ////Aktuelle Bestellungen untersuchen
+      "BET-Kopf".RESET;
+      IF (Startdatum<>0D) AND (Enddatum=0D) THEN
+        "BET-Kopf".SETFILTER("Order Date",'>=%1',Startdatum);
+      IF (Startdatum<>0D) AND (Enddatum<>0D) THEN
+        "BET-Kopf".SETFILTER("Order Date",'>=%1&<=%2',Startdatum,Enddatum);
+      IF (Startdatum=0D) AND (Enddatum<>0D) THEN
+        "BET-Kopf".SETFILTER("Order Date",'<=%1',Enddatum);
+      IF "BET-Kopf".FINDFIRST THEN
+        REPEAT
+          "BET-Zeile".RESET;
+          "BET-Zeile".SETFILTER("Document No.",'%1',"BET-Kopf"."No.");
+          "BET-Zeile".SETFILTER("Location Code",'%1','ZENT');
+          "BET-Zeile".SETFILTER("Manufacturer Code",'%1','59');
+          "BET-Zeile".SETFILTER("Outstanding Quantity",'>%1',0);
+          IF "BET-Zeile".FINDFIRST THEN BEGIN
+            REPEAT
+              Item.GET("BET-Zeile"."No.");
+              IF Item."Software Upgrade Protection" = FALSE THEN BEGIN
+                Berichtstabelle_temp.RESET;
+                Berichtstabelle_temp.SETFILTER(Tabelle,'%1','HEADER2');
+                IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                  Berichtstabelle.INIT;
+                  Berichtstabelle.Tabelle := 'HEADER2';
+                  Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                  Berichtstabelle.User := USERID;
+                  Berichtstabelle.INSERT;
+                END;
+                IF Item.Serviceklassifizierung <> 'SYSTEM FLAT' THEN
+                  ek_gesamt_champf„hig := ek_gesamt_champf„hig + ("BET-Zeile"."Direct Unit Cost" * "BET-Zeile"."Outstanding Quantity")
+                ELSE
+                  ek_gesamt_supf„hig := ek_gesamt_supf„hig + ("BET-Zeile"."Direct Unit Cost" * "BET-Zeile"."Outstanding Quantity");
+                Berichtstabelle_temp.RESET;
+                Berichtstabelle_temp.SETFILTER(Tabelle,'%1|%2','EINKAUF1','EINKAUF2');
+                Berichtstabelle_temp.SETFILTER("Belegnr.",'%1',"BET-Zeile"."Document No.");
+                Berichtstabelle_temp.SETFILTER("Feld 2",'%1',"BET-Zeile"."No.");
+                IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                  Berichtstabelle.INIT;
+                  IF Item.Serviceklassifizierung <> 'SYSTEM FLAT' THEN
+                    Berichtstabelle.Tabelle := 'EINKAUF2'
+                  ELSE
+                    Berichtstabelle.Tabelle := 'EINKAUF1';
+                  Berichtstabelle.Index := "BET-Zeile"."Document No.";
+                  Berichtstabelle."Belegnr." := "BET-Zeile"."Document No.";
+                  Berichtstabelle."Zeilennr." := "BET-Zeile"."Line No.";
+                  Berichtstabelle.Datum  := "BET-Kopf"."Order Date";
+                  Berichtstabelle."Feld 2" := "BET-Zeile"."No.";
+                  Berichtstabelle."Feld 3" := Item."No. 2";
+                  Berichtstabelle."Feld 4" := "BET-Zeile"."Outstanding Quantity";
+                  Berichtstabelle."Feld 5" := "BET-Zeile"."Direct Unit Cost";
+                  Berichtstabelle."Feld 20" := ("BET-Zeile"."Direct Unit Cost" * "BET-Zeile"."Outstanding Quantity");
+                  Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                  Berichtstabelle.User := USERID;
+                  Berichtstabelle.INSERT;
+                END ELSE BEGIN
+                  Berichtstabelle_temp."Feld 4" :=  Berichtstabelle_temp."Feld 4" +"BET-Zeile"."Outstanding Quantity";
+                  Berichtstabelle_temp."Feld 20" := Berichtstabelle_temp."Feld 20" +
+                                                    ("BET-Zeile"."Direct Unit Cost" * "BET-Zeile"."Outstanding Quantity");
+                  Berichtstabelle_temp.MODIFY;
+                END;
+              END;
+            UNTIL "BET-Zeile".NEXT = 0;
+          END;
+      UNTIL "BET-Kopf".NEXT = 0;
+
+      ////Gebuchte Einkaufslieferscheine
+      "EK-Liefkopf".RESET;
+      IF (Startdatum<>0D) AND (Enddatum=0D) THEN
+        "EK-Liefkopf".SETFILTER("Order Date",'>=%1',Startdatum);
+      IF (Startdatum<>0D) AND (Enddatum<>0D) THEN
+        "EK-Liefkopf".SETFILTER("Order Date",'>=%1&<=%2',Startdatum,Enddatum);
+      IF (Startdatum=0D) AND (Enddatum<>0D) THEN
+        "EK-Liefkopf".SETFILTER("Order Date",'<=%1',Enddatum);
+      IF "EK-Liefkopf".FINDFIRST THEN
+        REPEAT
+          "EK-Liefzeile".RESET;
+          "EK-Liefzeile".SETFILTER("Document No.",'%1',"EK-Liefkopf"."No.");
+          "EK-Liefzeile".SETFILTER("Location Code",'%1','ZENT');
+          "EK-Liefzeile".SETFILTER("Manufacturer Code",'%1','59');
+          "EK-Liefzeile".SETFILTER(Quantity,'>%1',0);
+          IF "EK-Liefzeile".FINDFIRST THEN BEGIN
+            REPEAT
+              Item.GET("EK-Liefzeile"."No.");
+              IF Item."Software Upgrade Protection" = FALSE THEN BEGIN
+                Berichtstabelle_temp.RESET;
+                Berichtstabelle_temp.SETFILTER(Tabelle,'%1','HEADER2');
+                IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                  Berichtstabelle.INIT;
+                  Berichtstabelle.Tabelle := 'HEADER2';
+                  Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                  Berichtstabelle.User := USERID;
+                  Berichtstabelle.INSERT;
+                END;
+                IF Item.Serviceklassifizierung <> 'SYSTEM FLAT' THEN
+                  ek_gesamt_champf„hig := ek_gesamt_champf„hig + ("EK-Liefzeile"."Direct Unit Cost" * "EK-Liefzeile".Quantity)
+                ELSE
+                  ek_gesamt_supf„hig := ek_gesamt_supf„hig + ("EK-Liefzeile"."Direct Unit Cost" * "EK-Liefzeile".Quantity);
+                Berichtstabelle_temp.RESET;
+                Berichtstabelle_temp.SETFILTER(Tabelle,'%1|%2','EINKAUF1','EINKAUF2');
+                Berichtstabelle_temp.SETFILTER("Belegnr.",'%1',"EK-Liefzeile"."Order No.");
+                Berichtstabelle_temp.SETFILTER("Feld 2",'%1',"EK-Liefzeile"."No.");
+                IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                  Berichtstabelle.INIT;
+                  IF Item.Serviceklassifizierung <> 'SYSTEM FLAT' THEN
+                    Berichtstabelle.Tabelle := 'EINKAUF2'
+                  ELSE
+                    Berichtstabelle.Tabelle := 'EINKAUF1';
+                  Berichtstabelle.Index := "EK-Liefzeile"."Document No.";
+                  Berichtstabelle."Belegnr." := "EK-Liefzeile"."Order No.";
+                  Berichtstabelle."Zeilennr." := "EK-Liefzeile"."Order Line No.";
+                  Berichtstabelle.Datum  := "EK-Liefkopf"."Order Date";
+                  Berichtstabelle."Feld 2" := Item."No.";
+                  Berichtstabelle."Feld 3" := Item."No. 2";
+                  Berichtstabelle."Feld 4" := "EK-Liefzeile".Quantity;
+                  Berichtstabelle."Feld 5" := "EK-Liefzeile"."Direct Unit Cost";
+                  Berichtstabelle."Feld 6" := "EK-Liefzeile"."Document No.";
+                  Berichtstabelle."Feld 20" := ("EK-Liefzeile"."Direct Unit Cost" * "EK-Liefzeile".Quantity);
+                  Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                  Berichtstabelle.User := USERID;
+                  Berichtstabelle.INSERT;
+                END ELSE BEGIN
+                  Berichtstabelle_temp."Feld 4" := Berichtstabelle_temp."Feld 4" + "EK-Liefzeile".Quantity;
+                  Berichtstabelle_temp."Feld 20" := Berichtstabelle_temp."Feld 20" +
+                  ("EK-Liefzeile"."Direct Unit Cost" * "EK-Liefzeile".Quantity);
+                  Berichtstabelle_temp.MODIFY;
+                END;
+              END;
+            UNTIL "EK-Liefzeile".NEXT = 0;
+          END;
+      UNTIL "EK-Liefkopf".NEXT = 0;
+
+      //*******************************************************************************************************
+      // Verkauf, gleicht mit dem Einkauf ab
+      //*******************************************************************************************************
+      vk_gesamt_champf„hig := 0;
+      vk_gesamt_supf„hig := 0;
+      "RE-Kopf".RESET;
+      "RE-Kopf".SETCURRENTKEY("Sell-to Customer No.","Order Date");
+      //"RE-Kopf".SETFILTER("Sell-to Customer No.",'%1','100056');
+      IF (Startdatum<>0D) AND (Enddatum=0D) THEN
+        "RE-Kopf".SETFILTER("Posting Date",'>=%1',Startdatum);
+      IF (Startdatum<>0D) AND (Enddatum<>0D) THEN
+        "RE-Kopf".SETFILTER("Posting Date",'>=%1&<=%2',Startdatum,Enddatum);
+      IF (Startdatum=0D) AND (Enddatum<>0D) THEN
+        "RE-Kopf".SETFILTER("Posting Date",'<=%1',Enddatum);
+      "RE-Kopf".SETFILTER("Betreuer Innendienst",betreuer);
+      "RE-Kopf".SETFILTER("Salesperson Code",verk„ufer);
+      "RE-Kopf".SETFILTER(Teams,teams);
+      "RE-Kopf".SETFILTER("Territory Code",gebietscode);
+      IF "RE-Kopf".FINDFIRST THEN
+        REPEAT
+          "RE-Zeile".RESET;
+          "RE-Zeile".SETFILTER("Document No.",'%1',"RE-Kopf"."No.");
+          "RE-Zeile".SETFILTER("Location Code",'%1|%2','ZENT','KONSI');
+          "RE-Zeile".SETFILTER("Manufacturer Code",'%1','59');
+          "RE-Zeile".SETFILTER(Type,'%1',"RE-Zeile".Type::Item);
+          "RE-Zeile".SETFILTER(Quantity,'>%1',0);
+          IF "RE-Zeile".FINDFIRST THEN
+            REPEAT
+              Item.GET("RE-Zeile"."No.");
+              IF Item."Software Upgrade Protection" = FALSE THEN BEGIN
+                IF Item.Serviceklassifizierung <> 'SYSTEM FLAT' THEN BEGIN
+                  //Untersucht die Seriennr., ob diese auch mit Champs verbunden sind
+                  Wertpostenverb.SETCURRENTKEY("Source RowId");
+                  Wertpostenverb.SETRANGE("Source RowId",STRSUBSTNO('"%1";"%2";"%3";"%4";"%5";"%6"',
+                                            DATABASE::"Sales Invoice Line",0,"RE-Zeile"."Document No.",'',0,"RE-Zeile"."Line No."));
+                  IF Wertpostenverb.FINDFIRST THEN BEGIN
+                    REPEAT
+                      service_gebucht := 0;
+                      Wertposten.GET(Wertpostenverb."Value Entry No.");
+                      Artikelposten.GET(Wertposten."Item Ledger Entry No.");
+                      ArtikelAusglPosten.RESET;
+                      ArtikelAusglPosten.SETCURRENTKEY("Outbound Item Entry No.","Item Ledger Entry No.","Cost Application");
+                      ArtikelAusglPosten.SETRANGE("Outbound Item Entry No.",Artikelposten."Entry No.");
+                      ArtikelAusglPosten.SETRANGE("Item Ledger Entry No.",Artikelposten."Entry No.");
+                      ArtikelAusglPosten.SETRANGE("Cost Application",TRUE);
+                      IF ArtikelAusglPosten.FINDFIRST THEN BEGIN
+                        EK_Artikelposten.RESET;
+                        EK_Artikelposten.SETFILTER("Entry No.",'%1',ArtikelAusglPosten."Inbound Item Entry No.");
+                        //EK_Artikelposten.GET(ArtikelAusglPosten."Inbound Item Entry No.");
+                        IF (Startdatum<>0D) AND (Enddatum=0D) THEN
+                          EK_Artikelposten.SETFILTER("Posting Date",'>=%1',Startdatum);
+                        IF (Startdatum<>0D) AND (Enddatum<>0D) THEN
+                          EK_Artikelposten.SETFILTER("Posting Date",'>=%1&<=%2',Startdatum,Enddatum);
+                        IF (Startdatum=0D) AND (Enddatum<>0D) THEN
+                          EK_Artikelposten.SETFILTER("Posting Date",'<=%1',Enddatum);
+                        IF (EK_Artikelposten.FINDFIRST)
+                        AND (EK_Artikelposten."Entry Type" <> EK_Artikelposten."Entry Type" :: Transfer) THEN BEGIN
+                        //AND (EK_Artikelposten."Posting Date" >= Startdatum) THEN
+                          Berichtstabelle.INIT;
+                          Berichtstabelle.Tabelle := 'ARTIKELPOSTEN';
+                          Berichtstabelle.Index := FORMAT(EK_Artikelposten."Entry No.");
+                          Berichtstabelle."Belegnr." := FORMAT(ArtikelAusglPosten."Entry No.");
+                          Berichtstabelle."Zeilennr." := EK_Artikelposten."Document Line No.";
+                          Berichtstabelle.Datum := EK_Artikelposten."Posting Date";
+                          Berichtstabelle."Feld 2" := EK_Artikelposten."Item No.";
+                          Berichtstabelle."Feld 6" := FORMAT(Artikelposten."Entry No.");
+                          Berichtstabelle."Feld 7" := Artikelposten."Document No.";
+                          Berichtstabelle."Feld 8" := Artikelposten."Serial No.";
+                          Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                          Berichtstabelle.User := USERID;
+                          Berichtstabelle.INSERT;
+                          vk_gesamt_champf„hig := vk_gesamt_champf„hig + ("RE-Zeile"."VK-Preis (MW)" *
+                          ((Artikelposten.Quantity) * (-1)));
+                          //Nur ein Datensatz pro Debitor
+                          Berichtstabelle_temp.RESET;
+                          Berichtstabelle_temp.SETFILTER(Tabelle,'%1','DEBITOR_D');
+                          Berichtstabelle_temp.SETFILTER(Index,'%1',"RE-Zeile"."Sell-to Customer No.");
+                          IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                            Berichtstabelle.INIT;
+                            Berichtstabelle.Tabelle := 'DEBITOR_D';
+                            Berichtstabelle.Index := "RE-Zeile"."Sell-to Customer No.";
+                            Berichtstabelle."Belegnr." := "RE-Zeile"."Sell-to Customer No.";
+                            Berichtstabelle."Zeilennr." := 0;
+                            Berichtstabelle."Feld 3" := "RE-Zeile"."Artikelnr. 2";
+                            Berichtstabelle."Feld 6" := "RE-Kopf"."Betreuer Innendienst";
+                            Berichtstabelle."Feld 7" := "RE-Kopf"."Salesperson Code";
+                            Berichtstabelle."Feld 9" := "RE-Kopf"."Territory Code";
+                            Berichtstabelle."Feld 10" := "RE-Kopf"."Sell-to Customer Name";
+                            Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                            Berichtstabelle.User := USERID;
+                            Berichtstabelle.INSERT;
+                            END;
+                          Champs.RESET;
+                          Champs.SETFILTER(Art,'%1',Champs.Art :: Service);
+                          Champs.SETFILTER("Urspr. Lieferscheinnr.",'%1',Artikelposten."Document No.");
+                          Champs.SETFILTER("Urspr. Lieferscheinzeilennr.",'%1',Artikelposten."Document Line No.");
+                          Champs.SETFILTER("Artikelnr.",'%1',Artikelposten."Item No.");
+                          Champs.SETFILTER("Seriennr.",'%1',Artikelposten."Serial No.");
+                          Champs.SETFILTER(Inaktiv,'%1',FALSE);
+                          IF Champs.FINDFIRST THEN
+                            service_gebucht := service_gebucht + Champs.Menge;
+                          Berichtstabelle_temp.RESET;
+                          Berichtstabelle_temp.SETFILTER(Tabelle,'%1','VERKAUF2');
+                          Berichtstabelle_temp.SETFILTER("Belegnr.",'%1',Artikelposten."Document No.");
+                          IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                            Berichtstabelle.INIT;
+                            Berichtstabelle.Tabelle := 'VERKAUF2';
+                            Berichtstabelle.Index := Artikelposten."Document No.";
+                            Berichtstabelle."Belegnr." := Artikelposten."Document No.";
+                            Berichtstabelle."Zeilennr." := Artikelposten."Document Line No.";
+                            Berichtstabelle.Datum  := Artikelposten."Posting Date";
+                            Berichtstabelle."Feld 2" := "RE-Zeile"."Sell-to Customer No.";
+                            IF service_gebucht <> 0 THEN
+                              Berichtstabelle."Feld 17" := TRUE;
+                            Berichtstabelle."Feld 20" := Wertpostenverb."Value Entry No.";
+                            Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                            Berichtstabelle.User := USERID;
+                            Berichtstabelle.INSERT;
+                          END;
+                          //Artikelnr. nur einmal pro Lieferscheinnr., wird fr Section Verkauf Body (2) ben”tigt
+                          Berichtstabelle_temp.RESET;
+                          Berichtstabelle_temp.SETFILTER(Tabelle,'%1','VERKAUF3');
+                          Berichtstabelle_temp.SETFILTER(Index,'%1',Artikelposten."Item No.");
+                          Berichtstabelle_temp.SETFILTER("Belegnr.",'%1',Artikelposten."Document No.");
+                          Berichtstabelle_temp.SETFILTER("Zeilennr.",'%1',Artikelposten."Document Line No.");
+                          Berichtstabelle_temp.SETFILTER("Feld 2",'%1',Artikelposten."Source No.");
+                          IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                            Berichtstabelle.INIT;
+                            Berichtstabelle.Tabelle := 'VERKAUF3';
+                            Berichtstabelle.Index := Artikelposten."Item No.";
+                            Berichtstabelle."Belegnr." := Artikelposten."Document No.";
+                            Berichtstabelle."Zeilennr." := Artikelposten."Document Line No.";
+                            Berichtstabelle.Datum  := Artikelposten."Posting Date";
+                            Berichtstabelle."Feld 2" := "RE-Zeile"."Sell-to Customer No.";
+                            Berichtstabelle."Feld 3" := "RE-Zeile"."Artikelnr. 2";
+                            Berichtstabelle."Feld 4" := ((Artikelposten.Quantity) * (-1));
+                            Berichtstabelle."Feld 5" := ((Artikelposten.Quantity) * (-1)) * ("RE-Zeile"."VK-Preis (MW)");
+                            IF service_gebucht <> 0 THEN
+                              Berichtstabelle."Feld 17" := TRUE;
+                            Berichtstabelle."Feld 20" := Wertpostenverb."Value Entry No.";
+                            Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                            Berichtstabelle.User := USERID;
+                            Berichtstabelle.INSERT;
+                          END ELSE BEGIN
+                            Berichtstabelle_temp."Feld 4" := Berichtstabelle_temp."Feld 4" +
+                            ((Artikelposten.Quantity) * (-1));
+                            IF service_gebucht <> 0 THEN
+                              Berichtstabelle_temp."Feld 17" := TRUE;
+                            Berichtstabelle_temp.MODIFY;
+                          END;
+                          //Nur ein Datensatz pro Artikelnr., ansonsten wird dieser nur aktualisiert
+                          Berichtstabelle_temp.RESET;
+                          Berichtstabelle_temp.SETFILTER(Tabelle,'%1','VERKAUF1');
+                          Berichtstabelle_temp.SETFILTER(Index,'%1',Artikelposten."Item No.");
+                          Berichtstabelle_temp.SETFILTER("Feld 2",'%1',Artikelposten."Source No.");
+                          IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                            Berichtstabelle.INIT;
+                            Berichtstabelle.Tabelle := 'VERKAUF1';
+                            Berichtstabelle.Index := Artikelposten."Item No.";
+                            Berichtstabelle."Belegnr." := Artikelposten."Document No.";
+                            Berichtstabelle."Zeilennr." := Artikelposten."Document Line No.";
+                            Berichtstabelle.Datum  := "RE-Kopf"."Posting Date";
+                            Berichtstabelle."Feld 2" := Artikelposten."Source No.";
+                            Berichtstabelle."Feld 3" := "RE-Zeile"."Artikelnr. 2";
+                            Berichtstabelle."Feld 4" := (Artikelposten.Quantity) * (-1);
+                            Berichtstabelle."Feld 5" := ((Artikelposten.Quantity) * (-1)) * ("RE-Zeile"."VK-Preis (MW)");
+                            artikel_zunull := 0;
+                            IF "RE-Zeile"."VK-Preis (MW)" = 0 THEN
+                              artikel_zunull := ((Artikelposten.Quantity) * (-1)) * ("RE-Zeile".Quantity);
+                            Berichtstabelle."Feld 10" := FORMAT(artikel_zunull);
+                            Berichtstabelle."Feld 20" := service_gebucht;
+                            Berichtstabelle."Feld 21" := ((Artikelposten.Quantity) * (-1)) * ("RE-Zeile"."VK-Preis (MW)");
+                            Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                            Berichtstabelle.User := USERID;
+                            Berichtstabelle.INSERT;
+                          END ELSE BEGIN
+                            Berichtstabelle_temp."Feld 4" := Berichtstabelle_temp."Feld 4" +
+                                                              ((Artikelposten.Quantity) * (-1));
+                            Berichtstabelle_temp."Feld 5" := (Berichtstabelle_temp."Feld 5" +
+                            (("RE-Zeile"."VK-Preis (MW)") * (Artikelposten.Quantity) * (-1))) / 2;
+                            IF "RE-Zeile"."VK-Preis (MW)" = 0 THEN BEGIN
+                              EVALUATE(artikel_zunull,Berichtstabelle_temp."Feld 10");
+                              Berichtstabelle_temp."Feld 10" := FORMAT(artikel_zunull + ((Artikelposten.Quantity) * (-1)));
+                            END;
+                            Berichtstabelle_temp."Feld 20" := Berichtstabelle_temp."Feld 20" + service_gebucht;
+                            Berichtstabelle_temp."Feld 21" := Berichtstabelle_temp."Feld 21" +
+                            (((Artikelposten.Quantity) * (-1)) * ("RE-Zeile"."VK-Preis (MW)"));
+                            Berichtstabelle_temp.MODIFY;
+                          END;
+                        END ELSE BEGIN
+                          Berichtstabelle.INIT;
+                          Berichtstabelle.Tabelle := 'POSTEN_WEGFALL';
+                          Berichtstabelle.Index := FORMAT(EK_Artikelposten."Entry No.");
+                          Berichtstabelle."Belegnr." := FORMAT(ArtikelAusglPosten."Entry No.");
+                          Berichtstabelle."Zeilennr." := EK_Artikelposten."Document Line No.";
+                          Berichtstabelle.Datum := EK_Artikelposten."Posting Date";
+                          Berichtstabelle."Feld 2" := EK_Artikelposten."Item No.";
+                          Berichtstabelle."Feld 6" := FORMAT(Artikelposten."Entry No.");
+                          Berichtstabelle."Feld 7" := Artikelposten."Document No.";
+                          Berichtstabelle."Feld 8" := Artikelposten."Serial No.";
+                          Berichtstabelle."Feld 9" := Artikelposten."Source No.";
+                          Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                          Berichtstabelle.User := USERID;
+                          Berichtstabelle.INSERT;
+                        END;
+                      END;
+                    UNTIL Wertpostenverb.NEXT = 0;
+                  END;
+                END;
+              END;
+            UNTIL "RE-Zeile".NEXT = 0;
+        UNTIL "RE-Kopf".NEXT = 0;
+
+      //*******************************************************************************************************
+      // Zusammenfassung
+      //*******************************************************************************************************
+    END;
+
+    EVENT ReportForNav@5000::OnInit@5002();
+    VAR
+      ReportLayoutSelection@1000 : Record 9651;
+      CustomReportLayout@1001 : Record 9650;
+      CustomLayoutID@1002 : Variant;
+      InStream@1004 : InStream;
+      EmptyLayout@1003 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+      ReportForNav.OData := GETURL(CLIENTTYPE::OData, COMPANYNAME, OBJECTTYPE::Page, 7702);
+      IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN
+        CustomLayoutID := ReportLayoutSelection.GetTempLayoutSelected
+      ELSE
+        IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN
+          CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+
+      IF (FORMAT(CustomLayoutID) <> EmptyLayout) AND CustomReportLayout.GET(CustomLayoutID) THEN BEGIN
+        CustomReportLayout.TESTFIELD(Type,CustomReportLayout.Type::RDLC);
+        CustomReportLayout.CALCFIELDS(Layout);
+        CustomReportLayout.Layout.CREATEINSTREAM(InStream,TEXTENCODING::UTF8);
+        ReportForNav.IsCustomLayout := TRUE;
+      END ELSE
+        REPORT.RDLCLAYOUT(ReportForNav.ReportID,InStream);
+
+      ReportForNav.LoadRdlc(InStream);
+      IF COPYSTR(LOWERCASE(GETURL(CLIENTTYPE::Current, COMPANYNAME, OBJECTTYPE::Codeunit, 1)), 1, 14) = 'dynamicsnav://' THEN BEGIN
+        ReportForNav.CheckClientAddIn();
+        ReportForNavClient := ReportForNavClient.Report(ReportForNav.Definition);
+        ReportForNavAllowDesign := ReportForNavClient.HasDesigner AND NOT ReportForNav.ParameterMode;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnSave@5010(Base64Layout@1000 : Text);
+    VAR
+      CustomReportLayout@1002 : Record 9650;
+      ReportLayoutSelection@1003 : Record 9651;
+      LayoutId@1004 : Variant;
+      TempBlob@1007 : Record 99008535;
+      OutStream@1006 : OutStream;
+      Bstr@1005 : BigText;
+      EmptyLayout@1001 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+      IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN BEGIN
+        IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN BEGIN
+          LayoutId := ReportLayoutSelection.GetTempLayoutSelected;
+        END ELSE BEGIN
+          IF ReportLayoutSelection.GET(ReportForNav.ReportID, COMPANYNAME) THEN BEGIN
+          LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+          END;
+        END;
+      END ELSE BEGIN
+        IF CONFIRM('Default custom layout not found. Create one?') THEN;
+      END;
+      IF FORMAT(LayoutId) <> EmptyLayout THEN BEGIN
+        TempBlob.Blob.CREATEOUTSTREAM(OutStream);
+        Bstr.ADDTEXT(Base64Layout);
+        Bstr.WRITE(OutStream);
+        CustomReportLayout.GET(LayoutId);
+        CustomReportLayout.ImportLayoutBlob(TempBlob, 'RDL');
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnParameters@5008(Parameters@1000 : Text);
+    BEGIN
+      ReportForNav.Parameters := REPORT.RUNREQUESTPAGE(ReportForNav.ReportID, Parameters);
+    END;
+
+    EVENT ReportForNav@5000::OnPreview@5009(Parameters@1000 : Text;FileName@1005 : Text);
+    VAR
+      PdfFile@1002 : File;
+      InStream@1003 : InStream;
+      OutStream@1004 : OutStream;
+    BEGIN
+      COMMIT;
+      PdfFile.CREATETEMPFILE;
+      PdfFile.CREATEOUTSTREAM(OutStream);
+      REPORT.SAVEAS(ReportForNav.ReportID, Parameters, REPORTFORMAT::Pdf, OutStream);
+      PdfFile.CREATEINSTREAM(InStream);
+      ReportForNavClient.ShowDesigner;
+      IF ReportForNav.IsValidPdf(PdfFile.NAME) THEN DOWNLOADFROMSTREAM(InStream, '', '', '', FileName);
+      PdfFile.CLOSE;
+    END;
+
+    EVENT ReportForNav@5000::OnPreSection@5012(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+      CASE DataItemId OF
+        'Artikel': CASE SectionId OF
+          'Body2': OnPreSectionArtikel_Body2(Artikel);
+          'Body3': OnPreSectionArtikel_Body3(Artikel);
+        END;
+        'Debitor2': CASE SectionId OF
+          'Header12': OnPreSectionDebitor2_Header12(Debitor2);
+        END;
+        'Verkauf2': CASE SectionId OF
+          'Body19': OnPreSectionVerkauf2_Body19(Verkauf2);
+        END;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPostSection@50013(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+    END;
+
+    EVENT ReportForNav@5000::OnClientOperation@5008(Args@1000 : DotNet "'mscorlib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Array");
+    VAR
+      op@1001 : Text;
+      FileMgmt@1002 : Codeunit 419;
+      Process@1006 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.Process" RUNONCLIENT;
+      PathObj@1005 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Path" RUNONCLIENT;
+      FileVersionInfo@1003 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.FileVersionInfo" RUNONCLIENT;
+      DirectoryHelper@1004 : DotNet "'mscorlib'.System.IO.Directory" RUNONCLIENT;
+    BEGIN
+      op := Args.GetValue(0);
+      CASE op OF
+        'TempPath': ReportForNav.Result := PathObj.GetTempPath();
+        'FileExists': ReportForNav.Result := FileMgmt.ClientFileExists(Args.GetValue(1));
+        'DirectoryExists': ReportForNav.Result := FileMgmt.ClientDirectoryExists(Args.GetValue(1));
+        'ProcessLocation': ReportForNav.Result := Process.GetCurrentProcess().MainModule.FileName;
+        'FileVersion': ReportForNav.Result := FileVersionInfo.GetVersionInfo(Args.GetValue(1)).FileVersion;
+        'DeleteFile': FileMgmt.DeleteClientFile(Args.GetValue(1));
+        'DeleteDirectory': IF STRLEN(Args.GetValue(1)) > 20 THEN
+          IF FileMgmt.ClientDirectoryExists(Args.GetValue(1)) THEN
+            DirectoryHelper.Delete(FORMAT(Args.GetValue(1)), TRUE);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnCheckForNavClientVersion@5007();
+    BEGIN
+      ReportForNavClient := ReportForNavClient.Report();
+      IF ReportForNav.MyFileVersion <> ReportForNavClient.MyFileVersion THEN
+        ERROR('You have version %1 of the Reports ForNAV assembly here:\\%2\\Please close your NAV client and update it to version %3.',
+              ReportForNavClient.MyFileVersion, ReportForNavClient.MyFileName, ReportForNav.MyFileVersion);
+    END;
+
+    EVENT ReportForNav@5000::OnSelectPrinter@5006();
+    BEGIN
+      ReportForNav.PrinterSettings.PageSettings := ReportForNavClient.SelectPrinter(ReportForNav.PrinterSettings.PrinterName,ReportForNav.PrinterSettings.ShowPrinterDialog,ReportForNav.PrinterSettings.PageSettings);
+    END;
+
+    EVENT ReportForNav@5000::OnPrint@5005(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream");
+    VAR
+      ClientFileName@1000000001 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      ReportForNavClient.Print(ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnDesign@5007(Data@1001 : Text);
+    BEGIN
+      ReportForNavClient.Data := Data;
+      WHILE ReportForNavClient.DesignReport DO BEGIN
+        ReportForNav.HandleRequest(ReportForNavClient.GetRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnView@5008(ClientFileName@1000000000 : Text;Parameters@1000000001 : Text;ServerFileName@1000000002 : Text);
+    VAR
+      ServerFile@1000000003 : File;
+      ServerInStream@1000000004 : InStream;
+    BEGIN
+      ServerFile.OPEN(ServerFileName);
+      ServerFile.CREATEINSTREAM(ServerInStream);
+      DOWNLOADFROMSTREAM(ServerInStream,'','','',ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnMessage@5009(Operation@1000000000 : Text;Parameter@1000000001 : Text;ParameterNo@1000000002 : Integer);
+    BEGIN
+      CASE Operation OF
+        'Open'    : ReportForNavDialog.OPEN(Parameter);
+        'Update'  : ReportForNavDialog.UPDATE(ParameterNo,Parameter);
+        'Close'   : ReportForNavDialog.CLOSE();
+        'Message' : MESSAGE(Parameter);
+        'Error'   : ERROR(Parameter);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPrintPreview@5011(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream";Preview@1000000001 : Boolean);
+    VAR
+      ClientFileName@1000000002 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      WHILE ReportForNavClient.PrintPreviewDialog(ClientFileName,ReportForNav.PrinterSettings.PrinterName,Preview) DO BEGIN
+        ReportForNav.HandlePrintPreviewRequest(ReportForNavClient.GetPrintPreviewRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnTotals@5004(DataItemId@1000000000 : Text;Operation@1000000001 : Text;GroupTotalFieldNo@1000000002 : Integer);
+    VAR
+      CurrRecRef@1000000003 : RecordRef;
+      NextRecRef@1000000004 : RecordRef;
+      CurrKeyRef@1000000005 : KeyRef;
+      NextKeyRef@1000000006 : KeyRef;
+      FieldIndex@1000000007 : Integer;
+      GroupFieldIndex@1000000008 : Integer;
+    BEGIN
+      // Do not change (Autogenerated by Reports ForNAV) - Instead change the Create Totals, Total Fields or Group Total Fields properties on the Data item in the ForNAV designer
+      CASE DataItemId OF
+        'Einkauf1': WITH Einkauf1 DO CASE Operation OF
+           'Add': BEGIN
+                ReportForNav.AddTotal(DataItemId,0,"Feld 4");
+              END;
+           'Restore': BEGIN
+                 "Feld 4" := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
+              END;
+        END;  'Einkauf2': WITH Einkauf2 DO CASE Operation OF
+           'Add': BEGIN
+                ReportForNav.AddTotal(DataItemId,0,"Feld 4");
+              END;
+           'Restore': BEGIN
+                 "Feld 4" := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
+              END;
+        END;  'Verkauf1': WITH Verkauf1 DO CASE Operation OF
+           'Add': BEGIN
+                ReportForNav.AddTotal(DataItemId,0,"Feld 4");
+                ReportForNav.AddTotal(DataItemId,1,"Feld 20");
+                ReportForNav.AddTotal(DataItemId,2,"Feld 21");
+              END;
+           'Restore': BEGIN
+                 "Feld 4" := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
+                 "Feld 20" := ReportForNav.RestoreTotal(DataItemId,1,GroupTotalFieldNo);
+                 "Feld 21" := ReportForNav.RestoreTotal(DataItemId,2,GroupTotalFieldNo);
+              END;
+        END;
+      END;
+    END;
+
+    BEGIN
+    END.
+  }
+  RDLDATA
+  {
+    <?xml version="1.0" encoding="utf-8"?>
+<Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
+  <Description>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</Description>
+  <AutoRefresh>0</AutoRefresh>
+  <DataSources>
+    <DataSource Name="DataSource">
+      <ConnectionProperties>
+        <DataProvider>SQL</DataProvider>
+        <ConnectString />
+      </ConnectionProperties>
+      <rd:SecurityType>None</rd:SecurityType>
+      <rd:DataSourceID>e8ba4f24-4920-4f1b-93ba-347713a6f627</rd:DataSourceID>
+    </DataSource>
+  </DataSources>
+  <ReportSections>
+    <ReportSection>
+      <Body>
+        <Height>2in</Height>
+        <Style />
+      </Body>
+      <Width>6.5in</Width>
+      <Page>
+        <Style />
+      </Page>
+    </ReportSection>
+  </ReportSections>
+  <rd:ReportUnitType>Invalid</rd:ReportUnitType>
+  <rd:ReportID>3ece80a7-20c0-4c2e-a58e-0969cf1b926e</rd:ReportID>
+  <DataSets>
+    <DataSet Name="DataSet_Result">
+      <Fields>
+        <Field Name="Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Teams">
+          <DataField>Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Teams</DataField>
+        </Field>
+        <Field Name="USERID">
+          <DataField>USERID</DataField>
+        </Field>
+        <Field Name="TODAY_0_4">
+          <DataField>TODAY_0_4</DataField>
+        </Field>
+        <Field Name="ReportForNavPageNo">
+          <DataField>ReportForNavPageNo</DataField>
+        </Field>
+        <Field Name="FORMAT_ROUND_Feld4_umsatz_acs_champfahig_100_000_Pct">
+          <DataField>FORMAT_ROUND_Feld4_umsatz_acs_champfahig_100_000_Pct</DataField>
+        </Field>
+        <Field Name="V_">
+          <DataField>V_</DataField>
+        </Field>
+        <Field Name="Feld4_Artikel">
+          <DataField>Feld4_Artikel</DataField>
+        </Field>
+        <Field Name="Feld4_ArtikelFormat">
+          <DataField>Feld4_ArtikelFormat</DataField>
+        </Field>
+        <Field Name="Feld3_Artikel">
+          <DataField>Feld3_Artikel</DataField>
+        </Field>
+        <Field Name="FORMAT_ROUND_Feld4_umsatz_acs_supfahig_100_000_Pct">
+          <DataField>FORMAT_ROUND_Feld4_umsatz_acs_supfahig_100_000_Pct</DataField>
+        </Field>
+        <Field Name="umsatz_acs_supfahig">
+          <DataField>umsatz_acs_supfahig</DataField>
+        </Field>
+        <Field Name="umsatz_acs_supfahigFormat">
+          <DataField>umsatz_acs_supfahigFormat</DataField>
+        </Field>
+        <Field Name="umsatz_acs_champfahig">
+          <DataField>umsatz_acs_champfahig</DataField>
+        </Field>
+        <Field Name="umsatz_acs_champfahigFormat">
+          <DataField>umsatz_acs_champfahigFormat</DataField>
+        </Field>
+        <Field Name="FORMAT_ROUND_umsatz_sup_umsatz_acs_supfahig_100_000_Pct">
+          <DataField>FORMAT_ROUND_umsatz_sup_umsatz_acs_supfahig_100_000_Pct</DataField>
+        </Field>
+        <Field Name="umsatz_sup">
+          <DataField>umsatz_sup</DataField>
+        </Field>
+        <Field Name="umsatz_supFormat">
+          <DataField>umsatz_supFormat</DataField>
+        </Field>
+        <Field Name="FORMAT_ROUND_umsatz_champ_umsatz_acs_champfahig_100_000_Pct">
+          <DataField>FORMAT_ROUND_umsatz_champ_umsatz_acs_champfahig_100_000_Pct</DataField>
+        </Field>
+        <Field Name="umsatz_acs_champfahig_umsatz_acs_supfahig">
+          <DataField>umsatz_acs_champfahig_umsatz_acs_supfahig</DataField>
+        </Field>
+        <Field Name="umsatz_acs_champfahig_umsatz_acs_supfahigFormat">
+          <DataField>umsatz_acs_champfahig_umsatz_acs_supfahigFormat</DataField>
+        </Field>
+        <Field Name="umsatz_champ">
+          <DataField>umsatz_champ</DataField>
+        </Field>
+        <Field Name="umsatz_champFormat">
+          <DataField>umsatz_champFormat</DataField>
+        </Field>
+        <Field Name="V_8">
+          <DataField>V_8</DataField>
+        </Field>
+        <Field Name="Feld4_Debitor">
+          <DataField>Feld4_Debitor</DataField>
+        </Field>
+        <Field Name="Feld4_DebitorFormat">
+          <DataField>Feld4_DebitorFormat</DataField>
+        </Field>
+        <Field Name="Feld7_Debitor">
+          <DataField>Feld7_Debitor</DataField>
+        </Field>
+        <Field Name="Feld6_Debitor">
+          <DataField>Feld6_Debitor</DataField>
+        </Field>
+        <Field Name="Feld10_Debitor">
+          <DataField>Feld10_Debitor</DataField>
+        </Field>
+        <Field Name="Index_Debitor">
+          <DataField>Index_Debitor</DataField>
+        </Field>
+        <Field Name="Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Team2">
+          <DataField>Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Team2</DataField>
+        </Field>
+        <Field Name="USERID2">
+          <DataField>USERID2</DataField>
+        </Field>
+        <Field Name="TODAY_0_42">
+          <DataField>TODAY_0_42</DataField>
+        </Field>
+        <Field Name="ReportForNavPageNo2">
+          <DataField>ReportForNavPageNo2</DataField>
+        </Field>
+        <Field Name="Feld5_Einkauf1">
+          <DataField>Feld5_Einkauf1</DataField>
+        </Field>
+        <Field Name="Feld5_Einkauf1Format">
+          <DataField>Feld5_Einkauf1Format</DataField>
+        </Field>
+        <Field Name="Feld4_Einkauf1">
+          <DataField>Feld4_Einkauf1</DataField>
+        </Field>
+        <Field Name="Feld4_Einkauf1Format">
+          <DataField>Feld4_Einkauf1Format</DataField>
+        </Field>
+        <Field Name="Feld3_Einkauf1">
+          <DataField>Feld3_Einkauf1</DataField>
+        </Field>
+        <Field Name="Belegnr_Einkauf1">
+          <DataField>Belegnr_Einkauf1</DataField>
+        </Field>
+        <Field Name="Datum_Einkauf1">
+          <DataField>Datum_Einkauf1</DataField>
+        </Field>
+        <Field Name="ek_gesamt_supfahig">
+          <DataField>ek_gesamt_supfahig</DataField>
+        </Field>
+        <Field Name="ek_gesamt_supfahigFormat">
+          <DataField>ek_gesamt_supfahigFormat</DataField>
+        </Field>
+        <Field Name="Feld5_Einkauf2">
+          <DataField>Feld5_Einkauf2</DataField>
+        </Field>
+        <Field Name="Feld5_Einkauf2Format">
+          <DataField>Feld5_Einkauf2Format</DataField>
+        </Field>
+        <Field Name="Feld4_Einkauf2">
+          <DataField>Feld4_Einkauf2</DataField>
+        </Field>
+        <Field Name="Feld4_Einkauf2Format">
+          <DataField>Feld4_Einkauf2Format</DataField>
+        </Field>
+        <Field Name="Feld3_Einkauf2">
+          <DataField>Feld3_Einkauf2</DataField>
+        </Field>
+        <Field Name="Belegnr_Einkauf2">
+          <DataField>Belegnr_Einkauf2</DataField>
+        </Field>
+        <Field Name="Datum_Einkauf2">
+          <DataField>Datum_Einkauf2</DataField>
+        </Field>
+        <Field Name="ek_gesamt_champfahig">
+          <DataField>ek_gesamt_champfahig</DataField>
+        </Field>
+        <Field Name="ek_gesamt_champfahigFormat">
+          <DataField>ek_gesamt_champfahigFormat</DataField>
+        </Field>
+        <Field Name="Feld7_Debitor2">
+          <DataField>Feld7_Debitor2</DataField>
+        </Field>
+        <Field Name="Feld6_Debitor2">
+          <DataField>Feld6_Debitor2</DataField>
+        </Field>
+        <Field Name="Feld10_Debitor2">
+          <DataField>Feld10_Debitor2</DataField>
+        </Field>
+        <Field Name="Index_Debitor2">
+          <DataField>Index_Debitor2</DataField>
+        </Field>
+        <Field Name="totale_VK_Menge_totale_EK_Menge_100">
+          <DataField>totale_VK_Menge_totale_EK_Menge_100</DataField>
+        </Field>
+        <Field Name="totale_VK_Menge">
+          <DataField>totale_VK_Menge</DataField>
+        </Field>
+        <Field Name="totale_VK_MengeFormat">
+          <DataField>totale_VK_MengeFormat</DataField>
+        </Field>
+        <Field Name="totale_EK_Menge">
+          <DataField>totale_EK_Menge</DataField>
+        </Field>
+        <Field Name="totale_EK_MengeFormat">
+          <DataField>totale_EK_MengeFormat</DataField>
+        </Field>
+        <Field Name="totaler_betrag_geraete">
+          <DataField>totaler_betrag_geraete</DataField>
+        </Field>
+        <Field Name="totaler_betrag_geraeteFormat">
+          <DataField>totaler_betrag_geraeteFormat</DataField>
+        </Field>
+        <Field Name="totale_CHAMP_Menge_totale_VK_Menge_100">
+          <DataField>totale_CHAMP_Menge_totale_VK_Menge_100</DataField>
+        </Field>
+        <Field Name="totale_CHAMP_Menge">
+          <DataField>totale_CHAMP_Menge</DataField>
+        </Field>
+        <Field Name="totale_CHAMP_MengeFormat">
+          <DataField>totale_CHAMP_MengeFormat</DataField>
+        </Field>
+        <Field Name="V__Feld10__">
+          <DataField>V__Feld10__</DataField>
+        </Field>
+        <Field Name="Feld20_Feld4_100">
+          <DataField>Feld20_Feld4_100</DataField>
+        </Field>
+        <Field Name="Feld20_Feld4_100Format">
+          <DataField>Feld20_Feld4_100Format</DataField>
+        </Field>
+        <Field Name="Feld20_Verkauf1">
+          <DataField>Feld20_Verkauf1</DataField>
+        </Field>
+        <Field Name="Feld20_Verkauf1Format">
+          <DataField>Feld20_Verkauf1Format</DataField>
+        </Field>
+        <Field Name="Feld5_Verkauf1">
+          <DataField>Feld5_Verkauf1</DataField>
+        </Field>
+        <Field Name="Feld5_Verkauf1Format">
+          <DataField>Feld5_Verkauf1Format</DataField>
+        </Field>
+        <Field Name="Feld4_Verkauf1">
+          <DataField>Feld4_Verkauf1</DataField>
+        </Field>
+        <Field Name="Feld4_Verkauf1Format">
+          <DataField>Feld4_Verkauf1Format</DataField>
+        </Field>
+        <Field Name="Feld3_Verkauf1">
+          <DataField>Feld3_Verkauf1</DataField>
+        </Field>
+        <Field Name="Feld21_Verkauf1">
+          <DataField>Feld21_Verkauf1</DataField>
+        </Field>
+        <Field Name="Feld21_Verkauf1Format">
+          <DataField>Feld21_Verkauf1Format</DataField>
+        </Field>
+        <Field Name="posten_fehlen">
+          <DataField>posten_fehlen</DataField>
+        </Field>
+        <Field Name="Artikelnr_Textkette">
+          <DataField>Artikelnr_Textkette</DataField>
+        </Field>
+        <Field Name="Liefermenge_gesamt">
+          <DataField>Liefermenge_gesamt</DataField>
+        </Field>
+        <Field Name="Liefermenge_gesamtFormat">
+          <DataField>Liefermenge_gesamtFormat</DataField>
+        </Field>
+        <Field Name="Feld17_Verkauf2">
+          <DataField>Feld17_Verkauf2</DataField>
+        </Field>
+        <Field Name="Belegnr_Verkauf2">
+          <DataField>Belegnr_Verkauf2</DataField>
+        </Field>
+      </Fields>
+      <Query>
+        <DataSourceName>DataSource</DataSourceName>
+        <CommandText />
+      </Query>
+      <rd:DataSetInfo>
+        <rd:DataSetName>DataSet</rd:DataSetName>
+        <rd:SchemaPath>Report.xsd</rd:SchemaPath>
+        <rd:TableName>Result</rd:TableName>
+      </rd:DataSetInfo>
+    </DataSet>
+  </DataSets>
+</Report>
+    END_OF_RDLDATA
+  }
+}
+
