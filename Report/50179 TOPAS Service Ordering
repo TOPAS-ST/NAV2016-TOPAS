@@ -1,0 +1,812 @@
+OBJECT Report 50179 TOPAS Service Ordering
+{
+  OBJECT-PROPERTIES
+  {
+    Date=07.11.17;
+    Time=12:02:49;
+    Modified=Yes;
+    Version List=fertig,FORNAV2.0.0.1189/1189;
+  }
+  PROPERTIES
+  {
+    OnInitReport=BEGIN
+                   FIBUEinrichtung.GET;
+                   ;ReportForNav:= ReportForNav.Report(CurrReport.OBJECTID,CurrReport.LANGUAGE,SERIALNUMBER,USERID,COMPANYNAME);ReportForNav.Init;
+                 END;
+
+    OnPreReport=BEGIN
+                  ReportForNav.OpenDesigner:=ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
+                END;
+
+    OnPostReport=BEGIN
+                   ReportForNav.Post;
+                 END;
+
+  }
+  DATASET
+  {
+    { 1   ;    ;DataItem;                    ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=CONST(1)) }
+
+    { 2   ;1   ;DataItem;                    ;
+               DataItemTable=Table50024;
+               DataItemTableView=SORTING(Wartungsvertragsnr.,Service Artikelnr.)
+                                 WHERE(Art=FILTER(Service),
+                                       Inaktiv=FILTER(No));
+               OnPreDataItem=BEGIN
+                               Firmendaten.GET;
+                               Firmendaten.CALCFIELDS("ISO Logo","Systeme Logo");
+                               Nummer := 0;
+                               TotalText := '';
+                               //CREATETOTALS(champ_price_total);
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  PurchHeader.RESET;
+                                  PurchHeader.SETRANGE("No.","Serviceleist. & Leihstellungen"."BET-Nr.");
+                                  IF PurchHeader.FINDFIRST THEN BEGIN
+                                    w„hcode  := PurchHeader."Currency Code";
+                                    termcode := PurchHeader."Payment Terms Code";
+                                    shipcode := PurchHeader."Shipment Method Code";
+                                    orderno  := PurchHeader."No.";
+                                    vendorno := PurchHeader."Buy-from Vendor No.";
+                                    docdate  := PurchHeader."Document Date";
+                                    FormatAdr.PurchHeaderBuyFrom(EinkVonAdr,PurchHeader);
+                                  END ELSE BEGIN
+                                    PurchShipHeader.RESET;
+                                    PurchShipHeader.SETRANGE("Order No.","Serviceleist. & Leihstellungen"."BET-Nr.");
+                                    IF PurchShipHeader.FINDLAST THEN BEGIN
+                                      w„hcode  := PurchShipHeader."Currency Code";
+                                      termcode := PurchShipHeader."Payment Terms Code";
+                                      shipcode := PurchShipHeader."Shipment Method Code";
+                                      orderno  := PurchShipHeader."Order No.";
+                                      vendorno := PurchShipHeader."Buy-from Vendor No.";
+                                      docdate  := PurchShipHeader."Document Date";
+                                      FormatAdr.PurchRcptBuyFrom(EinkVonAdr,PurchShipHeader);
+                                    END ELSE
+                                      ERROR('Bestellung konnte nicht gefunden werden.');
+                                  END;
+                                  service_price_total := service_price_total + (Menge * "Service DC");
+                                  IF termcode = '' THEN
+                                    ZlgBed.INIT
+                                  ELSE
+                                    ZlgBed.GET(termcode);
+                                  IF shipcode = '' THEN
+                                    LieferBed.INIT
+                                  ELSE
+                                    LieferBed.GET(shipcode);
+                                  IF w„hcode = '' THEN BEGIN
+                                    FIBUEinrichtung.TESTFIELD("LCY Code");
+                                    TotalText := STRSUBSTNO('Total %1',FIBUEinrichtung."LCY Code");
+                                  END ELSE BEGIN
+                                    TotalText := STRSUBSTNO('Total %1',w„hcode);
+                                  END;
+                                  Artikel.GET("SUP Artikelnr.");
+                                  IF Artikel.Artikelgruppe = 'CHAMPS' THEN
+                                    header_zusatz := 'Champs'
+                                  ELSE
+                                    IF (Artikel.Artikelgruppe = 'ACTS') OR (Artikel.Artikelgruppe = 'ACTS_AHR') OR (Artikel.Artikelgruppe = 'ACTS/ACHAT')
+                                    OR (Artikel.Artikelgruppe = 'ACTS_SCHAEFFLER') OR (Artikel.Artikelgruppe = 'ACTS_MSS_SCHAEFFLER')
+                                    OR (Artikel.Artikelgruppe = 'ACTS_MSS') OR (Artikel.Artikelgruppe = 'ACHAT') THEN
+                                      header_zusatz := 'ACTS'
+                                    ELSE
+                                      header_zusatz := '';
+
+                                  seriennr := "Seriennr.";
+
+                                  IF Artikel.GET("Artikelnr.") THEN BEGIN
+                                    IF "Seriennr." <> '' THEN BEGIN
+                                      IF Artikel."Item Tracking Code" = 'PRODUCTKEY' THEN
+                                        seriennr := "Product Key";
+                                    END ELSE BEGIN
+                                      IF Artikel."Item Tracking Code" = 'PRODUCTKEY' THEN
+                                        seriennr := "Product Key";
+                                      IF (Artikel.Serviceklassifizierung = 'SOFTWARE') OR (Artikel.Serviceklassifizierung = 'KEINE') THEN BEGIN
+                                        ServiceOrderPos.RESET;
+                                        ServiceOrderPos.SETRANGE("Wartungsvertragsnr.","Wartungsvertragsnr.");
+                                        ServiceOrderPos.SETRANGE(Basisger„t,TRUE);
+                                        ServiceOrderPos.SETRANGE("Geh”rt zu Lfd. Nr.","Geh”rt zu Lfd. Nr.");
+                                        IF ServiceOrderPos.FINDFIRST THEN BEGIN
+                                          IF Artikel.GET(ServiceOrderPos."Artikelnr.") THEN BEGIN
+                                            IF Artikel."Item Tracking Code" = 'PRODUCTKEY' THEN
+                                              seriennr := ServiceOrderPos."Product Key"
+                                            ELSE
+                                              seriennr := ServiceOrderPos."Seriennr.";
+                                          END;
+                                        END;
+                                      END;
+                                    END;
+                                  END;
+
+                                  IF STRPOS(seriennr,'S/N: ') = 1 THEN
+                                    seriennr := COPYSTR(seriennr,STRLEN('S/N: ')+1);
+                                  IF STRPOS(seriennr,'S/N:') = 1 THEN
+                                    seriennr := COPYSTR(seriennr,STRLEN('S/N:')+1);
+                                  IF Fremderwerb THEN
+                                    seriennr := seriennr + '*';
+                                END;
+
+               ReqFilterFields=BET-Nr. }
+
+    { 3   ;2   ;Column  ;SystemeLogo_Firmendaten;
+               SourceExpr=Firmendaten."Systeme Logo" }
+
+    { 4   ;2   ;Column  ;ISOLogo_Firmendaten ;
+               SourceExpr=Firmendaten."ISO Logo" }
+
+    { 5   ;2   ;Column  ;header_zusatz_PurchaseOrder;
+               SourceExpr=header_zusatz + ' Purchase Order' }
+
+    { 6   ;2   ;Column  ;EinkVonAdr8         ;
+               SourceExpr=EinkVonAdr[8] }
+
+    { 7   ;2   ;Column  ;EinkVonAdr7         ;
+               SourceExpr=EinkVonAdr[7] }
+
+    { 8   ;2   ;Column  ;EinkVonAdr6         ;
+               SourceExpr=EinkVonAdr[6] }
+
+    { 9   ;2   ;Column  ;EinkVonAdr5         ;
+               SourceExpr=EinkVonAdr[5] }
+
+    { 10  ;2   ;Column  ;EinkVonAdr4         ;
+               SourceExpr=EinkVonAdr[4] }
+
+    { 11  ;2   ;Column  ;EinkVonAdr3         ;
+               SourceExpr=EinkVonAdr[3] }
+
+    { 12  ;2   ;Column  ;EinkVonAdr2         ;
+               SourceExpr=EinkVonAdr[2] }
+
+    { 13  ;2   ;Column  ;EinkVonAdr1         ;
+               SourceExpr=EinkVonAdr[1] }
+
+    { 14  ;2   ;Column  ;vendorno            ;
+               SourceExpr=vendorno }
+
+    { 15  ;2   ;Column  ;orderno             ;
+               SourceExpr=orderno }
+
+    { 16  ;2   ;Column  ;docdate             ;
+               SourceExpr=docdate }
+
+    { 17  ;2   ;Column  ;STRSUBSTNO_PagePct1_FORMAT_ReportForNavPageNo_;
+               SourceExpr=STRSUBSTNO('Page %1',FORMAT(ReportForNav.PageNo)) }
+
+    { 18  ;2   ;Column  ;service_price_total ;
+               SourceExpr=service_price_total }
+
+    { 19  ;2   ;Column  ;endkunde            ;
+               SourceExpr=endkunde }
+
+    { 20  ;2   ;Column  ;Debitorname_Serviceleist_Leihstellungen;
+               SourceExpr=Debitorname }
+
+    { 21  ;2   ;Column  ;Nummer              ;
+               SourceExpr=Nummer }
+
+    { 22  ;2   ;Column  ;ServiceArtikelnr_Serviceleist_Leihstellungen;
+               SourceExpr="Service Artikelnr." }
+
+    { 23  ;2   ;Column  ;TotalText           ;
+               SourceExpr=TotalText }
+
+    { 24  ;2   ;DataItem;                    ;
+               DataItemTable=Table27;
+               DataItemTableView=SORTING(No.);
+               DataItemLink=No.=FIELD(Artikelnr.) }
+
+    { 25  ;3   ;Column  ;Menge_Serviceleist_Leihstellungen;
+               DecimalPlaces=0:0;
+               SourceExpr="Serviceleist. & Leihstellungen".Menge }
+
+    { 26  ;3   ;Column  ;Serviceleist_LeihstellungenLizenzdatum__FORMAT_Serviceleist_;
+               DecimalPlaces=0:0;
+               SourceExpr=FORMAT("Serviceleist. & Leihstellungen".Lizenzdatum)+'...'+FORMAT("Serviceleist. & Leihstellungen"."Ablaufdatum Serviceleistung") }
+
+    { 27  ;3   ;Column  ;Serviceleist_LeihstellungenMenge_Serviceleist_Leihstellungen;
+               SourceExpr="Serviceleist. & Leihstellungen".Menge*"Serviceleist. & Leihstellungen"."Service DC" }
+
+    { 28  ;3   ;Column  ;ServiceDC_Serviceleist_Leihstellungen;
+               SourceExpr="Serviceleist. & Leihstellungen"."Service DC" }
+
+    { 29  ;3   ;Column  ;Artikelnr2_Serviceleist_Leihstellungen;
+               SourceExpr="Serviceleist. & Leihstellungen"."Artikelnr. 2" }
+
+    { 30  ;3   ;Column  ;seriennr            ;
+               SourceExpr=seriennr }
+
+    { 31  ;3   ;Column  ;quotenr             ;
+               DecimalPlaces=0:0;
+               SourceExpr=quotenr }
+
+    { 32  ;2   ;DataItem;KopieSchleife       ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=CONST(1));
+               OnAfterGetRecord=BEGIN
+                                  //IF (STRPOS("Serviceleist. & Leihstellungen"."SUP Artikelnr.",'ACTS')=0) THEN CurrReport.SKIP;
+                                END;
+                                 }
+
+    { 33  ;1   ;DataItem;SeiteSchleife       ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=CONST(1)) }
+
+    { 34  ;2   ;DataItem;TOPAS Bemerkungen unten;
+               DataItemTable=Table50023;
+               DataItemTableView=SORTING(Nr.,Art,Artikelnr.,Zeilennr.)
+                                 WHERE(Art=FILTER(Wartungsvertrag),
+                                       Andruck=FILTER(Text unten)) }
+
+    { 35  ;2   ;DataItem;Bemerkung           ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number);
+               OnPreDataItem=BEGIN
+                               Wartungs_Bemerkung.SETRANGE("Nr.","Serviceleist. & Leihstellungen"."Wartungsvertragsnr.");
+                               Wartungs_Bemerkung.SETRANGE(Art,Wartungs_Bemerkung.Art :: Wartungsvertrag);
+                               Wartungs_Bemerkung.SETRANGE(Andruck,Wartungs_Bemerkung.Andruck :: "Text unten");
+                               SETRANGE(Number,1,Wartungs_Bemerkung.COUNT);
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN
+                                    Wartungs_Bemerkung.FINDFIRST
+                                  ELSE
+                                    Wartungs_Bemerkung.NEXT;
+                                  "TOPAS Bemerkungen unten" := Wartungs_Bemerkung;
+                                END;
+                                 }
+
+    { 36  ;3   ;Column  ;Bemerkung_TOPASBemerkungenunten;
+               SourceExpr="TOPAS Bemerkungen unten".Bemerkung }
+
+    { 37  ;2   ;DataItem;Total               ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=CONST(1)) }
+
+    { 38  ;2   ;DataItem;                    ;
+               DataItemTable=Table50011;
+               DataItemTableView=SORTING(Wartungsvertragsnr.);
+               DataItemLinkReference=Serviceleist. & Leihstellungen;
+               DataItemLink=Wartungsvertragsnr.=FIELD(Wartungsvertragsnr.) }
+
+    { 39  ;3   ;Column  ;EndkundeE_Mail_Wartungsvertrag;
+               SourceExpr=Wartungsvertrag."Endkunde E-Mail" }
+
+    { 40  ;3   ;Column  ;EndkundeTelefonnr_Wartungsvertrag;
+               SourceExpr="Endkunde Telefonnr." }
+
+    { 41  ;3   ;Column  ;EndkundeKontakt_Wartungsvertrag;
+               SourceExpr="Endkunde Kontakt" }
+
+    { 42  ;3   ;Column  ;EndkundeLand_Wartungsvertrag;
+               SourceExpr="Endkunde Land" }
+
+    { 43  ;3   ;Column  ;EndkundeOrt_Wartungsvertrag;
+               SourceExpr="Endkunde Ort" }
+
+    { 44  ;3   ;Column  ;EndkundePLZ_Code_Wartungsvertrag;
+               SourceExpr=Wartungsvertrag."Endkunde PLZ-Code" }
+
+    { 45  ;3   ;Column  ;EndkundeAdresse_Wartungsvertrag;
+               SourceExpr="Endkunde Adresse" }
+
+    { 46  ;3   ;Column  ;Endkunde_Wartungsvertrag;
+               SourceExpr=Endkunde }
+
+    { 47  ;3   ;Column  ;Description_ZlgBed  ;
+               SourceExpr=ZlgBed.Description }
+
+  }
+  REQUESTPAGE
+  {
+    PROPERTIES
+    {
+    }
+    CONTROLS
+    {
+      { 1900000001;0;Container;
+                  ContainerType=ContentArea }
+
+      { 1900000002;1;Group  ;
+                  CaptionML=[CSY=Moznosti;
+                             DAN=Indstillinger;
+                             DEU=Optionen;
+                             ENU=Options;
+                             FIN=Vaihtoehdot;
+                             ISL=Valkostir;
+                             NLD=Opties;
+                             NOR=Alternativer;
+                             SVE=Alternativ;
+                             ITS=Opzioni;
+                             NLB=Opties] }
+
+      { 5000;2   ;Field     ;
+                  Name=ForNavOpenDesigner;
+                  CaptionML=ENU=Open Designer;
+                  SourceExpr=ReportForNavOpenDesigner;
+                  Visible=ReportForNavAllowDesign }
+
+    }
+  }
+  LABELS
+  {
+  }
+  CODE
+  {
+    VAR
+      Debitor@1140007 : Record 18;
+      Artikel@1140008 : Record 27;
+      Firmendaten@1140009 : Record 79;
+      FIBUEinrichtung@1140006 : Record 98;
+      Wartung@1140032 : Record 50011;
+      LieferBed@1140003 : Record 10;
+      ZlgBed@1140002 : Record 3;
+      SalesHeader@1140018 : Record 36;
+      PurchHeader@1140014 : Record 38;
+      PurchShipHeader@1140022 : Record 120;
+      ServiceOrderPos@1140030 : Record 50024;
+      Opt@1140027 : Record 50001;
+      Wartungs_Bemerkung@1140033 : Record 50023;
+      Quote@1140036 : Record 50014;
+      EinkVonAdr@1140019 : ARRAY [8] OF Text[50];
+      FormatAdr@1140020 : Codeunit 365;
+      TotalText@1140004 : Text[50];
+      service_price_total@1140013 : Decimal;
+      Nummer@1140005 : Integer;
+      w„hcode@1140015 : Code[20];
+      termcode@1140021 : Code[20];
+      shipcode@1140023 : Code[20];
+      orderno@1140025 : Code[20];
+      vendorno@1140024 : Code[20];
+      laufzeit@1140028 : Code[10];
+      seriennr@1140029 : Code[40];
+      docdate@1140026 : Date;
+      ansp_name@1140016 : Text[100];
+      ansp_anrede@1140012 : Text[50];
+      ansp_telefon@1140011 : Text[50];
+      ansp_fax@1140010 : Text[50];
+      ansp_email@1140017 : Text[80];
+      header_zusatz@1140031 : Text[30];
+      endkunde@1140034 : Text[50];
+      quotenr@1140035 : Code[10];
+      v_druck@1140000 : Boolean;
+      ReportForNav@5000 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
+      ReportForNavClient@5003 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
+      ReportForNavDialog@5001 : Dialog;
+      ReportForNavOpenDesigner@5002 : Boolean;
+      ReportForNavAllowDesign@5004 : Boolean INDATASET;
+
+    LOCAL PROCEDURE OnPreSectionServiceleist_Leihstellungen_GroupHeader5@5010(VAR "Serviceleist. & Leihstellungen"@1000000000 : Record 50024);
+    BEGIN
+      WITH "Serviceleist. & Leihstellungen" DO BEGIN
+        Nummer += 1;
+        endkunde := '';
+        Wartung.GET("Wartungsvertragsnr.");
+        endkunde := Wartung.Endkunde;
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionItem_Body9@5011(VAR Item@1000000000 : Record 27);
+    BEGIN
+      WITH Item DO BEGIN
+        IF Quote.GET("Serviceleist. & Leihstellungen"."Quotenr.") THEN
+          quotenr := Quote."Quotenr. Hersteller"
+        ELSE
+          quotenr := '';
+        ReportForNav.ShowOutput(quotenr <> '');
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionWartungsvertrag_Footer11@5012(VAR Wartungsvertrag@1000000000 : Record 50011);
+    BEGIN
+      WITH Wartungsvertrag DO BEGIN
+        ReportForNav.ShowOutput(FALSE);
+        v_druck := FALSE;
+        IF (STRPOS("Serviceleist. & Leihstellungen"."SUP Artikelnr.",'ACTS') <> 0) THEN v_druck := TRUE;
+        IF (STRPOS("Serviceleist. & Leihstellungen"."SUP Artikelnr.",'MS') <> 0) THEN v_druck := TRUE;
+        IF (STRPOS("Serviceleist. & Leihstellungen"."SUP Artikelnr.",'CH') <> 0) THEN v_druck := TRUE;
+        IF v_druck = TRUE THEN ReportForNav.ShowOutput(TRUE);
+        //ReportForNav.ShowOutput(STRPOS("Serviceleist. & Leihstellungen"."SUP Artikelnr.",'ACTS')<>0);
+        IF Wartungsvertrag.Endkunde = '' THEN
+          ReportForNav.ShowOutput(FALSE);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnInit@5002();
+    VAR
+      ReportLayoutSelection@1000 : Record 9651;
+      CustomReportLayout@1001 : Record 9650;
+      CustomLayoutID@1002 : Variant;
+      InStream@1004 : InStream;
+      EmptyLayout@1003 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+      ReportForNav.OData := GETURL(CLIENTTYPE::OData, COMPANYNAME, OBJECTTYPE::Page, 7702);
+      IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN
+        CustomLayoutID := ReportLayoutSelection.GetTempLayoutSelected
+      ELSE
+        IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN
+          CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+
+      IF (FORMAT(CustomLayoutID) <> EmptyLayout) AND CustomReportLayout.GET(CustomLayoutID) THEN BEGIN
+        CustomReportLayout.TESTFIELD(Type,CustomReportLayout.Type::RDLC);
+        CustomReportLayout.CALCFIELDS(Layout);
+        CustomReportLayout.Layout.CREATEINSTREAM(InStream,TEXTENCODING::UTF8);
+        ReportForNav.IsCustomLayout := TRUE;
+      END ELSE
+        REPORT.RDLCLAYOUT(ReportForNav.ReportID,InStream);
+
+      ReportForNav.LoadRdlc(InStream);
+      IF COPYSTR(LOWERCASE(GETURL(CLIENTTYPE::Current, COMPANYNAME, OBJECTTYPE::Codeunit, 1)), 1, 14) = 'dynamicsnav://' THEN BEGIN
+        ReportForNav.CheckClientAddIn();
+        ReportForNavClient := ReportForNavClient.Report(ReportForNav.Definition);
+        ReportForNavAllowDesign := ReportForNavClient.HasDesigner AND NOT ReportForNav.ParameterMode;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnSave@5010(Base64Layout@1000 : Text);
+    VAR
+      CustomReportLayout@1002 : Record 9650;
+      ReportLayoutSelection@1003 : Record 9651;
+      LayoutId@1004 : Variant;
+      TempBlob@1007 : Record 99008535;
+      OutStream@1006 : OutStream;
+      Bstr@1005 : BigText;
+      EmptyLayout@1001 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+      IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN BEGIN
+        IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN BEGIN
+          LayoutId := ReportLayoutSelection.GetTempLayoutSelected;
+        END ELSE BEGIN
+          IF ReportLayoutSelection.GET(ReportForNav.ReportID, COMPANYNAME) THEN BEGIN
+          LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+          END;
+        END;
+      END ELSE BEGIN
+        IF CONFIRM('Default custom layout not found. Create one?') THEN;
+      END;
+      IF FORMAT(LayoutId) <> EmptyLayout THEN BEGIN
+        TempBlob.Blob.CREATEOUTSTREAM(OutStream);
+        Bstr.ADDTEXT(Base64Layout);
+        Bstr.WRITE(OutStream);
+        CustomReportLayout.GET(LayoutId);
+        CustomReportLayout.ImportLayoutBlob(TempBlob, 'RDL');
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnParameters@5008(Parameters@1000 : Text);
+    BEGIN
+      ReportForNav.Parameters := REPORT.RUNREQUESTPAGE(ReportForNav.ReportID, Parameters);
+    END;
+
+    EVENT ReportForNav@5000::OnPreview@5009(Parameters@1000 : Text;FileName@1005 : Text);
+    VAR
+      PdfFile@1002 : File;
+      InStream@1003 : InStream;
+      OutStream@1004 : OutStream;
+    BEGIN
+      COMMIT;
+      PdfFile.CREATETEMPFILE;
+      PdfFile.CREATEOUTSTREAM(OutStream);
+      REPORT.SAVEAS(ReportForNav.ReportID, Parameters, REPORTFORMAT::Pdf, OutStream);
+      PdfFile.CREATEINSTREAM(InStream);
+      ReportForNavClient.ShowDesigner;
+      IF ReportForNav.IsValidPdf(PdfFile.NAME) THEN DOWNLOADFROMSTREAM(InStream, '', '', '', FileName);
+      PdfFile.CLOSE;
+    END;
+
+    EVENT ReportForNav@5000::OnPreSection@5012(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+      CASE DataItemId OF
+        'Serviceleist_Leihstellungen': CASE SectionId OF
+          'GroupHeader5': OnPreSectionServiceleist_Leihstellungen_GroupHeader5("Serviceleist. & Leihstellungen");
+        END;
+        'Item': CASE SectionId OF
+          'Body9': OnPreSectionItem_Body9(Item);
+        END;
+        'Wartungsvertrag': CASE SectionId OF
+          'Footer11': OnPreSectionWartungsvertrag_Footer11(Wartungsvertrag);
+        END;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPostSection@50013(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+    END;
+
+    EVENT ReportForNav@5000::OnClientOperation@5008(Args@1000 : DotNet "'mscorlib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Array");
+    VAR
+      op@1001 : Text;
+      FileMgmt@1002 : Codeunit 419;
+      Process@1006 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.Process" RUNONCLIENT;
+      PathObj@1005 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Path" RUNONCLIENT;
+      FileVersionInfo@1003 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.FileVersionInfo" RUNONCLIENT;
+      DirectoryHelper@1004 : DotNet "'mscorlib'.System.IO.Directory" RUNONCLIENT;
+    BEGIN
+      op := Args.GetValue(0);
+      CASE op OF
+        'TempPath': ReportForNav.Result := PathObj.GetTempPath();
+        'FileExists': ReportForNav.Result := FileMgmt.ClientFileExists(Args.GetValue(1));
+        'DirectoryExists': ReportForNav.Result := FileMgmt.ClientDirectoryExists(Args.GetValue(1));
+        'ProcessLocation': ReportForNav.Result := Process.GetCurrentProcess().MainModule.FileName;
+        'FileVersion': ReportForNav.Result := FileVersionInfo.GetVersionInfo(Args.GetValue(1)).FileVersion;
+        'DeleteFile': FileMgmt.DeleteClientFile(Args.GetValue(1));
+        'DeleteDirectory': IF STRLEN(Args.GetValue(1)) > 20 THEN
+          IF FileMgmt.ClientDirectoryExists(Args.GetValue(1)) THEN
+            DirectoryHelper.Delete(FORMAT(Args.GetValue(1)), TRUE);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnCheckForNavClientVersion@5007();
+    BEGIN
+      ReportForNavClient := ReportForNavClient.Report();
+      IF ReportForNav.MyFileVersion <> ReportForNavClient.MyFileVersion THEN
+        ERROR('You have version %1 of the Reports ForNAV assembly here:\\%2\\Please close your NAV client and update it to version %3.',
+              ReportForNavClient.MyFileVersion, ReportForNavClient.MyFileName, ReportForNav.MyFileVersion);
+    END;
+
+    EVENT ReportForNav@5000::OnSelectPrinter@5006();
+    BEGIN
+      ReportForNav.PrinterSettings.PageSettings := ReportForNavClient.SelectPrinter(ReportForNav.PrinterSettings.PrinterName,ReportForNav.PrinterSettings.ShowPrinterDialog,ReportForNav.PrinterSettings.PageSettings);
+    END;
+
+    EVENT ReportForNav@5000::OnPrint@5005(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream");
+    VAR
+      ClientFileName@1000000001 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      ReportForNavClient.Print(ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnDesign@5007(Data@1001 : Text);
+    BEGIN
+      ReportForNavClient.Data := Data;
+      WHILE ReportForNavClient.DesignReport DO BEGIN
+        ReportForNav.HandleRequest(ReportForNavClient.GetRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnView@5008(ClientFileName@1000000000 : Text;Parameters@1000000001 : Text;ServerFileName@1000000002 : Text);
+    VAR
+      ServerFile@1000000003 : File;
+      ServerInStream@1000000004 : InStream;
+    BEGIN
+      ServerFile.OPEN(ServerFileName);
+      ServerFile.CREATEINSTREAM(ServerInStream);
+      DOWNLOADFROMSTREAM(ServerInStream,'','','',ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnMessage@5009(Operation@1000000000 : Text;Parameter@1000000001 : Text;ParameterNo@1000000002 : Integer);
+    BEGIN
+      CASE Operation OF
+        'Open'    : ReportForNavDialog.OPEN(Parameter);
+        'Update'  : ReportForNavDialog.UPDATE(ParameterNo,Parameter);
+        'Close'   : ReportForNavDialog.CLOSE();
+        'Message' : MESSAGE(Parameter);
+        'Error'   : ERROR(Parameter);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPrintPreview@5011(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream";Preview@1000000001 : Boolean);
+    VAR
+      ClientFileName@1000000002 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      WHILE ReportForNavClient.PrintPreviewDialog(ClientFileName,ReportForNav.PrinterSettings.PrinterName,Preview) DO BEGIN
+        ReportForNav.HandlePrintPreviewRequest(ReportForNavClient.GetPrintPreviewRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnTotals@5004(DataItemId@1000000000 : Text;Operation@1000000001 : Text;GroupTotalFieldNo@1000000002 : Integer);
+    VAR
+      CurrRecRef@1000000003 : RecordRef;
+      NextRecRef@1000000004 : RecordRef;
+      CurrKeyRef@1000000005 : KeyRef;
+      NextKeyRef@1000000006 : KeyRef;
+      FieldIndex@1000000007 : Integer;
+      GroupFieldIndex@1000000008 : Integer;
+    BEGIN
+      // Do not change (Autogenerated by Reports ForNAV) - Instead change the Create Totals, Total Fields or Group Total Fields properties on the Data item in the ForNAV designer
+      CASE DataItemId OF
+        'Serviceleist_Leihstellungen': WITH "Serviceleist. & Leihstellungen" DO CASE Operation OF
+        END;  'SeiteSchleife': WITH SeiteSchleife DO CASE Operation OF
+           'Add': BEGIN
+                ReportForNav.AddTotal(DataItemId,0,service_price_total);
+              END;
+           'Restore': BEGIN
+                 service_price_total := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
+              END;
+        END;
+      END;
+    END;
+
+    BEGIN
+    END.
+  }
+  RDLDATA
+  {
+    <?xml version="1.0" encoding="utf-8"?>
+<Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
+  <Description>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</Description>
+  <AutoRefresh>0</AutoRefresh>
+  <DataSources>
+    <DataSource Name="DataSource">
+      <ConnectionProperties>
+        <DataProvider>SQL</DataProvider>
+        <ConnectString />
+      </ConnectionProperties>
+      <rd:SecurityType>None</rd:SecurityType>
+      <rd:DataSourceID>bdca9c78-fee8-46d1-8774-097cc64840a1</rd:DataSourceID>
+    </DataSource>
+  </DataSources>
+  <ReportSections>
+    <ReportSection>
+      <Body>
+        <Height>2in</Height>
+        <Style />
+      </Body>
+      <Width>6.5in</Width>
+      <Page>
+        <Style />
+      </Page>
+    </ReportSection>
+  </ReportSections>
+  <rd:ReportUnitType>Invalid</rd:ReportUnitType>
+  <rd:ReportID>d3c8ff7e-1cfa-44e0-94b2-c4e10cf6e56a</rd:ReportID>
+  <DataSets>
+    <DataSet Name="DataSet_Result">
+      <Fields>
+        <Field Name="SystemeLogo_Firmendaten">
+          <DataField>SystemeLogo_Firmendaten</DataField>
+        </Field>
+        <Field Name="ISOLogo_Firmendaten">
+          <DataField>ISOLogo_Firmendaten</DataField>
+        </Field>
+        <Field Name="header_zusatz_PurchaseOrder">
+          <DataField>header_zusatz_PurchaseOrder</DataField>
+        </Field>
+        <Field Name="EinkVonAdr8">
+          <DataField>EinkVonAdr8</DataField>
+        </Field>
+        <Field Name="EinkVonAdr7">
+          <DataField>EinkVonAdr7</DataField>
+        </Field>
+        <Field Name="EinkVonAdr6">
+          <DataField>EinkVonAdr6</DataField>
+        </Field>
+        <Field Name="EinkVonAdr5">
+          <DataField>EinkVonAdr5</DataField>
+        </Field>
+        <Field Name="EinkVonAdr4">
+          <DataField>EinkVonAdr4</DataField>
+        </Field>
+        <Field Name="EinkVonAdr3">
+          <DataField>EinkVonAdr3</DataField>
+        </Field>
+        <Field Name="EinkVonAdr2">
+          <DataField>EinkVonAdr2</DataField>
+        </Field>
+        <Field Name="EinkVonAdr1">
+          <DataField>EinkVonAdr1</DataField>
+        </Field>
+        <Field Name="vendorno">
+          <DataField>vendorno</DataField>
+        </Field>
+        <Field Name="orderno">
+          <DataField>orderno</DataField>
+        </Field>
+        <Field Name="docdate">
+          <DataField>docdate</DataField>
+        </Field>
+        <Field Name="STRSUBSTNO_PagePct1_FORMAT_ReportForNavPageNo_">
+          <DataField>STRSUBSTNO_PagePct1_FORMAT_ReportForNavPageNo_</DataField>
+        </Field>
+        <Field Name="service_price_total">
+          <DataField>service_price_total</DataField>
+        </Field>
+        <Field Name="service_price_totalFormat">
+          <DataField>service_price_totalFormat</DataField>
+        </Field>
+        <Field Name="endkunde">
+          <DataField>endkunde</DataField>
+        </Field>
+        <Field Name="Debitorname_Serviceleist_Leihstellungen">
+          <DataField>Debitorname_Serviceleist_Leihstellungen</DataField>
+        </Field>
+        <Field Name="Nummer">
+          <DataField>Nummer</DataField>
+        </Field>
+        <Field Name="ServiceArtikelnr_Serviceleist_Leihstellungen">
+          <DataField>ServiceArtikelnr_Serviceleist_Leihstellungen</DataField>
+        </Field>
+        <Field Name="TotalText">
+          <DataField>TotalText</DataField>
+        </Field>
+        <Field Name="Menge_Serviceleist_Leihstellungen">
+          <DataField>Menge_Serviceleist_Leihstellungen</DataField>
+        </Field>
+        <Field Name="Menge_Serviceleist_LeihstellungenFormat">
+          <DataField>Menge_Serviceleist_LeihstellungenFormat</DataField>
+        </Field>
+        <Field Name="Serviceleist_LeihstellungenLizenzdatum__FORMAT_Serviceleist_">
+          <DataField>Serviceleist_LeihstellungenLizenzdatum__FORMAT_Serviceleist_</DataField>
+        </Field>
+        <Field Name="Serviceleist_LeihstellungenMenge_Serviceleist_Leihstellungen">
+          <DataField>Serviceleist_LeihstellungenMenge_Serviceleist_Leihstellungen</DataField>
+        </Field>
+        <Field Name="Serviceleist_LeihstellungenMenge_Serviceleist_LeihstellungenFormat">
+          <DataField>Serviceleist_LeihstellungenMenge_Serviceleist_LeihstellungenFormat</DataField>
+        </Field>
+        <Field Name="ServiceDC_Serviceleist_Leihstellungen">
+          <DataField>ServiceDC_Serviceleist_Leihstellungen</DataField>
+        </Field>
+        <Field Name="ServiceDC_Serviceleist_LeihstellungenFormat">
+          <DataField>ServiceDC_Serviceleist_LeihstellungenFormat</DataField>
+        </Field>
+        <Field Name="Artikelnr2_Serviceleist_Leihstellungen">
+          <DataField>Artikelnr2_Serviceleist_Leihstellungen</DataField>
+        </Field>
+        <Field Name="seriennr">
+          <DataField>seriennr</DataField>
+        </Field>
+        <Field Name="quotenr">
+          <DataField>quotenr</DataField>
+        </Field>
+        <Field Name="Bemerkung_TOPASBemerkungenunten">
+          <DataField>Bemerkung_TOPASBemerkungenunten</DataField>
+        </Field>
+        <Field Name="EndkundeE_Mail_Wartungsvertrag">
+          <DataField>EndkundeE_Mail_Wartungsvertrag</DataField>
+        </Field>
+        <Field Name="EndkundeTelefonnr_Wartungsvertrag">
+          <DataField>EndkundeTelefonnr_Wartungsvertrag</DataField>
+        </Field>
+        <Field Name="EndkundeKontakt_Wartungsvertrag">
+          <DataField>EndkundeKontakt_Wartungsvertrag</DataField>
+        </Field>
+        <Field Name="EndkundeLand_Wartungsvertrag">
+          <DataField>EndkundeLand_Wartungsvertrag</DataField>
+        </Field>
+        <Field Name="EndkundeOrt_Wartungsvertrag">
+          <DataField>EndkundeOrt_Wartungsvertrag</DataField>
+        </Field>
+        <Field Name="EndkundePLZ_Code_Wartungsvertrag">
+          <DataField>EndkundePLZ_Code_Wartungsvertrag</DataField>
+        </Field>
+        <Field Name="EndkundeAdresse_Wartungsvertrag">
+          <DataField>EndkundeAdresse_Wartungsvertrag</DataField>
+        </Field>
+        <Field Name="Endkunde_Wartungsvertrag">
+          <DataField>Endkunde_Wartungsvertrag</DataField>
+        </Field>
+        <Field Name="Description_ZlgBed">
+          <DataField>Description_ZlgBed</DataField>
+        </Field>
+      </Fields>
+      <Query>
+        <DataSourceName>DataSource</DataSourceName>
+        <CommandText />
+      </Query>
+      <rd:DataSetInfo>
+        <rd:DataSetName>DataSet</rd:DataSetName>
+        <rd:SchemaPath>Report.xsd</rd:SchemaPath>
+        <rd:TableName>Result</rd:TableName>
+      </rd:DataSetInfo>
+    </DataSet>
+  </DataSets>
+</Report>
+    END_OF_RDLDATA
+  }
+}
+
