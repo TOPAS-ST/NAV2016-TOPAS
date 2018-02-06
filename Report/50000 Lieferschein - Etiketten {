@@ -1,0 +1,514 @@
+OBJECT Report 50000 Lieferschein - Etiketten
+{
+  OBJECT-PROPERTIES
+  {
+    Date=09.01.18;
+    Time=14:14:49;
+    Modified=Yes;
+    Version List=Version: 1, Status: Fertig,FORNAV2.0.0.1189/1189;
+  }
+  PROPERTIES
+  {
+    OnInitReport=BEGIN
+                   ReportForNav:= ReportForNav.Report(CurrReport.OBJECTID,CurrReport.LANGUAGE,SERIALNUMBER,USERID,COMPANYNAME);ReportForNav.Init;
+                 END;
+
+    OnPreReport=BEGIN
+                  ReportForNav.OpenDesigner:=ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
+                  Firmendaten.GET;
+                  Firmendaten.CALCFIELDS(Picture);
+                END;
+
+    OnPostReport=BEGIN
+                   ReportForNav.Post;
+                 END;
+
+  }
+  DATASET
+  {
+    { 1   ;    ;DataItem;                    ;
+               DataItemTable=Table110;
+               OnAfterGetRecord=BEGIN
+                                  IF debitor.GET("Sell-to Customer No.") THEN
+                                    IF ((debitor."Country/Region Code" <> 'DE') AND (debitor."Country/Region Code" <> 'AT')
+                                    AND (debitor."Country/Region Code" <> 'CH')) THEN
+                                      CurrReport.LANGUAGE(1033)  // Englischer L„ndercode  (ENU Englisch(USA))
+                                    ELSE
+                                      CurrReport.LANGUAGE(1031); // Deutscher L„ndercode
+                                END;
+                                 }
+
+    { 2   ;1   ;DataItem;                    ;
+               DataItemTable=Table111;
+               DataItemTableView=WHERE(Type=CONST(Item));
+               PrintOnlyIfDetail=No;
+               OnAfterGetRecord=BEGIN
+                                  IF artikel.GET("No.") THEN
+                                    IF (artikel."Manufacturer Code" = '52') OR (artikel."Manufacturer Code" = '53')
+                                    OR (artikel."Manufacturer Code" = '57') OR (artikel."Manufacturer Code" = '5710')
+                                    OR (artikel."Manufacturer Code" = '96') OR (artikel."Manufacturer Code" = '9610')
+                                    OR (artikel."Manufacturer Code" = '99') OR (artikel."Manufacturer Code" = '59')
+                                    OR (artikel."Manufacturer Code" = '85') OR (artikel."Manufacturer Code" = '20') THEN
+                                    //Nicht mehr n”tig, da generell alle AudioCodes Artikel mit Hst.code 59 unterdrckt werden k”nnen
+                                    //AND ((artikel.Serviceklassifizierung = 'SOFTWARE') OR (artikel.Serviceklassifizierung = 'LIZENZEN'))) THEN
+                                      CurrReport.SKIP;
+
+                                  Cross_ReferenceNo := "Sales Shipment Line"."Cross-Reference No.";
+                                END;
+
+               DataItemLink=Document No.=FIELD(No.) }
+
+    { 3   ;2   ;DataItem;                    ;
+               DataItemTable=Table32;
+               DataItemTableView=SORTING(Entry No.)
+                                 WHERE(Document Type=CONST(Sales Shipment));
+               PrintOnlyIfDetail=No;
+               OnAfterGetRecord=BEGIN
+                                  {
+                                  barcode_deb:='';
+                                  barcode_datecode:='';
+                                  barcode_serien:='';
+                                  barcode_orderno:=barcode.EncodeBarcode128("Sales Shipment Header"."External Document No.");
+                                  barcode_nr:=barcode.EncodeBarcode128("Sales Shipment Line"."Artikelnr. 2");
+                                  barcode_deb:=barcode.EncodeBarcode128("Sales Shipment Line"."Cross-Reference No.");
+                                  barcode_menge:=barcode.EncodeBarcode128(DELCHR(FORMAT("Item Ledger Entry".Quantity*(-1)),'=','.'));
+                                  barcode_datecode:=barcode.EncodeBarcode128("Item Ledger Entry"."Lot No.");
+                                  barcode_serien:=barcode.EncodeBarcode128("Item Ledger Entry"."Serial No.");
+                                  }
+                                END;
+
+               DataItemLink=Document No.=FIELD(Document No.),
+                            Document Line No.=FIELD(Line No.) }
+
+    { 1000000000;3;Column;Picture_Firmendaten;
+               SourceExpr=Firmendaten.Picture }
+
+    { 5   ;3   ;Column  ;DocumentDate_SalesShipmentHeader;
+               SourceExpr="Sales Shipment Header"."Document Date" }
+
+    { 6   ;3   ;Column  ;No_SalesShipmentHeader;
+               SourceExpr="Sales Shipment Header"."No." }
+
+    { 7   ;3   ;Column  ;ExternalDocumentNo_SalesShipmentHeader;
+               SourceExpr="Sales Shipment Header"."External Document No." }
+
+    { 8   ;3   ;Column  ;Ship_toName_SalesShipmentHeader;
+               SourceExpr="Sales Shipment Header"."Ship-to Name" }
+
+    { 10  ;3   ;Column  ;Artikelnr2_SalesShipmentLine;
+               SourceExpr="Sales Shipment Line"."Artikelnr. 2" }
+
+    { 12  ;3   ;Column  ;Cross_ReferenceNo   ;
+               SourceExpr=Cross_ReferenceNo }
+
+    { 13  ;3   ;Column  ;Quantity_1          ;
+               DecimalPlaces=0:0;
+               SourceExpr=Quantity*(-1) }
+
+    { 14  ;3   ;Column  ;leadfreetext1       ;
+               SourceExpr="lead free text1" }
+
+    { 15  ;3   ;Column  ;leadfreetext2       ;
+               SourceExpr="lead free text2" }
+
+    { 17  ;3   ;Column  ;text1               ;
+               SourceExpr=text1 }
+
+    { 19  ;3   ;Column  ;date_or_sn          ;
+               SourceExpr=date_or_sn }
+
+  }
+  REQUESTPAGE
+  {
+    PROPERTIES
+    {
+    }
+    CONTROLS
+    {
+      { 1900000001;0;Container;
+                  ContainerType=ContentArea }
+
+      { 1900000002;1;Group  ;
+                  CaptionML=[CSY=Moznosti;
+                             DAN=Indstillinger;
+                             DEU=Optionen;
+                             ENU=Options;
+                             FIN=Vaihtoehdot;
+                             ISL=Valkostir;
+                             NLD=Opties;
+                             NOR=Alternativer;
+                             SVE=Alternativ;
+                             ITS=Opzioni;
+                             NLB=Opties] }
+
+      { 5000;2   ;Field     ;
+                  Name=ForNavOpenDesigner;
+                  CaptionML=ENU=Open Designer;
+                  SourceExpr=ReportForNavOpenDesigner;
+                  Visible=ReportForNavAllowDesign }
+
+    }
+  }
+  LABELS
+  {
+  }
+  CODE
+  {
+    VAR
+      debitor@1140006 : Record 18;
+      "lead free text1"@1140007 : Text[30];
+      "lead free text2"@1140008 : Text[30];
+      artikel@1140009 : Record 27;
+      text1@1140010 : Text[30];
+      date_or_sn@1140011 : Text[60];
+      Cross_ReferenceNo@1000000001 : Code[40];
+      Firmendaten@1000000000 : Record 79;
+      ReportForNav@5000 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
+      ReportForNavClient@5003 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
+      ReportForNavDialog@5001 : Dialog;
+      ReportForNavOpenDesigner@5002 : Boolean;
+      ReportForNavAllowDesign@5004 : Boolean INDATASET;
+
+    LOCAL PROCEDURE OnPreSectionItemLedgerEntry_Body3@5010(VAR "Item Ledger Entry"@1000000000 : Record 32);
+    BEGIN
+      WITH "Item Ledger Entry" DO BEGIN
+        ReportForNav.ShowOutput("Sales Shipment Line"."Cross-Reference No."<> '');
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionItemLedgerEntry_Body4@5011(VAR "Item Ledger Entry"@1000000000 : Record 32);
+    BEGIN
+      WITH "Item Ledger Entry" DO BEGIN
+        "lead free text1"  := '';
+        "lead free text2"  := '';
+        IF artikel.GET("Sales Shipment Line"."No.") THEN BEGIN
+          IF artikel."Lead Free" = TRUE THEN BEGIN
+            "lead free text1"  := 'lt. Angabe des Herstellers';
+            "lead free text2"  := 'Lead Free';
+          END;
+          IF (artikel."Lead Free" = TRUE) AND
+             ((artikel.Herstellerkurzname = 'HAL') OR
+             (artikel.Herstellerkurzname = 'ISS') OR
+             (artikel.Herstellerkurzname = 'IDT') OR
+             (artikel.Herstellerkurzname = 'PLX') OR
+             (artikel.Herstellerkurzname = 'TDK') OR
+             (artikel.Herstellerkurzname = 'TSC') OR
+             (artikel.Herstellerkurzname = 'WML') OR
+             (artikel.Herstellerkurzname = 'SIM') OR
+             (artikel.Herstellerkurzname = 'NEX') OR
+             (artikel.Herstellerkurzname = 'LSI') OR
+             (artikel.Herstellerkurzname = 'WML') OR
+             (artikel.Herstellerkurzname = 'SIW') OR
+             (artikel.Herstellerkurzname = 'ACL') OR
+             (artikel.Herstellerkurzname = 'ICP') OR
+             (artikel.Herstellerkurzname = 'RIC') OR
+             (artikel.Herstellerkurzname = 'ICSA') OR
+             (artikel.Herstellerkurzname = 'ICS')) THEN BEGIN
+               IF CurrReport.LANGUAGE = 1033 THEN BEGIN
+                 "lead free text1" := 'according to the manufacturer';
+                 "lead free text2" := 'ROHS compliant';
+               END ELSE BEGIN
+                 "lead free text2" := 'ROHS konform';
+               END;
+          END;
+        END;
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionItemLedgerEntry_Body5@5012(VAR "Item Ledger Entry"@1000000000 : Record 32);
+    BEGIN
+      WITH "Item Ledger Entry" DO BEGIN
+        ReportForNav.ShowOutput(("Item Ledger Entry"."Item Tracking" = "Item Ledger Entry"."Item Tracking"::"Serial No.") OR
+        ("Item Ledger Entry"."Item Tracking" = "Item Ledger Entry"."Item Tracking"::"Lot No."));
+        IF "Item Ledger Entry"."Item Tracking" = "Item Ledger Entry"."Item Tracking"::"Lot No." THEN BEGIN
+          text1 := 'Datecode:';
+          date_or_sn := "Item Ledger Entry"."Lot No.";
+          //date_or_sn_bar := barcode_datecode;
+        END;
+        IF "Item Ledger Entry"."Item Tracking" = "Item Ledger Entry"."Item Tracking"::"Serial No." THEN BEGIN
+          text1 := 'Seriennr.:';
+          IF CurrReport.LANGUAGE() = 1033 THEN    text1 := 'Serialno:';
+          date_or_sn := "Item Ledger Entry"."Serial No.";
+          //date_or_sn_bar := barcode_serien;
+        END;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnInit@5002();
+    VAR
+      ReportLayoutSelection@1000 : Record 9651;
+      CustomReportLayout@1001 : Record 9650;
+      CustomLayoutID@1002 : Variant;
+      InStream@1004 : InStream;
+      EmptyLayout@1003 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+      ReportForNav.OData := GETURL(CLIENTTYPE::OData, COMPANYNAME, OBJECTTYPE::Page, 7702);
+      IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN
+        CustomLayoutID := ReportLayoutSelection.GetTempLayoutSelected
+      ELSE
+        IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN
+          CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+
+      IF (FORMAT(CustomLayoutID) <> EmptyLayout) AND CustomReportLayout.GET(CustomLayoutID) THEN BEGIN
+        CustomReportLayout.TESTFIELD(Type,CustomReportLayout.Type::RDLC);
+        CustomReportLayout.CALCFIELDS(Layout);
+        CustomReportLayout.Layout.CREATEINSTREAM(InStream,TEXTENCODING::UTF8);
+        ReportForNav.IsCustomLayout := TRUE;
+      END ELSE
+        REPORT.RDLCLAYOUT(ReportForNav.ReportID,InStream);
+
+      ReportForNav.LoadRdlc(InStream);
+      IF COPYSTR(LOWERCASE(GETURL(CLIENTTYPE::Current, COMPANYNAME, OBJECTTYPE::Codeunit, 1)), 1, 14) = 'dynamicsnav://' THEN BEGIN
+        ReportForNav.CheckClientAddIn();
+        ReportForNavClient := ReportForNavClient.Report(ReportForNav.Definition);
+        ReportForNavAllowDesign := ReportForNavClient.HasDesigner AND NOT ReportForNav.ParameterMode;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnSave@5010(Base64Layout@1000 : Text);
+    VAR
+      CustomReportLayout@1002 : Record 9650;
+      ReportLayoutSelection@1003 : Record 9651;
+      LayoutId@1004 : Variant;
+      TempBlob@1007 : Record 99008535;
+      OutStream@1006 : OutStream;
+      Bstr@1005 : BigText;
+      EmptyLayout@1001 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+      IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN BEGIN
+        IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN BEGIN
+          LayoutId := ReportLayoutSelection.GetTempLayoutSelected;
+        END ELSE BEGIN
+          IF ReportLayoutSelection.GET(ReportForNav.ReportID, COMPANYNAME) THEN BEGIN
+          LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+          END;
+        END;
+      END ELSE BEGIN
+        IF CONFIRM('Default custom layout not found. Create one?') THEN;
+      END;
+      IF FORMAT(LayoutId) <> EmptyLayout THEN BEGIN
+        TempBlob.Blob.CREATEOUTSTREAM(OutStream);
+        Bstr.ADDTEXT(Base64Layout);
+        Bstr.WRITE(OutStream);
+        CustomReportLayout.GET(LayoutId);
+        CustomReportLayout.ImportLayoutBlob(TempBlob, 'RDL');
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnParameters@5008(Parameters@1000 : Text);
+    BEGIN
+      ReportForNav.Parameters := REPORT.RUNREQUESTPAGE(ReportForNav.ReportID, Parameters);
+    END;
+
+    EVENT ReportForNav@5000::OnPreview@5009(Parameters@1000 : Text;FileName@1005 : Text);
+    VAR
+      PdfFile@1002 : File;
+      InStream@1003 : InStream;
+      OutStream@1004 : OutStream;
+    BEGIN
+      COMMIT;
+      PdfFile.CREATETEMPFILE;
+      PdfFile.CREATEOUTSTREAM(OutStream);
+      REPORT.SAVEAS(ReportForNav.ReportID, Parameters, REPORTFORMAT::Pdf, OutStream);
+      PdfFile.CREATEINSTREAM(InStream);
+      ReportForNavClient.ShowDesigner;
+      IF ReportForNav.IsValidPdf(PdfFile.NAME) THEN DOWNLOADFROMSTREAM(InStream, '', '', '', FileName);
+      PdfFile.CLOSE;
+    END;
+
+    EVENT ReportForNav@5000::OnPreSection@5012(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+      CASE DataItemId OF
+        'ItemLedgerEntry': CASE SectionId OF
+          'Body3': OnPreSectionItemLedgerEntry_Body3("Item Ledger Entry");
+          'Body4': OnPreSectionItemLedgerEntry_Body4("Item Ledger Entry");
+          'Body5': OnPreSectionItemLedgerEntry_Body5("Item Ledger Entry");
+        END;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPostSection@50013(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+    END;
+
+    EVENT ReportForNav@5000::OnClientOperation@5008(Args@1000 : DotNet "'mscorlib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Array");
+    VAR
+      op@1001 : Text;
+      FileMgmt@1002 : Codeunit 419;
+      Process@1006 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.Process" RUNONCLIENT;
+      PathObj@1005 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Path" RUNONCLIENT;
+      FileVersionInfo@1003 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.FileVersionInfo" RUNONCLIENT;
+      DirectoryHelper@1004 : DotNet "'mscorlib'.System.IO.Directory" RUNONCLIENT;
+    BEGIN
+      op := Args.GetValue(0);
+      CASE op OF
+        'TempPath': ReportForNav.Result := PathObj.GetTempPath();
+        'FileExists': ReportForNav.Result := FileMgmt.ClientFileExists(Args.GetValue(1));
+        'DirectoryExists': ReportForNav.Result := FileMgmt.ClientDirectoryExists(Args.GetValue(1));
+        'ProcessLocation': ReportForNav.Result := Process.GetCurrentProcess().MainModule.FileName;
+        'FileVersion': ReportForNav.Result := FileVersionInfo.GetVersionInfo(Args.GetValue(1)).FileVersion;
+        'DeleteFile': FileMgmt.DeleteClientFile(Args.GetValue(1));
+        'DeleteDirectory': IF STRLEN(Args.GetValue(1)) > 20 THEN
+          IF FileMgmt.ClientDirectoryExists(Args.GetValue(1)) THEN
+            DirectoryHelper.Delete(FORMAT(Args.GetValue(1)), TRUE);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnCheckForNavClientVersion@5007();
+    BEGIN
+      ReportForNavClient := ReportForNavClient.Report();
+      IF ReportForNav.MyFileVersion <> ReportForNavClient.MyFileVersion THEN
+        ERROR('You have version %1 of the Reports ForNAV assembly here:\\%2\\Please close your NAV client and update it to version %3.',
+              ReportForNavClient.MyFileVersion, ReportForNavClient.MyFileName, ReportForNav.MyFileVersion);
+    END;
+
+    EVENT ReportForNav@5000::OnSelectPrinter@5006();
+    BEGIN
+      ReportForNav.PrinterSettings.PageSettings := ReportForNavClient.SelectPrinter(ReportForNav.PrinterSettings.PrinterName,ReportForNav.PrinterSettings.ShowPrinterDialog,ReportForNav.PrinterSettings.PageSettings);
+    END;
+
+    EVENT ReportForNav@5000::OnPrint@5005(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream");
+    VAR
+      ClientFileName@1000000001 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      ReportForNavClient.Print(ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnDesign@5007(Data@1001 : Text);
+    BEGIN
+      ReportForNavClient.Data := Data;
+      WHILE ReportForNavClient.DesignReport DO BEGIN
+        ReportForNav.HandleRequest(ReportForNavClient.GetRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnView@5008(ClientFileName@1000000000 : Text;Parameters@1000000001 : Text;ServerFileName@1000000002 : Text);
+    VAR
+      ServerFile@1000000003 : File;
+      ServerInStream@1000000004 : InStream;
+    BEGIN
+      ServerFile.OPEN(ServerFileName);
+      ServerFile.CREATEINSTREAM(ServerInStream);
+      DOWNLOADFROMSTREAM(ServerInStream,'','','',ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnMessage@5009(Operation@1000000000 : Text;Parameter@1000000001 : Text;ParameterNo@1000000002 : Integer);
+    BEGIN
+      CASE Operation OF
+        'Open'    : ReportForNavDialog.OPEN(Parameter);
+        'Update'  : ReportForNavDialog.UPDATE(ParameterNo,Parameter);
+        'Close'   : ReportForNavDialog.CLOSE();
+        'Message' : MESSAGE(Parameter);
+        'Error'   : ERROR(Parameter);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPrintPreview@5011(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream";Preview@1000000001 : Boolean);
+    VAR
+      ClientFileName@1000000002 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      WHILE ReportForNavClient.PrintPreviewDialog(ClientFileName,ReportForNav.PrinterSettings.PrinterName,Preview) DO BEGIN
+        ReportForNav.HandlePrintPreviewRequest(ReportForNavClient.GetPrintPreviewRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    BEGIN
+    END.
+  }
+  RDLDATA
+  {
+    <?xml version="1.0" encoding="utf-8"?>
+<Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
+  <Description>3joAAL1b3XKjOBa+36p9B4qp2kq2HIL4pyeeqc5fd2ocJxsn01t7k8JGTpjGyCNwOumLfbG92EfaV9gjEDbGAgN2urqrAkKIc74jfZ+OJP/vP/89+fV1FkovmMYBifoyUlRZwtGE+EH01JcXyfTIkX/95a9/OflnQr07PCc0iQfeG1kkI0wDLwy+YyqtLn9fNmQommKy1u7wFG5laejNcF/mTVwSOvReZOmMRAkl4f3bHJ6d45eL1znFcawUvqY8XBVue1JFrRf2xZ6UG5B/vyedLcJkQXE/wguoHvak28U4DCa/4bd78hVHfXdsIk8bW1NDG0/H5kSWrj36FERxX3Z7EjSAzJ6kgSNrvsnSrfeEP+Pg6Tnpy46pZgVfAj95hhqqmhbMMf0tiPy+fLaIEzKTpUvwty9/ZHD1JHueyNL5POjLmmnAlZd4I7KgE4DiJ0DtKAWPefcQBfDWPY6S5/hm+vE6CMNghhNM4aUgnofeWwbuIMBTMHLyjINIOpIukuArThIc5e1w2JeOaIoK/xByXBlCLEknp17kx+kl3FwleIay8GmlSGXtMINZJfZWHt+RF+J49BzMZ2DtZ+z5qZFrPrJX7r1xiH8P8Le+XCoEP9kfhMD7If7GQL3F9BMli3lfTugCF4vv8IRQPy+/8tOOljc3CKKvrPk7/OdlEAJazBzo1tcDVjrALzjsy6rM3S15X0ZA74YA2IC3+P/l88XdxUHa6tnNcHR/wJ4fHlbBgjrBopVhOSeTBTNQGhKlf3l1MTg/gKvD5mgJESujZjRGLbUM+0+YXkD9ty2YjW7u7q+Gnw7SusyFQymDcelWAc80IFIekSpkda0TsHoDYItFh0Bg+S3rHIVq+W3LIFQGohwMUxiMU+K/FQPB7lER/lsaRMm193oTTRgEDIm+PPXCGBA486LRM0395iUjPEmAW9bayljyEtpDuqJvWp8ayk0TOVF2xFra6tEz4mMkdix7CCaBMMHHdU1VTKNnw9sDMvGYlZch8RJmlqJZmomA6nVb0dec9/xMCTWzB/9V+LfiapxcBjj0M1suXiFckRfm0R2SRyEX3uPXhAXzmvgL1vlAoxxZ+hhNngn9TGjwHTzxIMoDPAV1GD2Tb9kbGb4V6AA+o7fZmITk6S3DyM4xSgHS4BNnzx71JmAk2A3FcBfj5FSWjmvaTN5CDPEHsxLeLjT0EOMlLDzqVW2cHKdhq4uplrXrCmN4G0yYdp+S19ydcjlChqra6kZMTQOkTVUhpmoxnrwvGIaruK7rILuHtPTSdcw8Nrzxx8uAQuB8LxVQeDF1+F+EzK5mMAZEfUD4ZiU2zHudT49UofsDb4zDdc/TotRppgS5O5bJnFUt1DM0RWeXOtqEBDqwlOrqCo+1+QhS5zC/ilnQ+6ck9Nn4nrMGGP2cXzz0cQijm5IomEifZuPPUobYxzB4ilgX78vXge+H+I4N9xzNzXegl39P34HZYFqzVQdkbkMPzAxv1P30ugAYvFXxDIe5sNH5eGEaBNVdBgFpah36hpqyjOHAJBWqaazL2U5lLJx5UoFuRgwFELOCDO2cfaBvYjH/bPbare+0i4/eNj5GXXxM3qp4JrE9Ps4qPrpZFx9k/4j4VKnCZlQqaraLhdk2FmZdLCzeqtUxFvZKiw1TsYDCTLdXxLocEldVLBBm3Qa8DcWEarZp7TskTYW7s+S3C5ndNmRWXchs3qrTXl9Uaxkut3bk6KrVeuSUhAWwXcw+/HwxTC/xhyWdpTftAHTbAmjXAejwBLiDQKv6invsWgTVzsAVM36OHw6DFwxZUUSKQK6XtkJUa624Th2iLm9VrLj1iGorRF1D0QEwS69jELU5cZSAPcVxgsMwokoG6w2FoSxFi9kY0yWq64XtQG0tk25tZqTyZrvqpLpE1kTZPEYEZvXc0Z0vCZXR32NC2KeaMum2V9pB21r1kCrOSY9rk9KT60WYBGckXMwi/mVL/KXqNKiYAml24wRdK8aBLwugnVN1rZCqI01P6cp2d8/XWfa5lrCLh345YYcJgjBbhyzGsFPjHF3rlqx/pGxpFEa39ihYrvtBKbrmvlOOrqvvlKTr4pWW7eyySlUdNvMT8wvSDcXoSeZ2jmk3wasPdsvO0S4QWlsm0hosFujitej6xYKCcqYwVzH8FvRLKsmh+iClGnnr0eQoIspSH1cF7WAz9pPit+Zv3azjb1Fs1uIizotE/K0L+JuxrxffRLcUc2bO15l3pHW9SOvISZnTMnandd0u0bq4X27Suq7YW9Zh+VzZAvXpxO9nlMTx4x2bG2MAbUiqSL0zeevOBnnvgV/Fq6Bb+RWtVjZtVa0a3ZrtAvU2mcO141cB2E0i0ooSDPU9mNQQ61k9k66yugzQjnPlEpNePVMsneLvPN3I9oshudjgVMGTdki21qQ9kauh15Gr6CPFBVpDnNiIyNUQkKv+XuRqrM2ZDcXanVcNs8SrFa6XeFXTYbqsCabL6daAalu70+o/Fl6UQE96RD9skmxYO0+Sm/OvIc7AtvPvamVTA4Gt4F9kWO/Cv8Wo1MasHU8478K4HRVOWy1GGo6laGKETRA/iy2x2Q2XKkLs+VOKcQJ3QvTWK7QC0GwtWU02qsyOKRhbFMkBtDNK0FHPYYS1sVPlZjuilguMUbNb6Ihx1LbhqG3ZE+VbPmaHBUK06iZstJl7EudrHD1hnuTk4+lDefi11GGz9QKgeG+mtQ4zj6t1WLQZtxaV5qdITIEOG++lw+Y7JTlm+bBJhf/lwyaWWbl2taMIs2MFj4Q+xtEPE2Fz99MkzUXYFO9VbRfhwlY8TMwrJKLZInY7Aa5Ujy6q0Xr7qonsWuLtq+2qsdoWsI0KRJHNiHb/qBb7ee0oaIWvtafjI61p16qQvSpuPzkWn+k7yRrddtjP0rPziUIKGXt0AgMZ8PMxjSBfz44ds2PVgodX0SRc+Jhr4hI11mzWmVi8KpwrjGtg49Qis9MZlDUT//bngiQ/r5/rlLKK2SMl+7M8acmazYoauMMq17iTDykzc8dqcXijkxNDojQ2PdOgStP5HNKyMtPtXc4xdnElb1sqnojdl3N8gmLZmXNOl33GTl6xZ0cJSUm0sTNbxgw/amM5mTNu3SiOqHgAs/Jd7eDnRyyXn65X2++mbYWUVVsDdNmeImn76h38HAc7KZo6ItTrHDkfj8WQpg92xZQfgLARN0WYMG2sl+4H2rTZo2Wz+xx/+REEtgaV+qVvW0Iqmp+X//3gCB1WG4MnwcwLb0NvgmOYzH1QiwY+RD6egsd+nZVcH22uj0gokKV1gU2cWQWJ1ZDSKo0xbGQiF0ybCyYSKmYpo95mYvOB1MhELoI2F0EkVMF81MxY+iweUPzRrkMKcWWzubIhobQJosmLdv4+Fx+biw8Sqs9qzvoI/q8bUn62s0VcQWyuIEgoIcU5ttiaHSxhU2TRVFWUCm7Odsu11musPy1OM+3lqYqEzLNf8rEXy8tm98WHxdRltYpQ2AwuTvwcNf/AmCQJmVV/47T0XPgZlmJlnyl6eHKOY8iIML1JUY/5p1GWxKdrJUH09MWjEfyJV8si8BAiSGiy8Yh/42b8B54ko4RQ7wkXvUNS9qj2p5j5Dz3T/E9Za+sqmpL6H2fyn4LyVDRNA//NKv00fBgM5OwXW/LoLQZjFNa7FN5fV/iUjT85rvlV6i//Bw==</Description>
+  <AutoRefresh>0</AutoRefresh>
+  <DataSources>
+    <DataSource Name="DataSource">
+      <ConnectionProperties>
+        <DataProvider>SQL</DataProvider>
+        <ConnectString />
+      </ConnectionProperties>
+      <rd:SecurityType>None</rd:SecurityType>
+      <rd:DataSourceID>700f5d54-11e6-470e-8a8e-437ff666257a</rd:DataSourceID>
+    </DataSource>
+  </DataSources>
+  <ReportSections>
+    <ReportSection>
+      <Body>
+        <Height>2in</Height>
+        <Style />
+      </Body>
+      <Width>6.5in</Width>
+      <Page>
+        <Style />
+      </Page>
+    </ReportSection>
+  </ReportSections>
+  <rd:ReportUnitType>Invalid</rd:ReportUnitType>
+  <rd:ReportID>f0934018-fe92-4a72-b3e7-d1ca22778d2c</rd:ReportID>
+  <DataSets>
+    <DataSet Name="DataSet_Result">
+      <Fields>
+        <Field Name="Picture_Firmendaten">
+          <DataField>Picture_Firmendaten</DataField>
+        </Field>
+        <Field Name="DocumentDate_SalesShipmentHeader">
+          <DataField>DocumentDate_SalesShipmentHeader</DataField>
+        </Field>
+        <Field Name="No_SalesShipmentHeader">
+          <DataField>No_SalesShipmentHeader</DataField>
+        </Field>
+        <Field Name="ExternalDocumentNo_SalesShipmentHeader">
+          <DataField>ExternalDocumentNo_SalesShipmentHeader</DataField>
+        </Field>
+        <Field Name="Ship_toName_SalesShipmentHeader">
+          <DataField>Ship_toName_SalesShipmentHeader</DataField>
+        </Field>
+        <Field Name="Artikelnr2_SalesShipmentLine">
+          <DataField>Artikelnr2_SalesShipmentLine</DataField>
+        </Field>
+        <Field Name="Cross_ReferenceNo">
+          <DataField>Cross_ReferenceNo</DataField>
+        </Field>
+        <Field Name="Quantity_1">
+          <DataField>Quantity_1</DataField>
+        </Field>
+        <Field Name="Quantity_1Format">
+          <DataField>Quantity_1Format</DataField>
+        </Field>
+        <Field Name="leadfreetext1">
+          <DataField>leadfreetext1</DataField>
+        </Field>
+        <Field Name="leadfreetext2">
+          <DataField>leadfreetext2</DataField>
+        </Field>
+        <Field Name="text1">
+          <DataField>text1</DataField>
+        </Field>
+        <Field Name="date_or_sn">
+          <DataField>date_or_sn</DataField>
+        </Field>
+      </Fields>
+      <Query>
+        <DataSourceName>DataSource</DataSourceName>
+        <CommandText />
+      </Query>
+      <rd:DataSetInfo>
+        <rd:DataSetName>DataSet</rd:DataSetName>
+        <rd:SchemaPath>Report.xsd</rd:SchemaPath>
+        <rd:TableName>Result</rd:TableName>
+      </rd:DataSetInfo>
+    </DataSet>
+  </DataSets>
+</Report>
+    END_OF_RDLDATA
+  }
+}
+
