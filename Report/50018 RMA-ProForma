@@ -1,0 +1,636 @@
+OBJECT Report 50018 RMA-ProForma
+{
+  OBJECT-PROPERTIES
+  {
+    Date=04.08.17;
+    Time=08:49:02;
+    Modified=Yes;
+    Version List=Topas Bericht,FORNAV2.0.0.1189/1189;
+  }
+  PROPERTIES
+  {
+    OnInitReport=BEGIN
+                   selected := STRMENU(Text000,1);
+                   CASE selected OF
+                     0: opt_invoice := opt_invoice::Hersteller;
+                     1: opt_invoice := opt_invoice::Hersteller;
+                     2: opt_invoice := opt_invoice::Kunde;
+                   END
+                   ;ReportForNav:= ReportForNav.Report(CurrReport.OBJECTID,CurrReport.LANGUAGE,SERIALNUMBER,USERID,COMPANYNAME);ReportForNav.Init;
+                   Firmendaten.GET;
+                   Firmendaten.CALCFIELDS("ISO Logo",Picture);
+                 END;
+
+    OnPreReport=BEGIN
+                  ReportForNav.OpenDesigner:=ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
+                END;
+
+    OnPostReport=BEGIN
+                   ReportForNav.Post;
+                 END;
+
+  }
+  DATASET
+  {
+    { 1   ;    ;DataItem;                    ;
+               DataItemTable=Table50020;
+               OnAfterGetRecord=BEGIN
+                                  Anschrift.RESET;
+                                    Anschrift.SETRANGE("RMA-Nr.","RMA-Nr.");
+                                    IF opt_invoice = opt_invoice::Kunde THEN
+                                      Anschrift.SETRANGE(Art,Anschrift.Art::Kunde)
+                                    ELSE
+                                      Anschrift.SETRANGE(Art,Anschrift.Art::Hersteller);
+                                    Anschrift.SETRANGE(Fhrungsrolle,TRUE);
+                                    IF Anschrift.FINDFIRST THEN BEGIN
+                                      Kontakt.GET(Anschrift."Kontakt Mandantennr.");
+                                      CurrReport.LANGUAGE := Language.GetLanguageID(Kontakt."Language Code");
+                                      Ansprechpartner.RESET;
+                                      Ansprechpartner.SETRANGE("RMA-Nr.","RMA-Nr.");
+                                      Ansprechpartner.SETRANGE(Art,Ansprechpartner.Art::"Ansprechpartner Kunde");
+                                      Ansprechpartner.SETRANGE("Kontakt Mandantennr.",Anschrift."Kontakt Mandantennr.");
+                                      IF Ansprechpartner.FINDFIRST THEN BEGIN
+                                        Ansprechpartner.CALCFIELDS("Telefonnr.");
+                                        kontaktname := Ansprechpartner.Name + ' (' + Ansprechpartner."Telefonnr." + ')';
+                                      END ELSE
+                                        kontaktname := '';
+                                      FormatAddr.FormatAddr(Andruck,Anschrift.Name,Anschrift."Name 2",kontaktname,
+                                      Anschrift.Adresse,Anschrift."Adresse 2",Anschrift.Ort,Anschrift."PLZ-Code",'',Anschrift."L„nder-/Regionscode");
+                                    END ELSE
+                                      ERROR(Text001);
+                                     IF CurrReport.LANGUAGE = 1031 THEN
+                                      seite := STRSUBSTNO('Seite %1',FORMAT(ReportForNav.PageNo))
+                                    ELSE
+                                      seite := STRSUBSTNO('Page %1',FORMAT(ReportForNav.PageNo));
+                                END;
+
+               ReqFilterFields=RMA-Nr. }
+
+    { 2   ;1   ;Column  ;Andruck7            ;
+               SourceExpr=Andruck[7] }
+
+    { 3   ;1   ;Column  ;Andruck8            ;
+               SourceExpr=Andruck[8] }
+
+    { 4   ;1   ;Column  ;Andruck1            ;
+               SourceExpr=Andruck[1] }
+
+    { 5   ;1   ;Column  ;Andruck2            ;
+               SourceExpr=Andruck[2] }
+
+    { 6   ;1   ;Column  ;Andruck3            ;
+               SourceExpr=Andruck[3] }
+
+    { 7   ;1   ;Column  ;Andruck4            ;
+               SourceExpr=Andruck[4] }
+
+    { 8   ;1   ;Column  ;Andruck5            ;
+               SourceExpr=Andruck[5] }
+
+    { 9   ;1   ;Column  ;Andruck6            ;
+               SourceExpr=Andruck[6] }
+
+    { 1000000000;1;Column;Picture_Firmendaten;
+               SourceExpr=Firmendaten.Picture }
+
+    { 10  ;1   ;Column  ;ISOLogo_Firmendaten ;
+               SourceExpr=Firmendaten."ISO Logo" }
+
+    { 11  ;1   ;Column  ;seite               ;
+               SourceExpr=seite }
+
+    { 12  ;1   ;Column  ;WORKDATE            ;
+               SourceExpr=WORKDATE }
+
+    { 13  ;1   ;Column  ;RMA_Nr_RMA_Kopf     ;
+               SourceExpr="RMA-Nr." }
+
+    { 14  ;1   ;DataItem;                    ;
+               DataItemTable=Table50023;
+               DataItemTableView=WHERE(Art=FILTER(an Hersteller),
+                                       Andruck=FILTER(Text oben));
+               DataItemLink=Nr.=FIELD(RMA-Nr.) }
+
+    { 15  ;2   ;Column  ;Bemerkung_TOPASBemerkungen;
+               SourceExpr=Bemerkung }
+
+    { 16  ;1   ;DataItem;                    ;
+               DataItemTable=Table50021;
+               DataItemTableView=WHERE(Ausblenden=FILTER(No));
+               OnPreDataItem=BEGIN
+                               IF opt_invoice = opt_invoice::Hersteller THEN
+                                 "RMA-Zeile".SETRANGE("RMA-Zeile".Belegart,"RMA-Zeile".Belegart::"an Hersteller");
+                               IF opt_invoice = opt_invoice::Kunde THEN
+                                 "RMA-Zeile".SETRANGE("RMA-Zeile".Belegart,"RMA-Zeile".Belegart::"an Kunden");
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  IF Artikel.GET("Artikelnr.") THEN BEGIN
+                                    TariffNo := Artikel."Tariff No.";
+                                    Artikelnr :=  Artikel."No. 2";
+                                  END ELSE BEGIN
+                                    Artikelnr := "Artikelnr.";
+                                    TariffNo := '';
+                                  END;
+                                  /////W„hrungscode 0 durch Euro ersetzen\\\\\
+                                  IF opt_invoice = opt_invoice::Hersteller THEN
+                                    W„hrung := "RMA-Zeile"."EK-W„hrung"
+                                  ELSE
+                                    W„hrung := "RMA-Zeile".W„hrung;
+                                  IF W„hrung = '' THEN
+                                    W„hrung := 'EUR';
+                                END;
+
+               DataItemLink=RMA-Nr.=FIELD(RMA-Nr.) }
+
+    { 17  ;2   ;Column  ;Manufac             ;
+               SourceExpr=Manufac }
+
+    { 18  ;2   ;Column  ;Description_Artikel ;
+               SourceExpr=Artikel.Description }
+
+    { 19  ;2   ;Column  ;SN_Nr_DC_RMA_Zeile  ;
+               SourceExpr="SN-Nr. / DC" }
+
+    { 20  ;2   ;Column  ;RMA_NrHersteller_RMA_Zeile;
+               SourceExpr="RMA-Nr. Hersteller" }
+
+    { 21  ;2   ;Column  ;TariffNo            ;
+               SourceExpr=TariffNo }
+
+    { 22  ;2   ;Column  ;Wahrung_RMA_Zeile   ;
+               SourceExpr=W„hrung }
+
+    { 23  ;2   ;Column  ;Ursprungsland_RMA_Zeile;
+               SourceExpr=Ursprungsland }
+
+    { 24  ;2   ;Column  ;Amount              ;
+               SourceExpr=Amount }
+
+    { 25  ;2   ;Column  ;Price               ;
+               SourceExpr=Price }
+
+    { 26  ;2   ;Column  ;MengeSN_Nr_DC_RMA_Zeile;
+               DecimalPlaces=0:0;
+               SourceExpr="Menge SN-Nr. / DC" }
+
+    { 27  ;2   ;Column  ;Artikelnr           ;
+               SourceExpr=Artikelnr }
+
+    { 28  ;2   ;Column  ;Anzahl_Zeile        ;
+               SourceExpr=Anzahl_Zeile }
+
+    { 29  ;2   ;Column  ;Totalamount         ;
+               SourceExpr=Totalamount }
+
+    { 30  ;1   ;DataItem;Textunten           ;
+               DataItemTable=Table50023;
+               DataItemTableView=WHERE(Art=FILTER(an Hersteller),
+                                       Andruck=FILTER(Text unten));
+               DataItemLink=Nr.=FIELD(RMA-Nr.) }
+
+    { 31  ;2   ;Column  ;Bemerkung_Textunten ;
+               SourceExpr=Bemerkung }
+
+  }
+  REQUESTPAGE
+  {
+    PROPERTIES
+    {
+      SaveValues=Yes;
+    }
+    CONTROLS
+    {
+      { 1900000001;0;Container;
+                  ContainerType=ContentArea }
+
+      { 1900000002;1;Group  ;
+                  CaptionML=[CSY=Moznosti;
+                             DAN=Indstillinger;
+                             DEU=Optionen;
+                             ENU=Options;
+                             FIN=Vaihtoehdot;
+                             ISL=Valkostir;
+                             NLD=Opties;
+                             NOR=Alternativer;
+                             SVE=Alternativ;
+                             ITS=Opzioni;
+                             NLB=Opties] }
+
+      { 5000;2   ;Field     ;
+                  Name=ForNavOpenDesigner;
+                  CaptionML=ENU=Open Designer;
+                  SourceExpr=ReportForNavOpenDesigner;
+                  Visible=ReportForNavAllowDesign }
+
+    }
+  }
+  LABELS
+  {
+  }
+  CODE
+  {
+    VAR
+      Price@1140025 : Decimal;
+      Amount@1140001 : Decimal;
+      Totalamount@1140002 : Decimal;
+      Artikel@1140003 : Record 27;
+      Manufacturer@1140012 : Record 5720;
+      Anzahl_Zeile@1140004 : Integer;
+      RMA_Zeile@1140020 : Record 50021;
+      Anschrift@1140015 : Record 50022;
+      Kontakt@1140017 : Record 5050;
+      Language@1140016 : Record 8;
+      Ansprechpartner@1140030 : Record 50022;
+      FormatAddr@1140029 : Codeunit 365;
+      w„hrung@1140009 : Text[30];
+      TariffNo@1140010 : Code[10];
+      Artikelnr@1140011 : Code[40];
+      Manufac@1140013 : Text[50];
+      seite@1140014 : Text[30];
+      opt_invoice@1140022 : 'Hersteller,Kunde';
+      selected@1140023 : Integer;
+      Text000@1140024 : TextConst 'DEU=Hersteller,Kunde';
+      Text001@1140026 : TextConst 'DEU=Bitte hinterlegen Sie den Hersteller bzw. Kunden und achten Sie darauf, dass die Fhrungsrolle vergeben ist.';
+      Firmendaten@1140027 : Record 79;
+      Andruck@1140028 : ARRAY [8] OF Text[90];
+      kontaktname@1140031 : Text[50];
+      ReportForNav@5000 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
+      ReportForNavClient@5003 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
+      ReportForNavDialog@5001 : Dialog;
+      ReportForNavOpenDesigner@5002 : Boolean;
+      ReportForNavAllowDesign@5004 : Boolean INDATASET;
+
+    LOCAL PROCEDURE OnPreSectionRMA_Kopf_Header1@5052(VAR "RMA-Kopf"@1000000000 : Record 50020);
+    BEGIN
+      WITH "RMA-Kopf" DO BEGIN
+
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionTOPASBemerkungen_Body2@5053(VAR "TOPAS Bemerkungen"@1000000000 : Record 50023);
+    BEGIN
+      WITH "TOPAS Bemerkungen" DO BEGIN
+        ReportForNav.ShowOutput(Andruck=Andruck::"Text oben");
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionRMA_Zeile_Body4@5054(VAR "RMA-Zeile"@1000000000 : Record 50021);
+    BEGIN
+      WITH "RMA-Zeile" DO BEGIN
+        //ReportForNav.ShowOutput(Belegart=Belegart::"an Hersteller");
+        IF  opt_invoice = opt_invoice::Hersteller THEN BEGIN
+          Amount := ROUND(("RMA-Zeile"."Menge SN-Nr. / DC") * ("RMA-Zeile"."urspr. DC-Preis EK-Lieferung"),0.01);
+          Price := "RMA-Zeile"."urspr. DC-Preis EK-Lieferung";
+        END ELSE BEGIN
+          Amount := ROUND(("RMA-Zeile"."Menge SN-Nr. / DC") * ("RMA-Zeile"."VK-Preis"),0.01);
+          Price := "RMA-Zeile"."VK-Preis";
+        END;
+        Totalamount += Amount;
+        Anzahl_Zeile += 1;
+        IF Manufacturer.GET("RMA-Zeile".Herstellercode) THEN
+          Manufac := Manufacturer.Name
+        ELSE
+          Manufac := '';
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnInit@5002();
+    VAR
+      ReportLayoutSelection@1000 : Record 9651;
+      CustomReportLayout@1001 : Record 9650;
+      CustomLayoutID@1002 : Variant;
+      InStream@1004 : InStream;
+      EmptyLayout@1003 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+      ReportForNav.OData := GETURL(CLIENTTYPE::OData, COMPANYNAME, OBJECTTYPE::Page, 7702);
+      IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN
+        CustomLayoutID := ReportLayoutSelection.GetTempLayoutSelected
+      ELSE
+        IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN
+          CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+
+      IF (FORMAT(CustomLayoutID) <> EmptyLayout) AND CustomReportLayout.GET(CustomLayoutID) THEN BEGIN
+        CustomReportLayout.TESTFIELD(Type,CustomReportLayout.Type::RDLC);
+        CustomReportLayout.CALCFIELDS(Layout);
+        CustomReportLayout.Layout.CREATEINSTREAM(InStream,TEXTENCODING::UTF8);
+        ReportForNav.IsCustomLayout := TRUE;
+      END ELSE
+        REPORT.RDLCLAYOUT(ReportForNav.ReportID,InStream);
+
+      ReportForNav.LoadRdlc(InStream);
+      IF COPYSTR(LOWERCASE(GETURL(CLIENTTYPE::Current, COMPANYNAME, OBJECTTYPE::Codeunit, 1)), 1, 14) = 'dynamicsnav://' THEN BEGIN
+        ReportForNav.CheckClientAddIn();
+        ReportForNavClient := ReportForNavClient.Report(ReportForNav.Definition);
+        ReportForNavAllowDesign := ReportForNavClient.HasDesigner AND NOT ReportForNav.ParameterMode;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnSave@5010(Base64Layout@1000 : Text);
+    VAR
+      CustomReportLayout@1002 : Record 9650;
+      ReportLayoutSelection@1003 : Record 9651;
+      LayoutId@1004 : Variant;
+      TempBlob@1007 : Record 99008535;
+      OutStream@1006 : OutStream;
+      Bstr@1005 : BigText;
+      EmptyLayout@1001 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+      IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN BEGIN
+        IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN BEGIN
+          LayoutId := ReportLayoutSelection.GetTempLayoutSelected;
+        END ELSE BEGIN
+          IF ReportLayoutSelection.GET(ReportForNav.ReportID, COMPANYNAME) THEN BEGIN
+          LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+          END;
+        END;
+      END ELSE BEGIN
+        IF CONFIRM('Default custom layout not found. Create one?') THEN;
+      END;
+      IF FORMAT(LayoutId) <> EmptyLayout THEN BEGIN
+        TempBlob.Blob.CREATEOUTSTREAM(OutStream);
+        Bstr.ADDTEXT(Base64Layout);
+        Bstr.WRITE(OutStream);
+        CustomReportLayout.GET(LayoutId);
+        CustomReportLayout.ImportLayoutBlob(TempBlob, 'RDL');
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnParameters@5008(Parameters@1000 : Text);
+    BEGIN
+      ReportForNav.Parameters := REPORT.RUNREQUESTPAGE(ReportForNav.ReportID, Parameters);
+    END;
+
+    EVENT ReportForNav@5000::OnPreview@5009(Parameters@1000 : Text;FileName@1005 : Text);
+    VAR
+      PdfFile@1002 : File;
+      InStream@1003 : InStream;
+      OutStream@1004 : OutStream;
+    BEGIN
+      COMMIT;
+      PdfFile.CREATETEMPFILE;
+      PdfFile.CREATEOUTSTREAM(OutStream);
+      REPORT.SAVEAS(ReportForNav.ReportID, Parameters, REPORTFORMAT::Pdf, OutStream);
+      PdfFile.CREATEINSTREAM(InStream);
+      ReportForNavClient.ShowDesigner;
+      IF ReportForNav.IsValidPdf(PdfFile.NAME) THEN DOWNLOADFROMSTREAM(InStream, '', '', '', FileName);
+      PdfFile.CLOSE;
+    END;
+
+    EVENT ReportForNav@5000::OnPreSection@5012(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+      CASE DataItemId OF
+        'RMA_Kopf': CASE SectionId OF
+          'Header1': OnPreSectionRMA_Kopf_Header1("RMA-Kopf");
+        END;
+        'TOPASBemerkungen': CASE SectionId OF
+          'Body2': OnPreSectionTOPASBemerkungen_Body2("TOPAS Bemerkungen");
+        END;
+        'RMA_Zeile': CASE SectionId OF
+          'Body4': OnPreSectionRMA_Zeile_Body4("RMA-Zeile");
+        END;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPostSection@50013(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+    END;
+
+    EVENT ReportForNav@5000::OnClientOperation@5008(Args@1000 : DotNet "'mscorlib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Array");
+    VAR
+      op@1001 : Text;
+      FileMgmt@1002 : Codeunit 419;
+      Process@1006 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.Process" RUNONCLIENT;
+      PathObj@1005 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Path" RUNONCLIENT;
+      FileVersionInfo@1003 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.FileVersionInfo" RUNONCLIENT;
+      DirectoryHelper@1004 : DotNet "'mscorlib'.System.IO.Directory" RUNONCLIENT;
+    BEGIN
+      op := Args.GetValue(0);
+      CASE op OF
+        'TempPath': ReportForNav.Result := PathObj.GetTempPath();
+        'FileExists': ReportForNav.Result := FileMgmt.ClientFileExists(Args.GetValue(1));
+        'DirectoryExists': ReportForNav.Result := FileMgmt.ClientDirectoryExists(Args.GetValue(1));
+        'ProcessLocation': ReportForNav.Result := Process.GetCurrentProcess().MainModule.FileName;
+        'FileVersion': ReportForNav.Result := FileVersionInfo.GetVersionInfo(Args.GetValue(1)).FileVersion;
+        'DeleteFile': FileMgmt.DeleteClientFile(Args.GetValue(1));
+        'DeleteDirectory': IF STRLEN(Args.GetValue(1)) > 20 THEN
+          IF FileMgmt.ClientDirectoryExists(Args.GetValue(1)) THEN
+            DirectoryHelper.Delete(FORMAT(Args.GetValue(1)), TRUE);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnCheckForNavClientVersion@5007();
+    BEGIN
+      ReportForNavClient := ReportForNavClient.Report();
+      IF ReportForNav.MyFileVersion <> ReportForNavClient.MyFileVersion THEN
+        ERROR('You have version %1 of the Reports ForNAV assembly here:\\%2\\Please close your NAV client and update it to version %3.',
+              ReportForNavClient.MyFileVersion, ReportForNavClient.MyFileName, ReportForNav.MyFileVersion);
+    END;
+
+    EVENT ReportForNav@5000::OnSelectPrinter@5006();
+    BEGIN
+      ReportForNav.PrinterSettings.PageSettings := ReportForNavClient.SelectPrinter(ReportForNav.PrinterSettings.PrinterName,ReportForNav.PrinterSettings.ShowPrinterDialog,ReportForNav.PrinterSettings.PageSettings);
+    END;
+
+    EVENT ReportForNav@5000::OnPrint@5005(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream");
+    VAR
+      ClientFileName@1000000001 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      ReportForNavClient.Print(ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnDesign@5007(Data@1001 : Text);
+    BEGIN
+      ReportForNavClient.Data := Data;
+      WHILE ReportForNavClient.DesignReport DO BEGIN
+        ReportForNav.HandleRequest(ReportForNavClient.GetRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnView@5008(ClientFileName@1000000000 : Text;Parameters@1000000001 : Text;ServerFileName@1000000002 : Text);
+    VAR
+      ServerFile@1000000003 : File;
+      ServerInStream@1000000004 : InStream;
+    BEGIN
+      ServerFile.OPEN(ServerFileName);
+      ServerFile.CREATEINSTREAM(ServerInStream);
+      DOWNLOADFROMSTREAM(ServerInStream,'','','',ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnMessage@5009(Operation@1000000000 : Text;Parameter@1000000001 : Text;ParameterNo@1000000002 : Integer);
+    BEGIN
+      CASE Operation OF
+        'Open'    : ReportForNavDialog.OPEN(Parameter);
+        'Update'  : ReportForNavDialog.UPDATE(ParameterNo,Parameter);
+        'Close'   : ReportForNavDialog.CLOSE();
+        'Message' : MESSAGE(Parameter);
+        'Error'   : ERROR(Parameter);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPrintPreview@5011(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream";Preview@1000000001 : Boolean);
+    VAR
+      ClientFileName@1000000002 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      WHILE ReportForNavClient.PrintPreviewDialog(ClientFileName,ReportForNav.PrinterSettings.PrinterName,Preview) DO BEGIN
+        ReportForNav.HandlePrintPreviewRequest(ReportForNavClient.GetPrintPreviewRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    BEGIN
+    END.
+  }
+  RDLDATA
+  {
+    <?xml version="1.0" encoding="utf-8"?>
+<Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
+  <Description>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</Description>
+  <AutoRefresh>0</AutoRefresh>
+  <DataSources>
+    <DataSource Name="DataSource">
+      <ConnectionProperties>
+        <DataProvider>SQL</DataProvider>
+        <ConnectString />
+      </ConnectionProperties>
+      <rd:SecurityType>None</rd:SecurityType>
+      <rd:DataSourceID>2130dc4e-77ee-434f-a6c4-862cf55c9cdb</rd:DataSourceID>
+    </DataSource>
+  </DataSources>
+  <ReportSections>
+    <ReportSection>
+      <Body>
+        <Height>2in</Height>
+        <Style />
+      </Body>
+      <Width>6.5in</Width>
+      <Page>
+        <Style />
+      </Page>
+    </ReportSection>
+  </ReportSections>
+  <rd:ReportUnitType>Invalid</rd:ReportUnitType>
+  <rd:ReportID>c1b5fc5f-c3c8-4bc2-81ed-6daf3783d9b9</rd:ReportID>
+  <DataSets>
+    <DataSet Name="DataSet_Result">
+      <Fields>
+        <Field Name="Andruck7">
+          <DataField>Andruck7</DataField>
+        </Field>
+        <Field Name="Andruck8">
+          <DataField>Andruck8</DataField>
+        </Field>
+        <Field Name="Andruck1">
+          <DataField>Andruck1</DataField>
+        </Field>
+        <Field Name="Andruck2">
+          <DataField>Andruck2</DataField>
+        </Field>
+        <Field Name="Andruck3">
+          <DataField>Andruck3</DataField>
+        </Field>
+        <Field Name="Andruck4">
+          <DataField>Andruck4</DataField>
+        </Field>
+        <Field Name="Andruck5">
+          <DataField>Andruck5</DataField>
+        </Field>
+        <Field Name="Andruck6">
+          <DataField>Andruck6</DataField>
+        </Field>
+        <Field Name="Picture_Firmendaten">
+          <DataField>Picture_Firmendaten</DataField>
+        </Field>
+        <Field Name="ISOLogo_Firmendaten">
+          <DataField>ISOLogo_Firmendaten</DataField>
+        </Field>
+        <Field Name="seite">
+          <DataField>seite</DataField>
+        </Field>
+        <Field Name="WORKDATE">
+          <DataField>WORKDATE</DataField>
+        </Field>
+        <Field Name="RMA_Nr_RMA_Kopf">
+          <DataField>RMA_Nr_RMA_Kopf</DataField>
+        </Field>
+        <Field Name="Bemerkung_TOPASBemerkungen">
+          <DataField>Bemerkung_TOPASBemerkungen</DataField>
+        </Field>
+        <Field Name="Manufac">
+          <DataField>Manufac</DataField>
+        </Field>
+        <Field Name="Description_Artikel">
+          <DataField>Description_Artikel</DataField>
+        </Field>
+        <Field Name="SN_Nr_DC_RMA_Zeile">
+          <DataField>SN_Nr_DC_RMA_Zeile</DataField>
+        </Field>
+        <Field Name="RMA_NrHersteller_RMA_Zeile">
+          <DataField>RMA_NrHersteller_RMA_Zeile</DataField>
+        </Field>
+        <Field Name="TariffNo">
+          <DataField>TariffNo</DataField>
+        </Field>
+        <Field Name="Wahrung_RMA_Zeile">
+          <DataField>Wahrung_RMA_Zeile</DataField>
+        </Field>
+        <Field Name="Ursprungsland_RMA_Zeile">
+          <DataField>Ursprungsland_RMA_Zeile</DataField>
+        </Field>
+        <Field Name="Amount">
+          <DataField>Amount</DataField>
+        </Field>
+        <Field Name="AmountFormat">
+          <DataField>AmountFormat</DataField>
+        </Field>
+        <Field Name="Price">
+          <DataField>Price</DataField>
+        </Field>
+        <Field Name="PriceFormat">
+          <DataField>PriceFormat</DataField>
+        </Field>
+        <Field Name="MengeSN_Nr_DC_RMA_Zeile">
+          <DataField>MengeSN_Nr_DC_RMA_Zeile</DataField>
+        </Field>
+        <Field Name="MengeSN_Nr_DC_RMA_ZeileFormat">
+          <DataField>MengeSN_Nr_DC_RMA_ZeileFormat</DataField>
+        </Field>
+        <Field Name="Artikelnr">
+          <DataField>Artikelnr</DataField>
+        </Field>
+        <Field Name="Anzahl_Zeile">
+          <DataField>Anzahl_Zeile</DataField>
+        </Field>
+        <Field Name="Totalamount">
+          <DataField>Totalamount</DataField>
+        </Field>
+        <Field Name="TotalamountFormat">
+          <DataField>TotalamountFormat</DataField>
+        </Field>
+        <Field Name="Bemerkung_Textunten">
+          <DataField>Bemerkung_Textunten</DataField>
+        </Field>
+      </Fields>
+      <Query>
+        <DataSourceName>DataSource</DataSourceName>
+        <CommandText />
+      </Query>
+      <rd:DataSetInfo>
+        <rd:DataSetName>DataSet</rd:DataSetName>
+        <rd:SchemaPath>Report.xsd</rd:SchemaPath>
+        <rd:TableName>Result</rd:TableName>
+      </rd:DataSetInfo>
+    </DataSet>
+  </DataSets>
+</Report>
+    END_OF_RDLDATA
+  }
+}
+
