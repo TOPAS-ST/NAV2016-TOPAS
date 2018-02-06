@@ -2,8 +2,8 @@ OBJECT Report 50055 TOPAS Service Auswertung
 {
   OBJECT-PROPERTIES
   {
-    Date=10.08.17;
-    Time=08:30:15;
+    Date=06.02.18;
+    Time=10:55:07;
     Modified=Yes;
     Version List=FORNAV2.0.0.1189/1189;
   }
@@ -14,57 +14,47 @@ OBJECT Report 50055 TOPAS Service Auswertung
                  END;
 
     OnPreReport=BEGIN
-                  //*******************************************************************************************************
-                  //                    Sicherheitsabfrage ob Temp Tabelle auch Berichtstabelle ist
-                  //*******************************************************************************************************
-                  IF Berichtstabelle.TABLECAPTION <> 'Berichtstabelle' THEN
-                    ERROR('Eine Sicherheitssperre verhindert die Ausfhrung dieses Berichtes.'+
-                          'Stellen Sie sicher, dass die TABLECAPTION der Berichtstabelle auch auf Berichtstabelle lautet.');
-                  Berichtstabelle.RESET;
-                  IF Berichtstabelle.ISEMPTY = FALSE THEN BEGIN
-                    REPEAT
-                      Berichtstabelle.RESET;
-                      //Berichtstabelle.SETRANGE(User,'%1',USERID);
-                      IF Berichtstabelle.ISEMPTY = FALSE THEN BEGIN
-                        SLEEP(500);
-                        counter += 1;
-                      END;
-                      IF counter MOD 30 = 0 THEN BEGIN
-                        Berichtstabelle.FINDFIRST;
-                        IF CONFIRM('Die Berichtstabelle ist seit %1 durch Anwender %2 gesperrt. Wollen Sie die Anwendung abbrechen?',
-                        TRUE,Berichtstabelle.Uhrzeit,Berichtstabelle.User,counter,TRUE) THEN
-                          ERROR('');
-                      END;
-                    UNTIL Berichtstabelle.ISEMPTY = TRUE;
-                  END;
                   IF auswertungs_mode = auswertungs_mode :: Einfach THEN
                     Auswertung_einfach;
                   IF auswertungs_mode = auswertungs_mode :: Detailliert THEN
                     Auswertung_detailliert;
-                  ;ReportForNav.OpenDesigner:=ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
+
+                  Berichtstabelle_Artikel.COPY(Berichtstabelle,TRUE);
+                  Berichtstabelle_Debitor.COPY(Berichtstabelle,TRUE);
+                  Berichtstabelle_Header2.COPY(Berichtstabelle,TRUE);
+                  Berichtstabelle_Einkauf1.COPY(Berichtstabelle,TRUE);
+                  Berichtstabelle_Einkauf2.COPY(Berichtstabelle,TRUE);
+                  Berichtstabelle_Verkauf1.COPY(Berichtstabelle,TRUE);
+                  Berichtstabelle_Verkauf2.COPY(Berichtstabelle,TRUE);
+
+                  ReportForNav.OpenDesigner:=ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
                 END;
 
     OnPostReport=BEGIN
-                   IF Berichtstabelle.TABLECAPTION = 'Berichtstabelle' THEN BEGIN
-                     //Berichtstabelle.SETRANGE(User,USERID);
-                     Berichtstabelle.DELETEALL;
-                   END;
-
-                   COMMIT;
-
-                   ;ReportForNav.Post;
+                   ReportForNav.Post;
                  END;
 
   }
   DATASET
   {
-    { 1   ;    ;DataItem;Artikel             ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
-                                 WHERE(Tabelle=FILTER(ARTIKEL_E));
+    { 1000000000;;DataItem;CopyItem          ;
+               DataItemTable=Table2000000026;
+               OnPreDataItem=BEGIN
+                               Berichtstabelle_Artikel.RESET;
+                               Berichtstabelle_Artikel.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               Berichtstabelle_Artikel.SETFILTER(Tabelle,'%1','ARTIKEL_E');
+                               SETRANGE(Number,1,Berichtstabelle_Artikel.COUNT);
+                             END;
+
                OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_Artikel.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_Artikel.NEXT;
+                                  END;
+
                                   IF umsatz_acs_champf„hig > 0 THEN BEGIN
-                                    ratio_umsatz_art_umsatz_acs_champfaehig := ROUND(("Feld 4" / umsatz_acs_champf„hig) * 100,2);
+                                    ratio_umsatz_art_umsatz_acs_champfaehig := ROUND((Berichtstabelle_Artikel."Feld 4" / umsatz_acs_champf„hig) * 100,2);
                                     ratio_umsatz_champ_acs_champfaehig := ROUND((umsatz_champ / umsatz_acs_champf„hig) * 100,2);
                                   END ELSE BEGIN
                                     ratio_umsatz_art_umsatz_acs_champfaehig := 0;
@@ -73,7 +63,7 @@ OBJECT Report 50055 TOPAS Service Auswertung
 
                                   IF umsatz_acs_supf„hig > 0 THEN BEGIN
                                     ratio_umsatz_sup_umsatz_acs_supfaehig := ROUND((umsatz_sup / umsatz_acs_supf„hig) * 100,2);
-                                    ratio_umsatz_art_umsatz_acs_supfaehig := ROUND(("Feld 4" / umsatz_acs_supf„hig) * 100,2);
+                                    ratio_umsatz_art_umsatz_acs_supfaehig := ROUND((Berichtstabelle_Artikel."Feld 4" / umsatz_acs_supf„hig) * 100,2);
                                   END ELSE BEGIN
                                     ratio_umsatz_sup_umsatz_acs_supfaehig := 0;
                                     ratio_umsatz_art_umsatz_acs_supfaehig := 0;
@@ -82,151 +72,381 @@ OBJECT Report 50055 TOPAS Service Auswertung
                                  }
 
     { 2   ;1   ;Column  ;Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Teams;
+               IncludeCaption=No;
                SourceExpr='Verk„ufercode: '+verk„ufer+' Betreuer Innendienst: ' + betreuer + ' Teams: ' + teams + ' Gebietscode: ' + gebietscode + '  Belegdatum: ' + FORMAT(Startdatum) + '..' + FORMAT(Enddatum) }
 
     { 3   ;1   ;Column  ;USERID              ;
+               IncludeCaption=No;
                SourceExpr=USERID }
 
     { 4   ;1   ;Column  ;TODAY_0_4           ;
+               IncludeCaption=No;
                SourceExpr=FORMAT(TODAY,0,4) }
 
     { 5   ;1   ;Column  ;ReportForNavPageNo  ;
+               IncludeCaption=No;
                SourceExpr=FORMAT(ReportForNav.PageNo) }
 
     { 6   ;1   ;Column  ;FORMAT_ROUND_Feld4_umsatz_acs_champfahig_100_000_Pct;
+               IncludeCaption=No;
                SourceExpr=FORMAT(ratio_umsatz_art_umsatz_acs_champfaehig)+'%' }
 
-    { 7   ;1   ;Column  ;V_                  ;
+    { 7   ;1   ;Column  ;W„hrung             ;
                SourceExpr='°' }
 
     { 8   ;1   ;Column  ;Feld4_Artikel       ;
-               SourceExpr="Feld 4" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Artikel."Feld 4" }
 
     { 9   ;1   ;Column  ;Feld3_Artikel       ;
-               SourceExpr="Feld 3" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Artikel."Feld 3" }
 
     { 10  ;1   ;Column  ;FORMAT_ROUND_Feld4_umsatz_acs_supfahig_100_000_Pct;
+               IncludeCaption=No;
                SourceExpr=FORMAT(ratio_umsatz_art_umsatz_acs_supfaehig)+'%' }
 
     { 11  ;1   ;Column  ;umsatz_acs_supfahig ;
+               IncludeCaption=No;
                SourceExpr=umsatz_acs_supf„hig }
 
     { 12  ;1   ;Column  ;umsatz_acs_champfahig;
+               IncludeCaption=No;
                SourceExpr=umsatz_acs_champf„hig }
 
     { 13  ;1   ;Column  ;FORMAT_ROUND_umsatz_sup_umsatz_acs_supfahig_100_000_Pct;
-               SourceExpr=FORMAT(umsatz_acs_supf„hig )+'%' }
+               SourceExpr=FORMAT(ratio_umsatz_sup_umsatz_acs_supfaehig)+'%' }
 
     { 14  ;1   ;Column  ;umsatz_sup          ;
+               IncludeCaption=No;
                SourceExpr=umsatz_sup }
 
     { 15  ;1   ;Column  ;FORMAT_ROUND_umsatz_champ_umsatz_acs_champfahig_100_000_Pct;
+               IncludeCaption=No;
                SourceExpr=FORMAT(ratio_umsatz_champ_acs_champfaehig)+'%' }
 
     { 16  ;1   ;Column  ;umsatz_acs_champfahig_umsatz_acs_supfahig;
+               IncludeCaption=No;
                SourceExpr=umsatz_acs_champf„hig+umsatz_acs_supf„hig }
 
     { 17  ;1   ;Column  ;umsatz_champ        ;
+               IncludeCaption=No;
                SourceExpr=umsatz_champ }
 
-    { 18  ;1   ;DataItem;Debitor             ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
-                                 WHERE(Tabelle=FILTER(DEBITOR_E));
-               DataItemLink=Feld 3=FIELD(Feld 3) }
+    { 1000000001;1;DataItem;CopyCustomer     ;
+               DataItemTable=Table2000000026;
+               OnPreDataItem=BEGIN
+                               Berichtstabelle_Debitor.RESET;
+                               Berichtstabelle_Debitor.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               Berichtstabelle_Debitor.SETFILTER(Tabelle,'%1','DEBITOR_E');
+                               Berichtstabelle_Debitor.SETFILTER("Feld 3",'%1',Berichtstabelle_Artikel."Feld 3");
+                               SETRANGE(Number,1,Berichtstabelle_Debitor.COUNT);
+                             END;
 
-    { 19  ;2   ;Column  ;V_8                 ;
-               SourceExpr='°' }
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_Debitor.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_Debitor.NEXT;
+                                  END;
+                                END;
+                                 }
 
     { 20  ;2   ;Column  ;Feld4_Debitor       ;
-               SourceExpr="Feld 4" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Debitor."Feld 4" }
 
     { 21  ;2   ;Column  ;Feld7_Debitor       ;
-               SourceExpr="Feld 7" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Debitor."Feld 7" }
 
     { 22  ;2   ;Column  ;Feld6_Debitor       ;
-               SourceExpr="Feld 6" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Debitor."Feld 6" }
 
     { 23  ;2   ;Column  ;Feld10_Debitor      ;
-               SourceExpr="Feld 10" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Debitor. "Feld 10" }
 
     { 24  ;2   ;Column  ;Index_Debitor       ;
-               SourceExpr=Index }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Debitor.Index }
 
-    { 25  ;    ;DataItem;Header2             ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
-                                 WHERE(Tabelle=FILTER(HEADER2)) }
+    { 1000000002;;DataItem;CopyHeader2       ;
+               DataItemTable=Table2000000026;
+               OnPreDataItem=BEGIN
+                               Berichtstabelle_Header2.RESET;
+                               Berichtstabelle_Header2.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               Berichtstabelle_Header2.SETFILTER(Tabelle,'%1','HEADER2');
+                               SETRANGE(Number,1,Berichtstabelle_Header2.COUNT);
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_Header2.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_Header2.NEXT;
+                                  END;
+                                END;
+                                 }
 
     { 26  ;1   ;Column  ;Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Team2;
+               IncludeCaption=No;
                SourceExpr='Verk„ufercode: '+verk„ufer+' Betreuer Innendienst: ' + betreuer + ' Teams: ' + teams + ' Gebietscode: ' + gebietscode + '  Belegdatum: ' + FORMAT(Startdatum) + '..' + FORMAT(Enddatum) }
 
     { 27  ;1   ;Column  ;USERID2             ;
+               IncludeCaption=No;
                SourceExpr=USERID }
 
     { 28  ;1   ;Column  ;TODAY_0_42          ;
+               IncludeCaption=No;
                SourceExpr=FORMAT(TODAY,0,4) }
 
     { 29  ;1   ;Column  ;ReportForNavPageNo2 ;
+               IncludeCaption=No;
                SourceExpr=FORMAT(ReportForNav.PageNo) }
 
-    { 30  ;    ;DataItem;Einkauf1            ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Feld 2,Index)
-                                 WHERE(Tabelle=FILTER(EINKAUF1)) }
+    { 1000000003;;DataItem;CopyPurchase1     ;
+               DataItemTable=Table2000000026;
+               OnPreDataItem=BEGIN
+                               Berichtstabelle_Einkauf1.RESET;
+                               Berichtstabelle_Einkauf1.SETCURRENTKEY("Feld 2",Index);
+                               Berichtstabelle_Einkauf1.SETFILTER(Tabelle,'%1','EINKAUF1');
+                               SETRANGE(Number,1,Berichtstabelle_Einkauf1.COUNT);
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_Einkauf1.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_Einkauf1.NEXT;
+                                  END;
+
+                                  einkauf_gesamt_menge := Berichtstabelle_Einkauf1."Feld 4";
+                                END;
+                                 }
 
     { 31  ;1   ;Column  ;Feld5_Einkauf1      ;
-               SourceExpr="Feld 5" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Einkauf1."Feld 5" }
 
     { 32  ;1   ;Column  ;Feld4_Einkauf1      ;
                DecimalPlaces=0:0;
-               SourceExpr="Feld 4" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Einkauf1."Feld 4" }
 
     { 33  ;1   ;Column  ;Feld3_Einkauf1      ;
-               SourceExpr="Feld 3" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Einkauf1."Feld 3" }
 
     { 34  ;1   ;Column  ;Belegnr_Einkauf1    ;
-               SourceExpr="Belegnr." }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Einkauf1."Belegnr." }
 
     { 35  ;1   ;Column  ;Datum_Einkauf1      ;
-               SourceExpr=Datum }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Einkauf1.Datum }
 
     { 36  ;1   ;Column  ;ek_gesamt_supfahig  ;
+               IncludeCaption=No;
                SourceExpr=ek_gesamt_supf„hig }
 
-    { 37  ;    ;DataItem;Einkauf2            ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Feld 2,Index)
-                                 WHERE(Tabelle=FILTER(EINKAUF2));
+    { 1000000012;1;Column;einkauf1_gesamt_menge;
+               DecimalPlaces=0:0;
+               SourceExpr=einkauf_gesamt_menge }
+
+    { 1000000004;;DataItem;CopyPurchase2     ;
+               DataItemTable=Table2000000026;
+               OnPreDataItem=BEGIN
+                               Berichtstabelle_Einkauf2.RESET;
+                               Berichtstabelle_Einkauf2.SETCURRENTKEY("Feld 2",Index);
+                               Berichtstabelle_Einkauf2.SETFILTER(Tabelle,'%1','EINKAUF2');
+                               SETRANGE(Number,1,Berichtstabelle_Einkauf2.COUNT);
+                             END;
+
                OnAfterGetRecord=BEGIN
-                                  totale_EK_Menge := totale_EK_Menge + "Feld 4";
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_Einkauf2.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_Einkauf2.NEXT;
+                                  END;
+
+                                  einkauf_gesamt_menge := Berichtstabelle_Einkauf2."Feld 4";
+                                  totale_EK_Menge := totale_EK_Menge + Berichtstabelle_Einkauf2."Feld 4";
                                 END;
                                  }
 
     { 38  ;1   ;Column  ;Feld5_Einkauf2      ;
-               SourceExpr="Feld 5" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Einkauf2."Feld 5" }
 
     { 39  ;1   ;Column  ;Feld4_Einkauf2      ;
                DecimalPlaces=0:0;
-               SourceExpr="Feld 4" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Einkauf2."Feld 4" }
 
     { 40  ;1   ;Column  ;Feld3_Einkauf2      ;
-               SourceExpr="Feld 3" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Einkauf2."Feld 3" }
 
     { 41  ;1   ;Column  ;Belegnr_Einkauf2    ;
-               SourceExpr="Belegnr." }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Einkauf2."Belegnr." }
 
     { 42  ;1   ;Column  ;Datum_Einkauf2      ;
-               SourceExpr=Datum }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Einkauf2.Datum }
 
     { 43  ;1   ;Column  ;ek_gesamt_champfahig;
+               IncludeCaption=No;
                SourceExpr=ek_gesamt_champf„hig }
 
-    { 44  ;    ;DataItem;Debitor2            ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
-                                 WHERE(Tabelle=FILTER(DEBITOR_D));
+    { 1000000011;1;Column;einkauf2_gesamt_menge;
+               DecimalPlaces=0:0;
+               SourceExpr=einkauf_gesamt_menge }
+
+    { 1000000005;;DataItem;CopyCustomer2     ;
+               DataItemTable=Table2000000026;
+               OnPreDataItem=BEGIN
+                               Berichtstabelle_Debitor.RESET;
+                               Berichtstabelle_Debitor.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               Berichtstabelle_Debitor.SETFILTER(Tabelle,'%1','DEBITOR_D');
+                               SETRANGE(Number,1,Berichtstabelle_Debitor.COUNT);
+                             END;
+
                OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_Debitor.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_Debitor.NEXT;
+                                  END;
+                                END;
+                                 }
+
+    { 45  ;1   ;Column  ;Feld7_Debitor2      ;
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Debitor."Feld 7" }
+
+    { 46  ;1   ;Column  ;Feld6_Debitor2      ;
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Debitor."Feld 6" }
+
+    { 47  ;1   ;Column  ;Feld10_Debitor2     ;
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Debitor."Feld 10" }
+
+    { 48  ;1   ;Column  ;Index_Debitor2      ;
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Debitor.Index }
+
+    { 50  ;1   ;Column  ;totale_VK_Menge     ;
+               DecimalPlaces=0:0;
+               IncludeCaption=No;
+               SourceExpr=totale_VK_Menge }
+
+    { 51  ;1   ;Column  ;totale_EK_Menge     ;
+               DecimalPlaces=0:0;
+               IncludeCaption=No;
+               SourceExpr=totale_EK_Menge }
+
+    { 52  ;1   ;Column  ;totaler_betrag_geraete;
+               DecimalPlaces=0:0;
+               IncludeCaption=No;
+               SourceExpr=totaler_betrag_geraete }
+
+    { 54  ;1   ;Column  ;totale_CHAMP_Menge  ;
+               DecimalPlaces=0:0;
+               IncludeCaption=No;
+               SourceExpr=totale_CHAMP_Menge }
+
+    { 1000000006;1;DataItem;CopySell1        ;
+               DataItemTable=Table2000000026;
+               OnPreDataItem=BEGIN
+                               Berichtstabelle_Verkauf1.RESET;
+                               Berichtstabelle_Verkauf1.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               Berichtstabelle_Verkauf1.SETFILTER(Tabelle,'%1','VERKAUF1');
+                               Berichtstabelle_Verkauf1.SETFILTER("Feld 2",'%1',Berichtstabelle_Debitor.Index);
+                               SETRANGE(Number,1,Berichtstabelle_Verkauf1.COUNT);
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_Verkauf1.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_Verkauf1.NEXT;
+                                  END;
+
+                                  Verkauf_VK_Menge := Berichtstabelle_Verkauf1."Feld 4";
+                                  Verkauf_CHAMP_Menge := Berichtstabelle_Verkauf1."Feld 20";
+                                  Verkauf_betrag_geraete := Berichtstabelle_Verkauf1."Feld 21";
+
+                                  totale_VK_Menge := totale_VK_Menge + Berichtstabelle_Verkauf1."Feld 4";
+                                  totale_CHAMP_Menge := totale_CHAMP_Menge + Berichtstabelle_Verkauf1."Feld 20";
+                                  totaler_betrag_geraete := totaler_betrag_geraete + Berichtstabelle_Verkauf1."Feld 21";
+                                END;
+                                 }
+
+    { 56  ;2   ;Column  ;V__Feld10__         ;
+               IncludeCaption=No;
+               SourceExpr='('+Berichtstabelle_Verkauf1."Feld 10"+')' }
+
+    { 57  ;2   ;Column  ;AnteilChampVerkauf  ;
+               SourceExpr=(Verkauf_CHAMP_Menge/Verkauf_VK_Menge)*100 }
+
+    { 58  ;2   ;Column  ;Feld20_Verkauf1     ;
+               DecimalPlaces=0:0;
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Verkauf1."Feld 20" }
+
+    { 59  ;2   ;Column  ;Feld5_Verkauf1      ;
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Verkauf1."Feld 5" }
+
+    { 60  ;2   ;Column  ;Feld4_Verkauf1      ;
+               DecimalPlaces=0:0;
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Verkauf1."Feld 4" }
+
+    { 61  ;2   ;Column  ;Feld3_Verkauf1      ;
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Verkauf1."Feld 3" }
+
+    { 62  ;2   ;Column  ;Feld21_Verkauf1     ;
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Verkauf1."Feld 21" }
+
+    { 1000000008;2;Column;Verkauf_VK_Menge   ;
+               DecimalPlaces=0:0;
+               IncludeCaption=No;
+               SourceExpr=Verkauf_VK_Menge }
+
+    { 1000000009;2;Column;Verkauf_CHAMP_Menge;
+               DecimalPlaces=0:0;
+               IncludeCaption=No;
+               SourceExpr=Verkauf_CHAMP_Menge }
+
+    { 1000000010;2;Column;Verkauf_betrag_geraete;
+               DecimalPlaces=0:0;
+               IncludeCaption=No;
+               SourceExpr=Verkauf_betrag_geraete }
+
+    { 1000000007;1;DataItem;CopySell2        ;
+               DataItemTable=Table2000000026;
+               OnPreDataItem=BEGIN
+                               Berichtstabelle_Verkauf2.RESET;
+                               Berichtstabelle_Verkauf2.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               Berichtstabelle_Verkauf2.SETFILTER(Tabelle,'%1','VERKAUF2');
+                               Berichtstabelle_Verkauf2.SETFILTER("Feld 2",'%1',Berichtstabelle_Debitor.Index);
+                               SETRANGE(Number,1,Berichtstabelle_Verkauf2.COUNT);
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_Verkauf2.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_Verkauf2.NEXT;
+                                  END;
+
                                   IF totale_EK_Menge > 0 THEN
                                     ratio_VK_Menge_EK_Menge := (totale_VK_Menge / totale_EK_Menge) * 100
                                   ELSE
@@ -239,97 +459,33 @@ OBJECT Report 50055 TOPAS Service Auswertung
                                 END;
                                  }
 
-    { 45  ;1   ;Column  ;Feld7_Debitor2      ;
-               SourceExpr="Feld 7" }
-
-    { 46  ;1   ;Column  ;Feld6_Debitor2      ;
-               SourceExpr="Feld 6" }
-
-    { 47  ;1   ;Column  ;Feld10_Debitor2     ;
-               SourceExpr="Feld 10" }
-
-    { 48  ;1   ;Column  ;Index_Debitor2      ;
-               SourceExpr=Index }
-
-    { 49  ;1   ;Column  ;totale_VK_Menge_totale_EK_Menge_100;
-               SourceExpr=FORMAT(ratio_VK_Menge_EK_Menge) }
-
-    { 50  ;1   ;Column  ;totale_VK_Menge     ;
-               DecimalPlaces=0:0;
-               SourceExpr=totale_VK_Menge }
-
-    { 51  ;1   ;Column  ;totale_EK_Menge     ;
-               DecimalPlaces=0:0;
-               SourceExpr=totale_EK_Menge }
-
-    { 52  ;1   ;Column  ;totaler_betrag_geraete;
-               DecimalPlaces=0:0;
-               SourceExpr=totaler_betrag_geraete }
-
-    { 53  ;1   ;Column  ;totale_CHAMP_Menge_totale_VK_Menge_100;
-               SourceExpr=FORMAT(ratio_Champ_Menge_VK_Menge) }
-
-    { 54  ;1   ;Column  ;totale_CHAMP_Menge  ;
-               DecimalPlaces=0:0;
-               SourceExpr=totale_CHAMP_Menge }
-
-    { 55  ;1   ;DataItem;Verkauf1            ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
-                                 WHERE(Tabelle=FILTER(VERKAUF1));
-               OnAfterGetRecord=BEGIN
-                                  totale_VK_Menge := totale_VK_Menge + "Feld 4";
-                                  totale_CHAMP_Menge := totale_CHAMP_Menge + "Feld 20";
-                                  totaler_betrag_geraete := totaler_betrag_geraete + "Feld 21";
-                                END;
-
-               DataItemLink=Feld 2=FIELD(Index) }
-
-    { 56  ;2   ;Column  ;V__Feld10__         ;
-               SourceExpr='('+"Feld 10"+')' }
-
-    { 57  ;2   ;Column  ;Feld20_Feld4_100    ;
-               SourceExpr=("Feld 20"/"Feld 4")*100 }
-
-    { 58  ;2   ;Column  ;Feld20_Verkauf1     ;
-               DecimalPlaces=0:0;
-               SourceExpr="Feld 20" }
-
-    { 59  ;2   ;Column  ;Feld5_Verkauf1      ;
-               SourceExpr="Feld 5" }
-
-    { 60  ;2   ;Column  ;Feld4_Verkauf1      ;
-               DecimalPlaces=0:0;
-               SourceExpr="Feld 4" }
-
-    { 61  ;2   ;Column  ;Feld3_Verkauf1      ;
-               SourceExpr="Feld 3" }
-
-    { 62  ;2   ;Column  ;Feld21_Verkauf1     ;
-               SourceExpr="Feld 21" }
-
-    { 63  ;1   ;DataItem;Verkauf2            ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
-                                 WHERE(Tabelle=FILTER(VERKAUF2));
-               DataItemLink=Feld 2=FIELD(Index) }
-
     { 64  ;2   ;Column  ;posten_fehlen       ;
                DecimalPlaces=0:0;
+               IncludeCaption=No;
                SourceExpr=posten_fehlen }
 
     { 65  ;2   ;Column  ;Artikelnr_Textkette ;
+               IncludeCaption=No;
                SourceExpr=Artikelnr_Textkette }
 
     { 66  ;2   ;Column  ;Liefermenge_gesamt  ;
                DecimalPlaces=0:0;
+               IncludeCaption=No;
                SourceExpr=Liefermenge_gesamt }
 
     { 67  ;2   ;Column  ;Feld17_Verkauf2     ;
-               SourceExpr="Feld 17" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Verkauf2."Feld 17" }
 
     { 68  ;2   ;Column  ;Belegnr_Verkauf2    ;
-               SourceExpr="Belegnr." }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Verkauf2."Belegnr." }
+
+    { 49  ;2   ;Column  ;totale_VK_Menge_totale_EK_Menge_100;
+               SourceExpr=FORMAT(ratio_VK_Menge_EK_Menge) }
+
+    { 53  ;2   ;Column  ;totale_CHAMP_Menge_totale_VK_Menge_100;
+               SourceExpr=FORMAT(ratio_Champ_Menge_VK_Menge) }
 
   }
   REQUESTPAGE
@@ -402,10 +558,16 @@ OBJECT Report 50055 TOPAS Service Auswertung
   CODE
   {
     VAR
-      Berichtstabelle@1140000 : Record 50037;
-      Berichtstabelle_temp@1140015 : Record 50037;
+      Berichtstabelle@1140000 : TEMPORARY Record 50037;
+      Berichtstabelle_Artikel@1000000012 : TEMPORARY Record 50037;
+      Berichtstabelle_Debitor@1140015 : TEMPORARY Record 50037;
+      Berichtstabelle_Header2@1000000006 : TEMPORARY Record 50037;
+      Berichtstabelle_Einkauf1@1000000007 : TEMPORARY Record 50037;
+      Berichtstabelle_Einkauf2@1000000008 : TEMPORARY Record 50037;
+      Berichtstabelle_Verkauf1@1000000010 : TEMPORARY Record 50037;
+      Berichtstabelle_Verkauf2@1000000011 : TEMPORARY Record 50037;
       Lieferzeile@1140032 : Record 111;
-      Artikelnr_Textkette@1140033 : Text[250];
+      Artikelnr_Textkette@1140033 : Text;
       "RE-Kopf"@1140001 : Record 112;
       "RE-Zeile"@1140002 : Record 113;
       "BET-Kopf"@1140018 : Record 38;
@@ -430,15 +592,18 @@ OBJECT Report 50055 TOPAS Service Auswertung
       umsatz_item@1140013 : Decimal;
       umsatz_champ@1140014 : Decimal;
       umsatz_sup@1140011 : Decimal;
-      InvoiceRowID@1140026 : Text[250];
       vk_gesamt_champf„hig@1140024 : Decimal;
       vk_gesamt_supf„hig@1140025 : Decimal;
       ek_gesamt_champf„hig@1140022 : Decimal;
       ek_gesamt_supf„hig@1140023 : Decimal;
+      einkauf_gesamt_menge@1000000009 : Decimal;
       totale_VK_Menge@1140036 : Decimal;
       totale_EK_Menge@1140021 : Decimal;
       totale_CHAMP_Menge@1140037 : Decimal;
       totaler_betrag_geraete@1140020 : Decimal;
+      Verkauf_VK_Menge@1000000015 : Decimal;
+      Verkauf_CHAMP_Menge@1000000016 : Decimal;
+      Verkauf_betrag_geraete@1000000014 : Decimal;
       liefermenge_zeile@1140038 : Decimal;
       Liefermenge_gesamt@1140039 : Decimal;
       ratio_VK_Menge_EK_Menge@1000000000 : Decimal;
@@ -458,31 +623,31 @@ OBJECT Report 50055 TOPAS Service Auswertung
       ReportForNavOpenDesigner@5002 : Boolean;
       ReportForNavAllowDesign@5004 : Boolean INDATASET;
 
-    LOCAL PROCEDURE OnPreSectionArtikel_Body2@5021(VAR Artikel@1000000000 : Record 50037);
+    LOCAL PROCEDURE OnPreSectionCopyItem_Body2@5021(VAR Artikel@1000000000 : Record 50037);
     BEGIN
       WITH Artikel DO BEGIN
         ReportForNav.ShowOutput(STRPOS("Feld 3",'CHAMPS') <> 0);
       END;
     END;
 
-    LOCAL PROCEDURE OnPreSectionArtikel_Body3@5022(VAR Artikel@1000000000 : Record 50037);
+    LOCAL PROCEDURE OnPreSectionCopyItem_Body3@5022(VAR Artikel@1000000000 : Record 50037);
     BEGIN
       WITH Artikel DO BEGIN
         ReportForNav.ShowOutput(STRPOS("Feld 3",'CHAMPS') = 0);
       END;
     END;
 
-    LOCAL PROCEDURE OnPreSectionDebitor2_Header12@5023(VAR Debitor2@1000000000 : Record 50037);
+    LOCAL PROCEDURE OnPreSectionCopyCustomer2_Header12@5023(VAR Debitor2@1000000000 : Record 50037);
     BEGIN
       WITH Debitor2 DO BEGIN
-        Berichtstabelle_temp.RESET;
-        Berichtstabelle_temp.SETFILTER(Tabelle,'%1|%2','EINKAUF1','EINKAUF2');
-        IF Berichtstabelle_temp.FINDFIRST THEN
+        Berichtstabelle.RESET;
+        Berichtstabelle.SETFILTER(Tabelle,'%1|%2','EINKAUF1','EINKAUF2');
+        IF Berichtstabelle.FINDFIRST THEN
           ReportForNav.NewPageWithoutTransportTotals;
       END;
     END;
 
-    LOCAL PROCEDURE OnPreSectionVerkauf2_Body19@5024(VAR Verkauf2@1000000000 : Record 50037);
+    LOCAL PROCEDURE OnPreSectionCopySell2_Body19@5024(VAR Verkauf2@1000000000 : Record 50037);
     BEGIN
       WITH Verkauf2 DO BEGIN
         Artikelnr_Textkette := '';
@@ -497,24 +662,24 @@ OBJECT Report 50055 TOPAS Service Auswertung
             liefermenge_zeile := 0;
             Item.GET(Lieferzeile."No.");
             IF Item."Software Upgrade Protection" = FALSE THEN BEGIN
-              Berichtstabelle_temp.RESET;
-              Berichtstabelle_temp.SETFILTER(Tabelle,'%1','VERKAUF3');
-              Berichtstabelle_temp.SETFILTER("Belegnr.",'%1',Lieferzeile."Document No.");
-              Berichtstabelle_temp.SETFILTER("Zeilennr.",'%1',Lieferzeile."Line No.");
-              Berichtstabelle_temp.SETFILTER("Feld 3",'%1',Lieferzeile."Artikelnr. 2");
-              IF Berichtstabelle_temp.FINDFIRST THEN BEGIN
+              Berichtstabelle.RESET;
+              Berichtstabelle.SETFILTER(Tabelle,'%1','VERKAUF3');
+              Berichtstabelle.SETFILTER("Belegnr.",'%1',Lieferzeile."Document No.");
+              Berichtstabelle.SETFILTER("Zeilennr.",'%1',Lieferzeile."Line No.");
+              Berichtstabelle.SETFILTER("Feld 3",'%1',Lieferzeile."Artikelnr. 2");
+              IF Berichtstabelle.FINDFIRST THEN BEGIN
                 REPEAT
-                  liefermenge_zeile := liefermenge_zeile + Berichtstabelle_temp."Feld 4";
-                  Liefermenge_gesamt := Liefermenge_gesamt + Berichtstabelle_temp."Feld 4";
-                UNTIL Berichtstabelle_temp.NEXT = 0;
+                  liefermenge_zeile := liefermenge_zeile + Berichtstabelle."Feld 4";
+                  Liefermenge_gesamt := Liefermenge_gesamt + Berichtstabelle."Feld 4";
+                UNTIL Berichtstabelle.NEXT = 0;
                 IF Artikelnr_Textkette <> '' THEN
                   Artikelnr_Textkette := Artikelnr_Textkette + ', ';
                 Artikelnr_Textkette := Artikelnr_Textkette + Lieferzeile."Artikelnr. 2" + ' (' + FORMAT(liefermenge_zeile) + ')';
               END;
-              Berichtstabelle_temp.RESET;
-              Berichtstabelle_temp.SETFILTER(Tabelle,'%1','POSTEN_WEGFALL');
-              Berichtstabelle_temp.SETFILTER("Feld 7",'%1',Lieferzeile."Document No.");
-              IF Berichtstabelle_temp.FINDFIRST THEN BEGIN
+              Berichtstabelle.RESET;
+              Berichtstabelle.SETFILTER(Tabelle,'%1','POSTEN_WEGFALL');
+              Berichtstabelle.SETFILTER("Feld 7",'%1',Lieferzeile."Document No.");
+              IF Berichtstabelle.FINDFIRST THEN BEGIN
                 posten_fehlen := '*';
               END;
             END;
@@ -563,11 +728,11 @@ OBJECT Report 50055 TOPAS Service Auswertung
               IF "RE-Zeile".FINDFIRST THEN
                 REPEAT
                   //Nur ein Datensatz pro SUP/CHAMPS Artikel und Debitor
-                  Berichtstabelle_temp.RESET;
-                  Berichtstabelle_temp.SETFILTER(Tabelle,'%1','DEBITOR_E');
-                  Berichtstabelle_temp.SETFILTER(Index,'%1',"RE-Zeile"."Sell-to Customer No.");
-                  Berichtstabelle_temp.SETFILTER("Belegnr.",'%1',Item."No.");
-                  IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                  Berichtstabelle.RESET;
+                  Berichtstabelle.SETFILTER(Tabelle,'%1','DEBITOR_E');
+                  Berichtstabelle.SETFILTER(Index,'%1',"RE-Zeile"."Sell-to Customer No.");
+                  Berichtstabelle.SETFILTER("Belegnr.",'%1',Item."No.");
+                  IF NOT Berichtstabelle.FINDFIRST THEN BEGIN
                     Berichtstabelle.INIT;
                     Berichtstabelle.Tabelle := 'DEBITOR_E';
                     Berichtstabelle.Index := "RE-Zeile"."Sell-to Customer No.";
@@ -669,9 +834,9 @@ OBJECT Report 50055 TOPAS Service Auswertung
             REPEAT
               Item.GET("BET-Zeile"."No.");
               IF Item."Software Upgrade Protection" = FALSE THEN BEGIN
-                Berichtstabelle_temp.RESET;
-                Berichtstabelle_temp.SETFILTER(Tabelle,'%1','HEADER2');
-                IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                Berichtstabelle.RESET;
+                Berichtstabelle.SETFILTER(Tabelle,'%1','HEADER2');
+                IF NOT Berichtstabelle.FINDFIRST THEN BEGIN
                   Berichtstabelle.INIT;
                   Berichtstabelle.Tabelle := 'HEADER2';
                   Berichtstabelle.Uhrzeit := CURRENTDATETIME;
@@ -682,11 +847,11 @@ OBJECT Report 50055 TOPAS Service Auswertung
                   ek_gesamt_champf„hig := ek_gesamt_champf„hig + ("BET-Zeile"."Direct Unit Cost" * "BET-Zeile"."Outstanding Quantity")
                 ELSE
                   ek_gesamt_supf„hig := ek_gesamt_supf„hig + ("BET-Zeile"."Direct Unit Cost" * "BET-Zeile"."Outstanding Quantity");
-                Berichtstabelle_temp.RESET;
-                Berichtstabelle_temp.SETFILTER(Tabelle,'%1|%2','EINKAUF1','EINKAUF2');
-                Berichtstabelle_temp.SETFILTER("Belegnr.",'%1',"BET-Zeile"."Document No.");
-                Berichtstabelle_temp.SETFILTER("Feld 2",'%1',"BET-Zeile"."No.");
-                IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                Berichtstabelle.RESET;
+                Berichtstabelle.SETFILTER(Tabelle,'%1|%2','EINKAUF1','EINKAUF2');
+                Berichtstabelle.SETFILTER("Belegnr.",'%1',"BET-Zeile"."Document No.");
+                Berichtstabelle.SETFILTER("Feld 2",'%1',"BET-Zeile"."No.");
+                IF NOT Berichtstabelle.FINDFIRST THEN BEGIN
                   Berichtstabelle.INIT;
                   IF Item.Serviceklassifizierung <> 'SYSTEM FLAT' THEN
                     Berichtstabelle.Tabelle := 'EINKAUF2'
@@ -705,16 +870,15 @@ OBJECT Report 50055 TOPAS Service Auswertung
                   Berichtstabelle.User := USERID;
                   Berichtstabelle.INSERT;
                 END ELSE BEGIN
-                  Berichtstabelle_temp."Feld 4" :=  Berichtstabelle_temp."Feld 4" +"BET-Zeile"."Outstanding Quantity";
-                  Berichtstabelle_temp."Feld 20" := Berichtstabelle_temp."Feld 20" +
+                  Berichtstabelle."Feld 4" :=  Berichtstabelle."Feld 4" +"BET-Zeile"."Outstanding Quantity";
+                  Berichtstabelle."Feld 20" := Berichtstabelle."Feld 20" +
                                                     ("BET-Zeile"."Direct Unit Cost" * "BET-Zeile"."Outstanding Quantity");
-                  Berichtstabelle_temp.MODIFY;
+                  Berichtstabelle.MODIFY;
                 END;
               END;
             UNTIL "BET-Zeile".NEXT = 0;
           END;
       UNTIL "BET-Kopf".NEXT = 0;
-
       ////Gebuchte Einkaufslieferscheine
       "EK-Liefkopf".RESET;
       IF (Startdatum<>0D) AND (Enddatum=0D) THEN
@@ -734,9 +898,9 @@ OBJECT Report 50055 TOPAS Service Auswertung
             REPEAT
               Item.GET("EK-Liefzeile"."No.");
               IF Item."Software Upgrade Protection" = FALSE THEN BEGIN
-                Berichtstabelle_temp.RESET;
-                Berichtstabelle_temp.SETFILTER(Tabelle,'%1','HEADER2');
-                IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                Berichtstabelle.RESET;
+                Berichtstabelle.SETFILTER(Tabelle,'%1','HEADER2');
+                IF NOT Berichtstabelle.FINDFIRST THEN BEGIN
                   Berichtstabelle.INIT;
                   Berichtstabelle.Tabelle := 'HEADER2';
                   Berichtstabelle.Uhrzeit := CURRENTDATETIME;
@@ -747,11 +911,11 @@ OBJECT Report 50055 TOPAS Service Auswertung
                   ek_gesamt_champf„hig := ek_gesamt_champf„hig + ("EK-Liefzeile"."Direct Unit Cost" * "EK-Liefzeile".Quantity)
                 ELSE
                   ek_gesamt_supf„hig := ek_gesamt_supf„hig + ("EK-Liefzeile"."Direct Unit Cost" * "EK-Liefzeile".Quantity);
-                Berichtstabelle_temp.RESET;
-                Berichtstabelle_temp.SETFILTER(Tabelle,'%1|%2','EINKAUF1','EINKAUF2');
-                Berichtstabelle_temp.SETFILTER("Belegnr.",'%1',"EK-Liefzeile"."Order No.");
-                Berichtstabelle_temp.SETFILTER("Feld 2",'%1',"EK-Liefzeile"."No.");
-                IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                Berichtstabelle.RESET;
+                Berichtstabelle.SETFILTER(Tabelle,'%1|%2','EINKAUF1','EINKAUF2');
+                Berichtstabelle.SETFILTER("Belegnr.",'%1',"EK-Liefzeile"."Order No.");
+                Berichtstabelle.SETFILTER("Feld 2",'%1',"EK-Liefzeile"."No.");
+                IF NOT Berichtstabelle.FINDFIRST THEN BEGIN
                   Berichtstabelle.INIT;
                   IF Item.Serviceklassifizierung <> 'SYSTEM FLAT' THEN
                     Berichtstabelle.Tabelle := 'EINKAUF2'
@@ -771,16 +935,15 @@ OBJECT Report 50055 TOPAS Service Auswertung
                   Berichtstabelle.User := USERID;
                   Berichtstabelle.INSERT;
                 END ELSE BEGIN
-                  Berichtstabelle_temp."Feld 4" := Berichtstabelle_temp."Feld 4" + "EK-Liefzeile".Quantity;
-                  Berichtstabelle_temp."Feld 20" := Berichtstabelle_temp."Feld 20" +
+                  Berichtstabelle."Feld 4" := Berichtstabelle."Feld 4" + "EK-Liefzeile".Quantity;
+                  Berichtstabelle."Feld 20" := Berichtstabelle."Feld 20" +
                   ("EK-Liefzeile"."Direct Unit Cost" * "EK-Liefzeile".Quantity);
-                  Berichtstabelle_temp.MODIFY;
+                  Berichtstabelle.MODIFY;
                 END;
               END;
             UNTIL "EK-Liefzeile".NEXT = 0;
           END;
       UNTIL "EK-Liefkopf".NEXT = 0;
-
       //*******************************************************************************************************
       // Verkauf, gleicht mit dem Einkauf ab
       //*******************************************************************************************************
@@ -855,10 +1018,10 @@ OBJECT Report 50055 TOPAS Service Auswertung
                           vk_gesamt_champf„hig := vk_gesamt_champf„hig + ("RE-Zeile"."VK-Preis (MW)" *
                           ((Artikelposten.Quantity) * (-1)));
                           //Nur ein Datensatz pro Debitor
-                          Berichtstabelle_temp.RESET;
-                          Berichtstabelle_temp.SETFILTER(Tabelle,'%1','DEBITOR_D');
-                          Berichtstabelle_temp.SETFILTER(Index,'%1',"RE-Zeile"."Sell-to Customer No.");
-                          IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                          Berichtstabelle.RESET;
+                          Berichtstabelle.SETFILTER(Tabelle,'%1','DEBITOR_D');
+                          Berichtstabelle.SETFILTER(Index,'%1',"RE-Zeile"."Sell-to Customer No.");
+                          IF NOT Berichtstabelle.FINDFIRST THEN BEGIN
                             Berichtstabelle.INIT;
                             Berichtstabelle.Tabelle := 'DEBITOR_D';
                             Berichtstabelle.Index := "RE-Zeile"."Sell-to Customer No.";
@@ -882,10 +1045,10 @@ OBJECT Report 50055 TOPAS Service Auswertung
                           Champs.SETFILTER(Inaktiv,'%1',FALSE);
                           IF Champs.FINDFIRST THEN
                             service_gebucht := service_gebucht + Champs.Menge;
-                          Berichtstabelle_temp.RESET;
-                          Berichtstabelle_temp.SETFILTER(Tabelle,'%1','VERKAUF2');
-                          Berichtstabelle_temp.SETFILTER("Belegnr.",'%1',Artikelposten."Document No.");
-                          IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                          Berichtstabelle.RESET;
+                          Berichtstabelle.SETFILTER(Tabelle,'%1','VERKAUF2');
+                          Berichtstabelle.SETFILTER("Belegnr.",'%1',Artikelposten."Document No.");
+                          IF NOT Berichtstabelle.FINDFIRST THEN BEGIN
                             Berichtstabelle.INIT;
                             Berichtstabelle.Tabelle := 'VERKAUF2';
                             Berichtstabelle.Index := Artikelposten."Document No.";
@@ -901,13 +1064,13 @@ OBJECT Report 50055 TOPAS Service Auswertung
                             Berichtstabelle.INSERT;
                           END;
                           //Artikelnr. nur einmal pro Lieferscheinnr., wird fr Section Verkauf Body (2) ben”tigt
-                          Berichtstabelle_temp.RESET;
-                          Berichtstabelle_temp.SETFILTER(Tabelle,'%1','VERKAUF3');
-                          Berichtstabelle_temp.SETFILTER(Index,'%1',Artikelposten."Item No.");
-                          Berichtstabelle_temp.SETFILTER("Belegnr.",'%1',Artikelposten."Document No.");
-                          Berichtstabelle_temp.SETFILTER("Zeilennr.",'%1',Artikelposten."Document Line No.");
-                          Berichtstabelle_temp.SETFILTER("Feld 2",'%1',Artikelposten."Source No.");
-                          IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                          Berichtstabelle.RESET;
+                          Berichtstabelle.SETFILTER(Tabelle,'%1','VERKAUF3');
+                          Berichtstabelle.SETFILTER(Index,'%1',Artikelposten."Item No.");
+                          Berichtstabelle.SETFILTER("Belegnr.",'%1',Artikelposten."Document No.");
+                          Berichtstabelle.SETFILTER("Zeilennr.",'%1',Artikelposten."Document Line No.");
+                          Berichtstabelle.SETFILTER("Feld 2",'%1',Artikelposten."Source No.");
+                          IF NOT Berichtstabelle.FINDFIRST THEN BEGIN
                             Berichtstabelle.INIT;
                             Berichtstabelle.Tabelle := 'VERKAUF3';
                             Berichtstabelle.Index := Artikelposten."Item No.";
@@ -925,18 +1088,18 @@ OBJECT Report 50055 TOPAS Service Auswertung
                             Berichtstabelle.User := USERID;
                             Berichtstabelle.INSERT;
                           END ELSE BEGIN
-                            Berichtstabelle_temp."Feld 4" := Berichtstabelle_temp."Feld 4" +
+                            Berichtstabelle."Feld 4" := Berichtstabelle."Feld 4" +
                             ((Artikelposten.Quantity) * (-1));
                             IF service_gebucht <> 0 THEN
-                              Berichtstabelle_temp."Feld 17" := TRUE;
-                            Berichtstabelle_temp.MODIFY;
+                              Berichtstabelle."Feld 17" := TRUE;
+                            Berichtstabelle.MODIFY;
                           END;
                           //Nur ein Datensatz pro Artikelnr., ansonsten wird dieser nur aktualisiert
-                          Berichtstabelle_temp.RESET;
-                          Berichtstabelle_temp.SETFILTER(Tabelle,'%1','VERKAUF1');
-                          Berichtstabelle_temp.SETFILTER(Index,'%1',Artikelposten."Item No.");
-                          Berichtstabelle_temp.SETFILTER("Feld 2",'%1',Artikelposten."Source No.");
-                          IF NOT Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                          Berichtstabelle.RESET;
+                          Berichtstabelle.SETFILTER(Tabelle,'%1','VERKAUF1');
+                          Berichtstabelle.SETFILTER(Index,'%1',Artikelposten."Item No.");
+                          Berichtstabelle.SETFILTER("Feld 2",'%1',Artikelposten."Source No.");
+                          IF NOT Berichtstabelle.FINDFIRST THEN BEGIN
                             Berichtstabelle.INIT;
                             Berichtstabelle.Tabelle := 'VERKAUF1';
                             Berichtstabelle.Index := Artikelposten."Item No.";
@@ -957,18 +1120,18 @@ OBJECT Report 50055 TOPAS Service Auswertung
                             Berichtstabelle.User := USERID;
                             Berichtstabelle.INSERT;
                           END ELSE BEGIN
-                            Berichtstabelle_temp."Feld 4" := Berichtstabelle_temp."Feld 4" +
+                            Berichtstabelle."Feld 4" := Berichtstabelle."Feld 4" +
                                                               ((Artikelposten.Quantity) * (-1));
-                            Berichtstabelle_temp."Feld 5" := (Berichtstabelle_temp."Feld 5" +
+                            Berichtstabelle."Feld 5" := (Berichtstabelle."Feld 5" +
                             (("RE-Zeile"."VK-Preis (MW)") * (Artikelposten.Quantity) * (-1))) / 2;
                             IF "RE-Zeile"."VK-Preis (MW)" = 0 THEN BEGIN
-                              EVALUATE(artikel_zunull,Berichtstabelle_temp."Feld 10");
-                              Berichtstabelle_temp."Feld 10" := FORMAT(artikel_zunull + ((Artikelposten.Quantity) * (-1)));
+                              EVALUATE(artikel_zunull,Berichtstabelle."Feld 10");
+                              Berichtstabelle."Feld 10" := FORMAT(artikel_zunull + ((Artikelposten.Quantity) * (-1)));
                             END;
-                            Berichtstabelle_temp."Feld 20" := Berichtstabelle_temp."Feld 20" + service_gebucht;
-                            Berichtstabelle_temp."Feld 21" := Berichtstabelle_temp."Feld 21" +
+                            Berichtstabelle."Feld 20" := Berichtstabelle."Feld 20" + service_gebucht;
+                            Berichtstabelle."Feld 21" := Berichtstabelle."Feld 21" +
                             (((Artikelposten.Quantity) * (-1)) * ("RE-Zeile"."VK-Preis (MW)"));
-                            Berichtstabelle_temp.MODIFY;
+                            Berichtstabelle.MODIFY;
                           END;
                         END ELSE BEGIN
                           Berichtstabelle.INIT;
@@ -993,7 +1156,6 @@ OBJECT Report 50055 TOPAS Service Auswertung
               END;
             UNTIL "RE-Zeile".NEXT = 0;
         UNTIL "RE-Kopf".NEXT = 0;
-
       //*******************************************************************************************************
       // Zusammenfassung
       //*******************************************************************************************************
@@ -1088,15 +1250,15 @@ OBJECT Report 50055 TOPAS Service Auswertung
     EVENT ReportForNav@5000::OnPreSection@5012(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
     BEGIN
       CASE DataItemId OF
-        'Artikel': CASE SectionId OF
-          'Body2': OnPreSectionArtikel_Body2(Artikel);
-          'Body3': OnPreSectionArtikel_Body3(Artikel);
+        'CopyItem': CASE SectionId OF
+          'Body2': OnPreSectionCopyItem_Body2(Berichtstabelle_Artikel);
+          'Body3': OnPreSectionCopyItem_Body3(Berichtstabelle_Artikel);
         END;
-        'Debitor2': CASE SectionId OF
-          'Header12': OnPreSectionDebitor2_Header12(Debitor2);
+        'CopyCustomer2': CASE SectionId OF
+          'Header12': OnPreSectionCopyCustomer2_Header12(Berichtstabelle_Debitor);
         END;
-        'Verkauf2': CASE SectionId OF
-          'Body19': OnPreSectionVerkauf2_Body19(Verkauf2);
+        'CopySell2': CASE SectionId OF
+          'Body19': OnPreSectionCopySell2_Body19(Berichtstabelle_Verkauf2);
         END;
       END;
     END;
@@ -1201,43 +1363,50 @@ OBJECT Report 50055 TOPAS Service Auswertung
     BEGIN
       // Do not change (Autogenerated by Reports ForNAV) - Instead change the Create Totals, Total Fields or Group Total Fields properties on the Data item in the ForNAV designer
       CASE DataItemId OF
-        'Einkauf1': WITH Einkauf1 DO CASE Operation OF
+        'CopyPurchase1': WITH CopyPurchase1 DO CASE Operation OF
            'Add': BEGIN
-                ReportForNav.AddTotal(DataItemId,0,"Feld 4");
+                ReportForNav.AddTotal(DataItemId,0,einkauf_gesamt_menge);
               END;
            'Restore': BEGIN
-                 "Feld 4" := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
+                 einkauf_gesamt_menge := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
               END;
-        END;  'Einkauf2': WITH Einkauf2 DO CASE Operation OF
+        END;  'CopyPurchase2': WITH CopyPurchase2 DO CASE Operation OF
            'Add': BEGIN
-                ReportForNav.AddTotal(DataItemId,0,"Feld 4");
+                ReportForNav.AddTotal(DataItemId,0,einkauf_gesamt_menge);
               END;
            'Restore': BEGIN
-                 "Feld 4" := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
+                 einkauf_gesamt_menge := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
               END;
-        END;  'Verkauf1': WITH Verkauf1 DO CASE Operation OF
+        END;  'CopySell1': WITH CopySell1 DO CASE Operation OF
            'Add': BEGIN
-                ReportForNav.AddTotal(DataItemId,0,"Feld 4");
-                ReportForNav.AddTotal(DataItemId,1,"Feld 20");
-                ReportForNav.AddTotal(DataItemId,2,"Feld 21");
+                ReportForNav.AddTotal(DataItemId,0,Verkauf_VK_Menge);
+                ReportForNav.AddTotal(DataItemId,1,Verkauf_CHAMP_Menge);
+                ReportForNav.AddTotal(DataItemId,2,Verkauf_betrag_geraete);
               END;
            'Restore': BEGIN
-                 "Feld 4" := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
-                 "Feld 20" := ReportForNav.RestoreTotal(DataItemId,1,GroupTotalFieldNo);
-                 "Feld 21" := ReportForNav.RestoreTotal(DataItemId,2,GroupTotalFieldNo);
+                 Verkauf_VK_Menge := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
+                 Verkauf_CHAMP_Menge := ReportForNav.RestoreTotal(DataItemId,1,GroupTotalFieldNo);
+                 Verkauf_betrag_geraete := ReportForNav.RestoreTotal(DataItemId,2,GroupTotalFieldNo);
               END;
         END;
       END;
     END;
 
     BEGIN
+    {
+      #############################################
+      18.01.18 ST - Umstellung auf Berichtstabelle Temporary YES
+      Es kann beim Neu Generieren des Layouts (Run > Open Designer) zu Probleme beim Speichern kommen, diese dann einfach ignorieren und dass die
+      ReportForNav::OnPreSection Aufrufe durch die jeweiligen DataItems ausgetauscht werden, das fhrt dann zu Problemen beim Compilieren
+      Workaround: Die šbergabe Parameter mssen auf die jeweiligen Berichtstabellen Variablen umgestellt werden z.B. 'Body2': OnPreSectionCopyItem_Body2(Berichtstabelle_Artikel);
+    }
     END.
   }
   RDLDATA
   {
     <?xml version="1.0" encoding="utf-8"?>
 <Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
-  <Description>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</Description>
+  <Description>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</Description>
   <AutoRefresh>0</AutoRefresh>
   <DataSources>
     <DataSource Name="DataSource">
@@ -1246,7 +1415,7 @@ OBJECT Report 50055 TOPAS Service Auswertung
         <ConnectString />
       </ConnectionProperties>
       <rd:SecurityType>None</rd:SecurityType>
-      <rd:DataSourceID>e8ba4f24-4920-4f1b-93ba-347713a6f627</rd:DataSourceID>
+      <rd:DataSourceID>9e13e219-7baa-49d2-a498-24073d9e7951</rd:DataSourceID>
     </DataSource>
   </DataSources>
   <ReportSections>
@@ -1262,7 +1431,7 @@ OBJECT Report 50055 TOPAS Service Auswertung
     </ReportSection>
   </ReportSections>
   <rd:ReportUnitType>Invalid</rd:ReportUnitType>
-  <rd:ReportID>3ece80a7-20c0-4c2e-a58e-0969cf1b926e</rd:ReportID>
+  <rd:ReportID>9e9850d4-6a8d-4ce3-bd0e-623a8db7535e</rd:ReportID>
   <DataSets>
     <DataSet Name="DataSet_Result">
       <Fields>
@@ -1281,8 +1450,8 @@ OBJECT Report 50055 TOPAS Service Auswertung
         <Field Name="FORMAT_ROUND_Feld4_umsatz_acs_champfahig_100_000_Pct">
           <DataField>FORMAT_ROUND_Feld4_umsatz_acs_champfahig_100_000_Pct</DataField>
         </Field>
-        <Field Name="V_">
-          <DataField>V_</DataField>
+        <Field Name="W„hrung">
+          <DataField>W„hrung</DataField>
         </Field>
         <Field Name="Feld4_Artikel">
           <DataField>Feld4_Artikel</DataField>
@@ -1331,9 +1500,6 @@ OBJECT Report 50055 TOPAS Service Auswertung
         </Field>
         <Field Name="umsatz_champFormat">
           <DataField>umsatz_champFormat</DataField>
-        </Field>
-        <Field Name="V_8">
-          <DataField>V_8</DataField>
         </Field>
         <Field Name="Feld4_Debitor">
           <DataField>Feld4_Debitor</DataField>
@@ -1392,6 +1558,12 @@ OBJECT Report 50055 TOPAS Service Auswertung
         <Field Name="ek_gesamt_supfahigFormat">
           <DataField>ek_gesamt_supfahigFormat</DataField>
         </Field>
+        <Field Name="einkauf1_gesamt_menge">
+          <DataField>einkauf1_gesamt_menge</DataField>
+        </Field>
+        <Field Name="einkauf1_gesamt_mengeFormat">
+          <DataField>einkauf1_gesamt_mengeFormat</DataField>
+        </Field>
         <Field Name="Feld5_Einkauf2">
           <DataField>Feld5_Einkauf2</DataField>
         </Field>
@@ -1419,6 +1591,12 @@ OBJECT Report 50055 TOPAS Service Auswertung
         <Field Name="ek_gesamt_champfahigFormat">
           <DataField>ek_gesamt_champfahigFormat</DataField>
         </Field>
+        <Field Name="einkauf2_gesamt_menge">
+          <DataField>einkauf2_gesamt_menge</DataField>
+        </Field>
+        <Field Name="einkauf2_gesamt_mengeFormat">
+          <DataField>einkauf2_gesamt_mengeFormat</DataField>
+        </Field>
         <Field Name="Feld7_Debitor2">
           <DataField>Feld7_Debitor2</DataField>
         </Field>
@@ -1430,9 +1608,6 @@ OBJECT Report 50055 TOPAS Service Auswertung
         </Field>
         <Field Name="Index_Debitor2">
           <DataField>Index_Debitor2</DataField>
-        </Field>
-        <Field Name="totale_VK_Menge_totale_EK_Menge_100">
-          <DataField>totale_VK_Menge_totale_EK_Menge_100</DataField>
         </Field>
         <Field Name="totale_VK_Menge">
           <DataField>totale_VK_Menge</DataField>
@@ -1452,9 +1627,6 @@ OBJECT Report 50055 TOPAS Service Auswertung
         <Field Name="totaler_betrag_geraeteFormat">
           <DataField>totaler_betrag_geraeteFormat</DataField>
         </Field>
-        <Field Name="totale_CHAMP_Menge_totale_VK_Menge_100">
-          <DataField>totale_CHAMP_Menge_totale_VK_Menge_100</DataField>
-        </Field>
         <Field Name="totale_CHAMP_Menge">
           <DataField>totale_CHAMP_Menge</DataField>
         </Field>
@@ -1464,11 +1636,11 @@ OBJECT Report 50055 TOPAS Service Auswertung
         <Field Name="V__Feld10__">
           <DataField>V__Feld10__</DataField>
         </Field>
-        <Field Name="Feld20_Feld4_100">
-          <DataField>Feld20_Feld4_100</DataField>
+        <Field Name="AnteilChampVerkauf">
+          <DataField>AnteilChampVerkauf</DataField>
         </Field>
-        <Field Name="Feld20_Feld4_100Format">
-          <DataField>Feld20_Feld4_100Format</DataField>
+        <Field Name="AnteilChampVerkaufFormat">
+          <DataField>AnteilChampVerkaufFormat</DataField>
         </Field>
         <Field Name="Feld20_Verkauf1">
           <DataField>Feld20_Verkauf1</DataField>
@@ -1497,6 +1669,24 @@ OBJECT Report 50055 TOPAS Service Auswertung
         <Field Name="Feld21_Verkauf1Format">
           <DataField>Feld21_Verkauf1Format</DataField>
         </Field>
+        <Field Name="Verkauf_VK_Menge">
+          <DataField>Verkauf_VK_Menge</DataField>
+        </Field>
+        <Field Name="Verkauf_VK_MengeFormat">
+          <DataField>Verkauf_VK_MengeFormat</DataField>
+        </Field>
+        <Field Name="Verkauf_CHAMP_Menge">
+          <DataField>Verkauf_CHAMP_Menge</DataField>
+        </Field>
+        <Field Name="Verkauf_CHAMP_MengeFormat">
+          <DataField>Verkauf_CHAMP_MengeFormat</DataField>
+        </Field>
+        <Field Name="Verkauf_betrag_geraete">
+          <DataField>Verkauf_betrag_geraete</DataField>
+        </Field>
+        <Field Name="Verkauf_betrag_geraeteFormat">
+          <DataField>Verkauf_betrag_geraeteFormat</DataField>
+        </Field>
         <Field Name="posten_fehlen">
           <DataField>posten_fehlen</DataField>
         </Field>
@@ -1514,6 +1704,12 @@ OBJECT Report 50055 TOPAS Service Auswertung
         </Field>
         <Field Name="Belegnr_Verkauf2">
           <DataField>Belegnr_Verkauf2</DataField>
+        </Field>
+        <Field Name="totale_VK_Menge_totale_EK_Menge_100">
+          <DataField>totale_VK_Menge_totale_EK_Menge_100</DataField>
+        </Field>
+        <Field Name="totale_CHAMP_Menge_totale_VK_Menge_100">
+          <DataField>totale_CHAMP_Menge_totale_VK_Menge_100</DataField>
         </Field>
       </Fields>
       <Query>
