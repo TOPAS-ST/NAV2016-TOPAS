@@ -1,0 +1,139 @@
+OBJECT Table 50029 Musterberwachung
+{
+  OBJECT-PROPERTIES
+  {
+    Date=24.08.17;
+    Time=16:52:33;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    OnInsert=BEGIN
+               {
+               IF "Belegnr."='' THEN
+                 BEGIN
+                   //Probleme mit Table 5079 Einrichtung wegen Table 1261 Service Password
+                   //RMSetup.GET;
+                   //RMSetup.TESTFIELD("Musterberwachung Nos.");
+                   //NoSeriesMgt.InitSeries(RMSetup."Musterberwachung Nos.",xRec.Nummernserie,0D,Nr,Nummernserie);
+                   NoSeriesMgt.InitSeries('MUST-šB',xRec.Nummernserie,0D,"Belegnr.",Nummernserie);
+                 END;
+               }
+
+               IF Nr <> '' THEN BEGIN
+                 IF SalesHeader.GET(SalesHeader."Document Type"::Order,Nr) THEN BEGIN
+                   Debitornr := SalesHeader."Sell-to Customer No.";
+                   //MODIFY;
+                 END;
+               END;
+             END;
+
+    OnModify=BEGIN
+               "letzte Žnderung" := WORKDATE;
+             END;
+
+    OnRename=BEGIN
+               IF "Belegnr." <> xRec."Belegnr." THEN
+                 ERROR(Text000,TABLECAPTION);
+             END;
+
+  }
+  FIELDS
+  {
+    { 1   ;   ;Nr                  ;Code20         }
+    { 2   ;   ;Potenzial           ;Text30         }
+    { 3   ;   ;Applikation         ;Text50         }
+    { 5   ;   ;Anzahl pro System   ;Decimal        }
+    { 7   ;   ;Erledigt            ;Boolean        }
+    { 8   ;   ;Status              ;Option        ;OptionString=noch nicht getestet,im Test,freigegeben,Auftrag erhalten,keine Info,technisch ungeeignet,Projekt gestorben,FU im Projekt,kein FU }
+    { 9   ;   ;Vorserienstart      ;Text20         }
+    { 10  ;   ;Follow Up ?         ;Option        ;OptionString=Ja,Nein }
+    { 11  ;   ;Lagerortcode        ;Code10        ;FieldClass=FlowField;
+                                                   CalcFormula=Lookup("Sales Header"."Location Code" WHERE (No.=FIELD(Belegnr.))) }
+    { 13  ;   ;Projektnr           ;Code20         }
+    { 15  ;   ;Projektname         ;Text50        ;FieldClass=Normal }
+    { 31  ;   ;letzte Žnderung     ;Date           }
+    { 32  ;   ;Serienstart         ;Text20         }
+    { 33  ;   ;Nachverfolgung      ;Text90         }
+    { 34  ;   ;Nachverf_Datum      ;Date           }
+    { 35  ;   ;Intern WV           ;Date           }
+    { 36  ;   ;Intern Erledigt     ;Option        ;OptionString=Nein,Ja }
+    { 46  ;   ;Endkunde            ;Text50        ;OnLookup=VAR
+                                                              Debitor@1140000 : Record 18;
+                                                              Endkunden@1140001 : Record 50007;
+                                                            BEGIN
+                                                              //TOPAS 20.06.08 ST
+                                                              Debitor.SETFILTER(Debitor."No.",Debitornr);
+                                                              IF Debitor.FINDFIRST AND Debitor."Endkunde w/Bestcker"=FALSE THEN
+                                                                ERROR('Sie k”nnen diese Funktion nur bei einem Bestcker aufrufen!')
+                                                              ELSE BEGIN
+                                                                Endkunden.SETFILTER(Endkunden."Debitornr.",Debitornr);
+                                                                IF PAGE.RUNMODAL(50003,Endkunden) = ACTION::LookupOK THEN
+                                                                  Endkunde:=Endkunden.Endkundenname;
+                                                              END;
+                                                            END;
+
+                                                   Description=TOPAS 05.05.11 ST - auf 50 Zeichen ge„ndert }
+    { 47  ;   ;Stock Topas         ;Text5          }
+    { 48  ;   ;Debitor VK Rech. Zeile;Code10      ;FieldClass=FlowField;
+                                                   CalcFormula=Lookup("Sales Invoice Header"."Sell-to Customer No." WHERE (Order No.=FIELD(Belegnr.))) }
+    { 49  ;   ;Projektschutz       ;Text50         }
+    { 51  ;   ;Debitornr           ;Code20        ;TableRelation=Customer }
+    { 52  ;   ;Debitorname         ;Text50        ;FieldClass=FlowField;
+                                                   CalcFormula=Lookup(Customer.Name WHERE (No.=FIELD(Debitornr)));
+                                                   Description=TOPAS 24.08.17 ST;
+                                                   Editable=No }
+    { 53  ;   ;Aufgabennr          ;Code20         }
+    { 54  ;   ;Belegnr.            ;Code20         }
+    { 55  ;   ;Nummernserie        ;Code10         }
+    { 56  ;   ;zu l”schen          ;Text10         }
+    { 57  ;   ;Bearbeiter/in       ;Code50        ;TableRelation=Salesperson/Purchaser }
+    { 58  ;   ;Arch. Belegnr.      ;Code20        ;TableRelation="Sales Header Archive".No. WHERE (Document Type=CONST(Order));
+                                                   Description=TOPAS 18.08.08 ST }
+  }
+  KEYS
+  {
+    {    ;Nr                                      ;Clustered=Yes }
+  }
+  FIELDGROUPS
+  {
+  }
+  CODE
+  {
+    VAR
+      NoSeriesMgt@1140000 : Codeunit 396;
+      RMSetup@1140001 : Record 5079;
+      Text000@1140002 : TextConst 'DEU=Sie k”nnen die %1 nicht umbenennen.';
+      Text001@1140003 : TextConst 'DEU=Es wurde bereits die Aufgabe %1 mit dieser Musterberwachung verknpft.';
+      ToDo@1140004 : Record 5080;
+      Text002@1140005 : TextConst 'DEU=Sie haben bereits eine Aufgabennr. vergeben.';
+      SalesHeader@1000000000 : Record 36;
+
+    PROCEDURE CreateToDoMuster@1140000();
+    VAR
+      TempToDoMuster@1140000 : TEMPORARY Record 5080;
+    BEGIN
+      IF (Nr <> '') AND (Aufgabennr = '') THEN BEGIN
+        ToDo.RESET;
+        ToDo.SETRANGE("Musterberwachungsnr.",Nr);
+        ToDo.SETRANGE("System To-do Type",ToDo."System To-do Type" :: Organizer);
+        IF NOT ToDo.FINDFIRST THEN
+          TempToDoMuster.CreateToDoFromMuster(Rec)
+        ELSE
+          MESSAGE(Text001,ToDo."No.");
+      END ELSE
+        IF (Nr <> '') AND (Aufgabennr <> '') THEN
+          MESSAGE(Text002);
+    END;
+
+    BEGIN
+    {
+      Lfd.Nr.  Version  Datum       User   Beschreibung
+      ===========================================================================
+      1        TOP1.00  30.11.16    ST     OnInsert Nummernserie Initiierung aus Tabelle 5079 deaktiviert (Rechte Probleme mit Table 1261)
+    }
+    END.
+  }
+}
+
