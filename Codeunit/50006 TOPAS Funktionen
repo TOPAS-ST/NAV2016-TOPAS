@@ -2,8 +2,8 @@ OBJECT Codeunit 50006 TOPAS Funktionen
 {
   OBJECT-PROPERTIES
   {
-    Date=15.08.17;
-    Time=10:20:55;
+    Date=09.02.18;
+    Time=14:40:59;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -15,6 +15,10 @@ OBJECT Codeunit 50006 TOPAS Funktionen
   }
   CODE
   {
+    VAR
+      Text000@1000000000 : TextConst 'DEU=PDF,PDF + E-Mail';
+      TOPAS_API@1000000001 : Codeunit 50001;
+      Text2000000120_1@1000000002 : TextConst 'DEU=Fehlende Zuordnung zwischen %1 (%2) und %3 in der Tabelle %4. Bitte wenden Sie sich an Ihren Systemadministrator.';
 
     PROCEDURE FindItemPurchPrice@1140002("Item No"@1140003 : Code[20];"Vendor No"@1140007 : Code[20];Date@1140002 : Date;Unit@1140000 : Code[10]) : Decimal;
     VAR
@@ -54,7 +58,7 @@ OBJECT Codeunit 50006 TOPAS Funktionen
       END;
     END;
 
-    PROCEDURE FindItemSalesPrice@1140001(Artikelnr@1140003 : Code[20];Startdatum@1140002 : Date;W„h@1140001 : Code[10];Stkcode@1140000 : Code[10]) : Decimal;
+    PROCEDURE FindItemSalesPrice@1000000001(Artikelnr@1140003 : Code[20];Startdatum@1140002 : Date;W„h@1140001 : Code[10];Stkcode@1140000 : Code[10];Qty@1000000000 : Decimal) : Decimal;
     VAR
       FindSalesPrice@1140006 : Record 7002;
       BestPrice@1140005 : Decimal;
@@ -63,14 +67,14 @@ OBJECT Codeunit 50006 TOPAS Funktionen
       WITH FindSalesPrice DO BEGIN
         SETRANGE("Item No.",Artikelnr);
         SETFILTER("Ending Date",'%1|>=%2',0D,Startdatum);
-        //SETFILTER("Currency Code",'%1|%2',W„h,'');
         SETFILTER("Currency Code",'%1',W„h);
+        SETFILTER("Minimum Quantity",'<=%1', Qty);
         IF Stkcode <> '' THEN
           SETFILTER("Unit of Measure Code",'%1|%2',Stkcode,'');
         SETRANGE("Starting Date",0D,Startdatum);
         SETRANGE("Sales Type","Sales Type"::"All Customers");
         SETRANGE("Sales Code");
-        IF FINDFIRST THEN BEGIN
+        IF FINDLAST THEN BEGIN
           BestPrice := "Unit Price";
           BestDate := "Starting Date";
           REPEAT
@@ -81,8 +85,7 @@ OBJECT Codeunit 50006 TOPAS Funktionen
               BestDate := "Starting Date";
             END;
           UNTIL NEXT = 0;
-        END ELSE
-          EXIT(0);
+        END;
         EXIT(BestPrice);
       END;
     END;
@@ -98,12 +101,172 @@ OBJECT Codeunit 50006 TOPAS Funktionen
       EXIT('Standard');
     END;
 
+    PROCEDURE CalcDateByFormula@39(Date@1000 : Date;CalcStartDate@1001 : Boolean;Scope@1000000000 : 'N,LD,LW,LM,LDIMO') : Date;
+    VAR
+      Modificator@1002 : Text[1];
+    BEGIN
+      // Infos unter: http://navserv-2016:49000/main.aspx?lang=de-DE&content=conEnterDatesTimes.htm
+      // M”glichkeiten
+      // N      - Normal also keine Umsetzung
+      // LD     - letzter Tag
+      // LW     - letzte Woche Montag bis Sonntag
+      // LM     - letzter Monat von 01..Ende des Monats
+      // LDIMO  - Letzter Dienstag - Montag dieser Woche
+
+      IF( Date = 0D) OR (Scope = Scope::N) THEN
+        EXIT(Date);
+
+      CASE Scope OF
+        Scope::LD:
+          EXIT(Date - 1);
+        Scope::LW:
+          BEGIN
+            IF CalcStartDate THEN
+                Modificator := '-';
+              EXIT(CALCDATE(STRSUBSTNO('<%1C%2>',Modificator,'W-1W'),Date));
+          END;
+        Scope::LM:
+          BEGIN
+            IF CalcStartDate THEN
+                Modificator := '-';
+              EXIT(CALCDATE(STRSUBSTNO('<%1C%2>',Modificator,'M-1M'),Date));
+          END;
+        Scope::LDIMO:
+          BEGIN
+              IF CalcStartDate THEN
+                  Modificator := '-';
+                EXIT(CALCDATE(STRSUBSTNO('<%1C%2>',Modificator,'W-1W+1D'),Date));
+          END;
+      END;
+      EXIT(Date);
+    END;
+
+    PROCEDURE CalcNextWorkday@1140024(Step@1140003 : Integer;StartDate@1140001 : Date) : Date;
+    VAR
+      DateRec@1140002 : Record 2000000007;
+      workdate@1140000 : Date;
+    BEGIN
+      WITH DateRec DO BEGIN
+        SETRANGE("Period Type","Period Type" :: Date);
+        SETRANGE("Period No.",1,5);
+        "Period Start" := StartDate;
+        FIND('=<');
+        NEXT(Step);
+        EXIT("Period Start");
+      END;
+    END;
+
+    PROCEDURE PrintSalesDocToPDFwithEmail@1000000003(SalesHeader@1000000010 : Record 36);
+    VAR
+      Contact@1000000009 : Record 5050;
+      SalesHeaderCopy@1000000011 : Record 36;
+      Shell@1000000008 : Automation "{50A7E9B0-70EF-11D1-B75A-00A0C90564FE} 1.0:{13709620-C279-11CE-A49E-444553540000}:'Microsoft Shell Controls And Automation'.Shell";
+      email_address@1000000007 : Text;
+      FileNameServer@1000000006 : Text;
+      FileNameClient@1000000005 : Text;
+      FileManagement@1000000004 : Codeunit 419;
+      body@1000000003 : Text;
+      subject@1000000002 : Text;
+      chr@1000000001 : Char;
+      selection@1000000000 : Integer;
+    BEGIN
+      WITH SalesHeader DO BEGIN
+        SalesHeaderCopy.COPY(SalesHeader);
+        SalesHeaderCopy.SETRECFILTER;
+        FileNameServer := TEMPORARYPATH + "No." + ' ' + "Sell-to Customer Name" + '.pdf';
+        IF "Document Type" = "Document Type"::Quote THEN REPORT.SAVEASPDF(50052,FileNameServer,SalesHeaderCopy);
+        FileNameClient := FileManagement.DownloadTempFile(FileNameServer);
+        selection := STRMENU(Text000);
+        CASE selection OF
+          1:
+            BEGIN
+              CREATE(Shell,FALSE,TRUE);
+              Shell.Open(FileNameClient);
+              CLEAR(Shell);
+            END;
+          2:
+            BEGIN
+              chr := 10;
+              body := '';
+              subject := '';
+              IF Contact.GET("Kontaktnr.") THEN
+                email_address := Contact."E-Mail"
+              ELSE
+                email_address := '';
+              IF "Language Code" = 'DEU' THEN BEGIN
+                IF "Document Type" = "Document Type"::Quote THEN BEGIN
+                  body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
+                        'anbei erhalten Sie unser Angebot.' + FORMAT(chr);
+                  subject := 'Unser Angebot ' + "No." + ' zu Ihrer Referenz: ' + "Your Reference";
+                END;
+              END ELSE BEGIN
+                IF "Document Type" = "Document Type"::Quote THEN BEGIN
+                  body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
+                            'attached you will find our Quote.' + FORMAT(chr);
+                  subject := 'Our Quote ' + "No." + ' for your reference: ' + "Your Reference";
+                END;
+              END;
+
+              TOPAS_API.NewMail(email_address,'','',subject,body,'',FileNameClient);
+            END;
+        END;
+      END;
+    END;
+
+    PROCEDURE CheckUserSetup@1000000002() : Code[10];
+    VAR
+      User@1000000000 : Record 2000000120;
+    BEGIN
+      //TOPAS 11.01.18 ST - Prft die User Verbindung mit der Tabelle Verk„ufercode, damit TOPAS Statistiken korrekt funktionieren
+      User.RESET;
+      User.SETCURRENTKEY("User Name");
+      User.SETRANGE("User Name",USERID);
+      User.FINDFIRST;
+      IF (User."Salesperson Code" = '') AND (STRPOS(UPPERCASE(User."User Name"),'ADMIN') = 0) AND (STRPOS(UPPERCASE(User."User Name"),'LABOR') = 0)
+      AND (STRPOS(UPPERCASE(User."User Name"),'LAGER') = 0) THEN
+        MESSAGE(Text2000000120_1,User.FIELDCAPTION("User Name"),USERID,User.FIELDCAPTION("Salesperson Code"),User.TABLECAPTION)
+      ELSE
+        EXIT(User."Salesperson Code");
+    END;
+
+    PROCEDURE GetCompanyInformation@1000000004(VAR VarCompany@1000000000 : ARRAY [15] OF Text;CompanyInformation@1000000002 : Record 79);
+    VAR
+      TextGesch@1000000001 : TextConst 'DEU=Gesch„ftsfhrer;ENU=CEO';
+    BEGIN
+      CompanyInformation.GET;
+      WITH CompanyInformation DO BEGIN
+        VarCompany[1] := Name;
+        VarCompany[2] := Address;
+        VarCompany[3] := "Address 2";
+        VarCompany[4] := "Post Code";
+        VarCompany[5] := City;
+        VarCompany[6] := "Phone No.";
+        VarCompany[7] := "Fax No.";
+        VarCompany[8] := "VAT Registration No.";
+        VarCompany[9] := "Registration No.";
+        IF STRPOS(UPPERCASE(Name),'GMBH') <> 0 THEN
+          VarCompany[10] := TextGesch + ': ' + Vorstand;
+        IF STRPOS(UPPERCASE(Name),'AG') <> 0 THEN
+          VarCompany[10] := FIELDCAPTION(Vorstand) + ': ' + Vorstand;
+        IF Aufsichtsratvorsitz <> '' THEN
+          VarCompany[11] := FIELDCAPTION(Aufsichtsratvorsitz) + ': ' + Aufsichtsratvorsitz + ', ';
+        VarCompany[12] := FIELDCAPTION("District Court") + ' ' + "District Court";
+        VarCompany[13] := "WEEE-Reg.-Nr.";
+        VarCompany[14] := FIELDCAPTION("P.O. Box") + ' ' + "P.O. Box";
+        VarCompany[15] := "Home Page";
+      END;
+    END;
+
     BEGIN
     {
       Lfd.Nr. Version   Datum       User  Beschreibung
       ===========================================================================
       1       TOP1.00   30.03.17    ST    Neue Funktion FindItemPurchPrice zur Anzeige des DC-Preises
       2       TOP1.00   30.03.17    ST    Neue Funktion FindItemSalesPrice zur Anzeige der VK-Preise
+      3       TOP1.01   28.11.17    ST    šbernomme Funktion CalcNextWorkday aus CU 50001 TOPAS API
+      4       TOP1.02   30.11.17    ST    Neue Funktion PrintSalesQuoteToPDFwithEmail
+      5       TOP1.03   18.01.17    ST    Neue Funktion CheckUserSetup
+      5       TOP1.04   09.02.17    ST    Neue Funktion GetCompanyInformation fr Berichtsandrucke benutzt
     }
     END.
   }
