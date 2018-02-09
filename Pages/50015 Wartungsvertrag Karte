@@ -1,0 +1,1076 @@
+OBJECT Page 50015 Wartungsvertrag Karte
+{
+  OBJECT-PROPERTIES
+  {
+    Date=21.12.17;
+    Time=11:27:29;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    InsertAllowed=No;
+    DeleteAllowed=No;
+    SourceTable=Table50011;
+    PromotedActionCategoriesML=DEU=Neu,Vorgang,Berichte,Funktionen,Konfiguration,šbersicht;
+    OnOpenPage=BEGIN
+                 systempos_show := TRUE;
+               END;
+
+    OnAfterGetCurrRecord=BEGIN
+                           IF "Wartungsvertragsnr." <> '' THEN BEGIN
+                             "Topas Bemerkungen".RESET;
+                             "Topas Bemerkungen".SETRANGE("Nr.","Wartungsvertragsnr.");
+                             "Topas Bemerkungen".SETRANGE(Art,"Topas Bemerkungen".Art::Wartungsvertrag);
+                             IF "Topas Bemerkungen".FINDFIRST THEN
+                               comment := TRUE
+                             ELSE
+                               comment := FALSE;
+                           END;
+
+                           IF (Status = Status::System) OR (Status = Status::" ") THEN BEGIN
+                             vertragsart := 'Systemvertrag';
+                             vertragsartstyle := 'Unfavorable'
+                           END ELSE
+                             IF Status = Status::ACTS THEN BEGIN
+                               vertragsart := 'ACTS';
+                               vertragsartstyle := 'Ambiguous'
+                             END ELSE
+                               IF Status = Status::ACHAT THEN BEGIN
+                                 vertragsart := 'ACHAT';
+                                 vertragsartstyle := 'Ambiguous'
+                               END ELSE
+                                 IF Status = Status::"Champs Partner" THEN BEGIN
+                                   vertragsart := 'CHAMPS Partner';
+                                   vertragsartstyle := 'Favorable'
+                                 END ELSE BEGIN
+                                   vertragsart := 'Wartungsvertrag';
+                                   vertragsartstyle := 'StrongAccent';
+                                 END;
+
+                           Servicepositionen.RESET;
+                           Servicepositionen.SETRANGE(Art,Servicepositionen.Art::Service);
+                           Servicepositionen.SETRANGE("Wartungsvertragsnr.","Wartungsvertragsnr.");
+                           IF Servicepositionen.FINDFIRST THEN
+                             servicespos_show := TRUE
+                           ELSE
+                             servicespos_show := FALSE;
+
+                           IF Debitor.GET("Debitornr.") THEN
+                             betreuer := Debitor."Betreuer Innendienst"
+                           ELSE
+                             betreuer := '';
+
+                           Beteiligte.RESET;
+                           Beteiligte.SETFILTER("Kampagnennr.",'%1',"Wartungsvertragsnr.");
+                           IF Beteiligte.FINDFIRST THEN
+                             AnzBeteiligte := Beteiligte.COUNT
+                           ELSE
+                             AnzBeteiligte := 0;
+
+                           Angebote_pruefen(FALSE);
+
+                           SORStyleTxt := SetStyle;
+
+                           //Pfad fr die Lizenzverwaltung virtueller ACS Systeme
+                           FolderPath := 'F:\Daten NEU\Gemeinsame Ordner\AudioCodes Lizenzverwaltung\' + FORMAT("Wartungsvertragsnr.");
+
+                           //Record Links
+                           RecLinkRef.GETTABLE(Rec);
+                           RecID := RecLinkRef.RECORDID;
+                           RecLink.SETRANGE("Record ID",RecID);
+                           IF RecLink.FINDFIRST THEN
+                             Links := TRUE
+                           ELSE
+                             Links := FALSE;
+                         END;
+
+    ActionList=ACTIONS
+    {
+      { 1900000000;  ;ActionContainer;
+                      ActionContainerType=ActionItems }
+      { 1       ;1   ;ActionGroup;
+                      Name=Related;
+                      CaptionML=[DEU=Allgmein;
+                                 ENU=General] }
+      { 1140017 ;2   ;Action    ;
+                      CaptionML=[DEU=Bemerkungen;
+                                 ENU=Comments];
+                      RunObject=Page 50083;
+                      RunPageView=WHERE(Art=FILTER(Wartungsvertrag));
+                      RunPageLink=Nr.=FIELD(Wartungsvertragsnr.);
+                      Promoted=Yes;
+                      Image=ViewComments;
+                      PromotedCategory=Process }
+      { 1140044 ;2   ;Action    ;
+                      Name=HistoryCalculation;
+                      CaptionML=DEU=Hist. &Kalkulation;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=PaymentHistory;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 CurrPage.ServicePos.PAGE.OpenChampKalkulation;
+                               END;
+                                }
+      { 1140081 ;2   ;Action    ;
+                      Name=RunStats;
+                      CaptionML=DEU=Statistiken;
+                      Promoted=Yes;
+                      Image=Statistics;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 selection := STRMENU(Text100,1);
+                                 CASE selection OF
+                                   0: ;
+                                   1:
+                                     BEGIN
+                                       Statistiken.Z„hle_Service_einfach(0,FALSE);
+                                       Statistiken.Z„hle_Service_einfach(1,FALSE);
+                                     END;
+                                   2:
+                                     BEGIN
+                                       Statistiken.Z„hle_Service_detailiert(0,FALSE);
+                                       Statistiken.Z„hle_Service_detailiert(1,FALSE);
+                                     END;
+                                 END;
+                               END;
+                                }
+      { 1140086 ;2   ;Action    ;
+                      Name=CheckDocStatus;
+                      CaptionML=DEU=AN+AU Status prfen;
+                      Promoted=Yes;
+                      Image=VoidExpiredCheck;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 Angebote_pruefen(TRUE);
+                               END;
+                                }
+      { 1000000011;1 ;ActionGroup;
+                      Name=Functions;
+                      CaptionML=[DEU=Funktionen;
+                                 ENU=Functions] }
+      { 1000000010;2 ;Action    ;
+                      Name=CreateMissingSystemPos;
+                      CaptionML=DEU=Fehlende System Positionen anlegen;
+                      Promoted=Yes;
+                      Visible=FALSE;
+                      Image=GetLines;
+                      PromotedCategory=Category5;
+                      OnAction=BEGIN
+                                 SystemPos_anlegen;
+                               END;
+                                }
+      { 1000000009;2 ;Action    ;
+                      Name=DeleteFromSystemContract;
+                      CaptionML=DEU=Aus Systemvertrag entfernen;
+                      Promoted=Yes;
+                      Image=RemoveLine;
+                      PromotedCategory=Category5;
+                      OnAction=BEGIN
+                                 SystemPos_entfernen;
+                               END;
+                                }
+      { 1000000008;2 ;Action    ;
+                      Name=SplitSystemsInNewContracts;
+                      CaptionML=DEU=Systeme aufteilen;
+                      Promoted=Yes;
+                      Image=Split;
+                      PromotedCategory=Category5;
+                      OnAction=BEGIN
+                                 Systeme_in_neue_Vertraege_aufteilen;
+                               END;
+                                }
+      { 1000000019;2 ;Action    ;
+                      Name=SplitPosInMultiplePos;
+                      CaptionML=DEU=Positionen splitten;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=Splitlines;
+                      PromotedCategory=Category5;
+                      OnAction=BEGIN
+                                 SplitPosInMultiplePos("Wartungsvertragsnr.");
+                               END;
+                                }
+      { 1000000006;2 ;Action    ;
+                      Name=MovePosToContract;
+                      CaptionML=DEU=in Systemvertrag verschieben;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=MoveNegativeLines;
+                      PromotedCategory=Category5;
+                      OnAction=BEGIN
+                                 Servicepositionen.SystemPos_verschieben("Wartungsvertragsnr.",temp_vertragsnr);
+                               END;
+                                }
+      { 1000000012;1 ;ActionGroup;
+                      Name=Prints }
+      { 1140042 ;2   ;Action    ;
+                      Name=Print_Original;
+                      CaptionML=DEU=&Original drucken;
+                      Promoted=Yes;
+                      Image=Report;
+                      PromotedCategory=Report;
+                      OnAction=BEGIN
+                                 ServiceDruck.RESET;
+                                 ServiceDruck.SETFILTER(ServiceDruck."Wartungsvertragsnr.",'%1',"Wartungsvertragsnr.");
+                                 REPORT.RUN(50176,TRUE,FALSE,ServiceDruck);
+                                 REPORT.RUN(50177,TRUE,FALSE,ServiceDruck);
+                               END;
+                                }
+      { 1140043 ;2   ;Action    ;
+                      Name=Print_PDF;
+                      CaptionML=DEU=&PDF erzeugen (LOGO);
+                      Promoted=Yes;
+                      Image=Report;
+                      PromotedCategory=Report;
+                      OnAction=BEGIN
+                                 ServiceDruck.RESET;
+                                 ServiceDruck.SETFILTER(ServiceDruck."Wartungsvertragsnr.",'%1',"Wartungsvertragsnr.");
+                                 REPORT.RUN(50178,TRUE,FALSE,ServiceDruck);
+                               END;
+                                }
+      { 1000000007;2 ;Action    ;
+                      Name=Help;
+                      CaptionML=DEU=&Hilfe;
+                      Promoted=Yes;
+                      Image=Help;
+                      OnAction=VAR
+                                 Shell@1140001 : Automation "{50A7E9B0-70EF-11D1-B75A-00A0C90564FE} 1.0:{13709620-C279-11CE-A49E-444553540000}:'Microsoft Shell Controls And Automation'.Shell";
+                                 Filename@1140000 : Text[260];
+                               BEGIN
+                                 CREATE(Shell,FALSE,TRUE);
+                                 Filename := 'F:\Daten NEU\Gemeinsame Ordner\Navision\Navision 5.0 Anleitungen\Nav.5.0 Servicevertr„ge.pdf';
+                                 Shell.Open(Filename);
+                               END;
+                                }
+      { 1000000015;1 ;ActionGroup;
+                      CaptionML=DEU=šbersicht }
+      { 1000000020;2 ;Action    ;
+                      Name=OpenContractFolder;
+                      CaptionML=DEU=Ordner ”ffnen;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=FileContract;
+                      PromotedCategory=Category6;
+                      OnAction=BEGIN
+                                 IF NOT FileMgt.ClientDirectoryExists(FolderPath) THEN BEGIN
+                                   IF CONFIRM(Text200,TRUE) THEN
+                                     FileMgt.CreateClientDirectory(FolderPath)
+                                   ELSE
+                                     EXIT;
+                                 END;
+
+                                 TOPAS_API.OpenFolder(FolderPath);
+                               END;
+                                }
+      { 1000000016;2 ;Action    ;
+                      Name=SystempositionenAnzeigen;
+                      CaptionML=DEU=Systempositionen ein-/ausblenden;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=ShowList;
+                      PromotedCategory=Category6;
+                      OnAction=BEGIN
+                                 IF systempos_show THEN
+                                   systempos_show := FALSE
+                                 ELSE
+                                   systempos_show := TRUE;
+
+                                 CurrPage.UPDATE;
+                               END;
+                                }
+    }
+  }
+  CONTROLS
+  {
+    { 1900000;0;Container ;
+                ContainerType=ContentArea }
+
+    { 1900001;1;Group     ;
+                CaptionML=DEU=Vertragsdaten;
+                GroupType=Group }
+
+    { 1000000002;2;Field  ;
+                Name=Vertragsart;
+                CaptionML=DEU=Vertragsart;
+                SourceExpr=vertragsart;
+                Editable=FALSE;
+                StyleExpr=[vertragsartstyle ] }
+
+    { 2   ;2   ;Field     ;
+                SourceExpr="Wartungsvertragsnr.";
+                Editable=FALSE }
+
+    { 1140012;2;Field     ;
+                SourceExpr="Debitornr." }
+
+    { 1140026;2;Field     ;
+                SourceExpr=Debitorname;
+                OnValidate=BEGIN
+                             CurrPage.UPDATE;
+                           END;
+                            }
+
+    { 1140014;2;Field     ;
+                SourceExpr=Basisger„t }
+
+    { 4   ;2   ;Field     ;
+                SourceExpr=Status;
+                OnValidate=BEGIN
+                             CurrPage.UPDATE;
+                           END;
+                            }
+
+    { 6   ;2   ;Field     ;
+                SourceExpr=Klasse;
+                Importance=Additional }
+
+    { 8   ;2   ;Field     ;
+                SourceExpr=Volumen;
+                Importance=Additional }
+
+    { 10  ;2   ;Field     ;
+                SourceExpr=Startdatum;
+                Importance=Promoted }
+
+    { 1140004;2;Field     ;
+                SourceExpr=Vertragsablaufdatum;
+                Importance=Promoted;
+                OnValidate=BEGIN
+                             CurrPage.UPDATE;
+                           END;
+                            }
+
+    { 1140049;2;Field     ;
+                SourceExpr="Ablauf Gew„hrleistung";
+                Importance=Additional }
+
+    { 1000000013;2;Field  ;
+                SourceExpr=Wiedervorlage;
+                Importance=Additional }
+
+    { 1140054;2;Field     ;
+                SourceExpr="Wartungs Kandidat";
+                Importance=Additional }
+
+    { 1140038;2;Field     ;
+                SourceExpr=Inaktiv }
+
+    { 1140083;2;Field     ;
+                SourceExpr=Verl„ngerungen;
+                Editable=FALSE }
+
+    { 1140089;2;Field     ;
+                CaptionML=DEU=Betreuer Innendienst;
+                SourceExpr=betreuer;
+                Editable=FALSE }
+
+    { 1000000018;2;Field  ;
+                Name=Beteiligte;
+                SourceExpr=AnzBeteiligte;
+                Editable=FALSE;
+                OnLookup=BEGIN
+                           Beteiligte.RESET;
+                           Beteiligte.SETFILTER("Kampagnennr.",'%1',"Wartungsvertragsnr.");
+                           PAGE.RUN(50053,Beteiligte);
+                         END;
+                          }
+
+    { 1000000004;2;Field  ;
+                Name=SOR_Hinweis;
+                CaptionML=DEU=SOR;
+                SourceExpr="SOR Option";
+                Editable=FALSE;
+                StyleExpr=SORStyleTxt }
+
+    { 1000000014;2;Field  ;
+                Name=Bemerkung vorhanden;
+                SourceExpr=comment;
+                Editable=FALSE }
+
+    { 1000000021;2;Field  ;
+                Name=Link vorhanden;
+                SourceExpr=Links;
+                Editable=FALSE }
+
+    { 1000000005;1;Group  ;
+                Visible=hinweis_anzeigen;
+                GroupType=Group }
+
+    { 1000000003;2;Field  ;
+                Name=Belegstatus;
+                SourceExpr=Beleg_Hinweistext;
+                Editable=FALSE;
+                Style=Unfavorable;
+                StyleExpr=TRUE }
+
+    { 1900002;1;Group     ;
+                CaptionML=DEU=Services;
+                GroupType=Group }
+
+    { 1140001;1;Part      ;
+                Name=ServicePos;
+                CaptionML=DEU=Servicepositionen;
+                SubPageView=SORTING(Ablaufdatum Serviceleistung,SUP Artikelnr.,Gruppierung)
+                            WHERE(Art=FILTER(Service));
+                SubPageLink=Wartungsvertragsnr.=FIELD(Wartungsvertragsnr.);
+                PagePartID=Page50016;
+                Visible=servicespos_show;
+                PartType=Page }
+
+    { 1900003;1;Group     ;
+                CaptionML=DEU=System Positionen }
+
+    { 1140028;1;Part      ;
+                CaptionML=DEU=Systempositionen;
+                SubPageView=SORTING(Art,Debitornr.,Wartungsvertragsnr.,Nr.,Belegzeilennr.)
+                            WHERE(Art=FILTER(System));
+                SubPageLink=Wartungsvertragsnr.=FIELD(Wartungsvertragsnr.);
+                PagePartID=Page50017;
+                Visible=systempos_show;
+                PartType=Page }
+
+    { 1900006;1;Group     ;
+                CaptionML=DEU=Endkunde/Systemhaus }
+
+    { 1140061;2;Field     ;
+                SourceExpr=Endkunde;
+                Importance=Promoted }
+
+    { 1140063;2;Field     ;
+                SourceExpr="Endkunde Adresse" }
+
+    { 1140069;2;Field     ;
+                SourceExpr="Endkunde Land";
+                Importance=Promoted }
+
+    { 1140071;2;Field     ;
+                SourceExpr="Endkunde Kontakt" }
+
+    { 1140073;2;Field     ;
+                SourceExpr="Endkunde Telefonnr." }
+
+    { 1140065;2;Field     ;
+                SourceExpr="Endkunde PLZ-Code";
+                Importance=Promoted }
+
+    { 1140067;2;Field     ;
+                SourceExpr="Endkunde Ort";
+                Importance=Promoted }
+
+    { 1140075;2;Field     ;
+                SourceExpr="Endkunde E-Mail" }
+
+    { 1140090;2;Field     ;
+                SourceExpr="Systemhaus Kontakt" }
+
+    { 1140092;2;Field     ;
+                SourceExpr="Systemhaus E-Mail" }
+
+    { 1900007;1;Group     ;
+                CaptionML=DEU=Weitere Informationen }
+
+    { 1140006;2;Field     ;
+                SourceExpr=Auftragsstatus;
+                Importance=Promoted;
+                Editable=FALSE }
+
+    { 1140008;2;Field     ;
+                SourceExpr="Auftragsnr.";
+                Editable=FALSE }
+
+    { 1140010;2;Field     ;
+                SourceExpr="Auftragszeilennr.";
+                Editable=FALSE }
+
+    { 1140019;2;Field     ;
+                SourceExpr="Hauptwartungsvertragsnr.";
+                Editable=FALSE }
+
+    { 1140021;2;Field     ;
+                SourceExpr="Lieferscheinnr.";
+                Editable=FALSE }
+
+    { 1140023;2;Field     ;
+                SourceExpr="Lieferscheinzeilennr.";
+                Editable=FALSE }
+
+    { 1140030;2;Field     ;
+                SourceExpr="Auftragsnr. Service";
+                Importance=Promoted;
+                Editable=FALSE }
+
+    { 1140032;2;Field     ;
+                SourceExpr="Auftragszeilennr. Service";
+                Editable=FALSE }
+
+    { 1140034;2;Field     ;
+                SourceExpr="Lieferscheinnr. Service";
+                Importance=Promoted;
+                Editable=FALSE }
+
+    { 1140036;2;Field     ;
+                SourceExpr="LS Zeilennr. Service";
+                Editable=FALSE }
+
+    { 1900008;1;Group     ;
+                CaptionML=DEU=Details }
+
+    { 16  ;2   ;Field     ;
+                SourceExpr="Angelegt am";
+                Importance=Promoted;
+                Editable=FALSE }
+
+    { 18  ;2   ;Field     ;
+                SourceExpr="Angelegt von";
+                Importance=Promoted;
+                Editable=FALSE }
+
+    { 20  ;2   ;Field     ;
+                SourceExpr="Korrigiert am";
+                Importance=Promoted;
+                Editable=FALSE }
+
+    { 22  ;2   ;Field     ;
+                SourceExpr="Korrigiert von";
+                Importance=Promoted;
+                Editable=FALSE }
+
+    { 1140056;2;Field     ;
+                SourceExpr=SOR;
+                Importance=Promoted;
+                Editable=FALSE }
+
+    { 1140058;2;Field     ;
+                SourceExpr="SOR Option";
+                Importance=Promoted;
+                Editable=FALSE;
+                StyleExpr=SORStyleTxt }
+
+    { 1140025;2;Field     ;
+                SourceExpr=Belegdatum;
+                Importance=Promoted;
+                Editable=FALSE }
+
+    { 1000000001;1;Group  ;
+                CaptionML=DEU=Spezielle Konfigurationen }
+
+    { 1000000017;2;Group  ;
+                CaptionML=DEU=markierte Systempositionen verschieben/entfernen;
+                GroupType=Group }
+
+    { 1000000000;3;Field  ;
+                CaptionML=DEU=Wartungsvertragsnr.;
+                SourceExpr=temp_vertragsnr;
+                TableRelation=Wartungsvertrag;
+                Style=Unfavorable;
+                StyleExpr=TRUE }
+
+  }
+  CODE
+  {
+    VAR
+      ServiceDruck@1140003 : Record 50011;
+      Servicepositionen@1140019 : Record 50024;
+      "Topas Bemerkungen"@1140001 : Record 50023;
+      Debitor@1140025 : Record 18;
+      Beteiligte@1000000008 : Record 50005;
+      Statistiken@1000000001 : Codeunit 50002;
+      FileMgt@1000000011 : Codeunit 419;
+      TOPAS_API@1000000010 : Codeunit 50001;
+      temp_vertragsnr@1140009 : Code[20];
+      vertragsart@1140002 : Text[30];
+      comment@1140000 : Boolean;
+      Text000@1140010 : TextConst 'DEU=M”chten Sie wirklich mit der Anlage von Systempositionen beginnen?';
+      Text001@1140008 : TextConst 'DEU=M”chten Sie wirklich mit dem Verschieben von Systempositionen beginnen?';
+      Text002@1140007 : TextConst 'DEU="Sie k”nnen Systempositionen nur in Systemvertr„ge des gleichen Debitorkontos verschieben. "';
+      Text003@1140006 : TextConst 'DEU=Die Verschiebung von Basisger„ten ist derzeit nicht gestattet.';
+      Text004@1140005 : TextConst 'DEU=Fr Seriennr. %1 konnte das Feld %2 nicht gefllt werden, da im neu zugewiesenen Systemvertrag kein aktives Basisger„t gefunden werden konnte.';
+      Text005@1140004 : TextConst 'DEU=Seriennr. %1 wurde erfolgreich in Systemvertrag %2 berfhrt.';
+      Text006@1140012 : TextConst 'DEU=M”chten Sie die markierten Systempositionen wirklich entfernen?';
+      Text007@1140011 : TextConst 'DEU=Vorgang erfolgreich abgeschlossen.';
+      Text008@1140013 : TextConst 'DEU=Die Seriennr. wurde in ein oder mehreren Kalkulationen vorgemerkt. Sie mssen diese Vorbelegungen l”sen, damit die Position verschoben werden kann.\M”chten Sie diese Aktion jetzt durchfhren lassen?';
+      AN_liegt_vor@1140018 : Boolean;
+      hinweis_anzeigen@1000000003 : Boolean;
+      Beleg_Hinweistext@1000000002 : Text[100];
+      selection@1140021 : Integer;
+      Text009@1140024 : TextConst 'DEU=Es muss mindestens ein Basisger„t zurckbleiben.';
+      Text010@1140023 : TextConst 'DEU=M”chten Sie damit fortfahren die markierten Basisger„te (%1)  in neue Systemvertr„ge aufzuteilen?';
+      Text011@1140022 : TextConst 'DEU=Diese Aktion kann nur ausgel”st werden, wenn mindestens ein Basisger„t zum Verschieben markiert wurde.';
+      Text012@1000000015 : TextConst 'DEU=M”chten Sie die markierten System- und/oder Servicepositionen wirklich aufsplitten?';
+      Text013@1000000013 : TextConst 'DEU=Vorgang abgebrochen, der Artikel %1 konnte nicht gefunden werden.';
+      Text014@1000000014 : TextConst 'DEU=Vorgang abgebrochen, da der Artikel %1 ein Basissystem ist.';
+      Text015@1000000017 : TextConst 'DEU=Vorgang abgebrochen, da der Artikel %1 auf Artikelverfolgung %2 eingestellt ist.';
+      Text016@1000000016 : TextConst 'DEU=Splitvorgang fr %1, %2 %3 erfolgreich (Neue Pos.: %4).';
+      Text100@1140020 : TextConst 'DEU=Einfach,Detailliert';
+      betreuer@1140026 : Code[20];
+      SORStyleTxt@1000000000 : Text;
+      vertragsartstyle@1000000004 : Text;
+      servicespos_show@1000000005 : Boolean;
+      systempos_show@1000000006 : Boolean;
+      AnzBeteiligte@1000000007 : Integer;
+      FolderPath@1000000009 : Text;
+      Text200@1000000012 : TextConst 'DEU=Der Vorgangsordner existiert noch nicht. M”chten Sie diesen jetzt anlegen lassen?';
+      RecLink@1000000021 : Record 2000000068;
+      RecLinkRef@1000000020 : RecordRef;
+      RecID@1000000019 : RecordID;
+      Links@1000000018 : Boolean;
+
+    LOCAL PROCEDURE SystemPos_anlegen@1140000();
+    VAR
+      SystemPos@1140001 : Record 50024;
+      Artikel@1140004 : Record 27;
+      Liefkopf@1140003 : Record 110;
+      Liefzeile@1140000 : Record 111;
+      SeriennrVerfolgung@1140002 : Record 32;
+    BEGIN
+      //*****************************************************************************************************
+      MESSAGE('Funktion vorerst deaktiviert.');
+      EXIT;
+      //*****************************************************************************************************
+
+      IF NOT CONFIRM(Text000,FALSE) THEN
+        EXIT;
+
+      TESTFIELD("Lieferscheinnr.");
+      TESTFIELD("Lieferscheinzeilennr.");
+      TESTFIELD("Wartungsvertragsnr.");
+      TESTFIELD("Hauptwartungsvertragsnr.");
+
+      Liefzeile.RESET;
+      Liefzeile.SETRANGE(Type,Liefzeile.Type::Item);
+      Liefzeile.SETRANGE("Document No.","Lieferscheinnr.");
+      //Liefzeile.SETFILTER("Line No.",'%1',"Lieferscheinzeilennr.");
+      Liefzeile.SETFILTER(Quantity,'>%1',0);
+      IF Liefzeile.FINDFIRST THEN BEGIN
+        Artikel.GET(Liefzeile."No.");
+        //IF Artikel.Serviceklassifizierung <> 'SYSTEM CHAMPS' THEN
+        //  ERROR('Die Angaben %1, %2 mssen auf auf ein Systemger„t verweisen.');
+        Liefkopf.GET("Lieferscheinnr.");
+        REPEAT
+          SeriennrVerfolgung.RESET;
+          //SeriennrVerfolgung.SETFILTER("Item Tracking",'%1',SeriennrVerfolgung."Item Tracking"::"Serial No.");
+          SeriennrVerfolgung.SETRANGE("Document No.",Liefzeile."Document No.");
+          SeriennrVerfolgung.SETRANGE("Document Line No.",Liefzeile."Line No.");
+          IF SeriennrVerfolgung.FINDFIRST THEN
+            REPEAT
+              SystemPos.RESET;
+              SystemPos.SETRANGE(Art,SystemPos.Art::System);
+              SystemPos.SETRANGE("Nr.",Liefzeile."Document No.");
+              SystemPos.SETRANGE("Wartungsvertragsnr.","Wartungsvertragsnr.");
+              SystemPos.SETRANGE("Seriennr.",SeriennrVerfolgung."Serial No.");
+              IF NOT SystemPos.FINDFIRST THEN BEGIN
+                SystemPos.RESET;
+                SystemPos.INIT;
+                SystemPos.Art := SystemPos.Art::System;
+                SystemPos."Nr." := Liefzeile."Document No.";
+                SystemPos.INSERT(TRUE);
+                SystemPos.Belegdatum := Liefkopf."Posting Date";
+                SystemPos.VALIDATE("Artikelnr.",Liefzeile."No.");
+                SystemPos."Seriennr." := SeriennrVerfolgung."Serial No.";
+                SystemPos."Debitornr." := Liefkopf."Sell-to Customer No.";
+                SystemPos.Debitorname := Liefkopf."Sell-to Customer Name";
+                SystemPos.Menge := SeriennrVerfolgung.Quantity * (-1);
+                SystemPos.Kontakt := Liefkopf."Sell-to Contact";
+                SystemPos."Name 2" := Liefkopf."Sell-to Customer Name 2";
+                SystemPos.Adresse := Liefkopf."Sell-to Address";
+                SystemPos."Adresse 2" := Liefkopf."Sell-to Address 2";
+                SystemPos."PLZ-Code" := Liefkopf."Sell-to Post Code";
+                SystemPos.Ort := Liefkopf."Sell-to City";
+                SystemPos."System Projektinfos" := Liefzeile."System Projektinfos";
+                SystemPos."Auftragsnr." := Liefkopf."Order No.";
+                SystemPos."Auftragszeilennr." := Liefzeile."Line No.";
+                SystemPos.Ursprungsland := SeriennrVerfolgung.Ursprungsland;
+                SystemPos."Belegzeilennr." := Liefzeile."Line No.";
+                SystemPos."Wartungsvertragsnr." := "Wartungsvertragsnr.";
+                SystemPos."Hauptwartungsvertragsnr." := "Hauptwartungsvertragsnr.";
+
+                //Zugeh”rigkeit der Positionen untereinander ermitteln
+                SystemPos."Geh”rt zu Lfd. Nr." := SystemPos.SystemZugeh”rigkeitErmitteln(Liefkopf."Order No.",SystemPos."Lfd. Nr.",
+                                                  SystemPos."Wartungsvertragsnr.");
+
+                IF (Artikel.GET(SeriennrVerfolgung."Item No.")) AND ((Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS')
+                OR (Artikel.Serviceklassifizierung = 'SYSTEM FLAT')) THEN BEGIN
+                  SystemPos.Basisger„t := TRUE;
+                  "Auftragsnr." := Liefzeile."Order No.";
+                  "Auftragszeilennr." := Liefzeile."Order Line No.";
+                  "Debitornr." := SeriennrVerfolgung."Source No.";
+                  Basisger„t := SystemPos."Artikelnr.";
+                  MODIFY(TRUE);
+                END;
+
+                SystemPos.MODIFY;
+              END;
+            UNTIL SeriennrVerfolgung.NEXT = 0;
+        UNTIL Liefzeile.NEXT = 0;
+      END;
+    END;
+
+    LOCAL PROCEDURE SystemPos_verschieben@1140007(Aktueller_WV@1140004 : Code[20];Neuer_WV@1140005 : Code[20]);
+    VAR
+      AlterVertrag@1140003 : Record 50011;
+      NeuerVertrag@1140000 : Record 50011;
+      SystemPos@1140001 : Record 50024;
+      NeueSystemPos@1140002 : Record 50024;
+    BEGIN
+      IF NOT CONFIRM(Text001,TRUE) THEN
+        EXIT;
+
+      NeuerVertrag.GET(temp_vertragsnr);
+      AlterVertrag.GET("Wartungsvertragsnr.");
+
+      //IF "Debitornr." <> NeuerVertrag."Debitornr." THEN ERROR(Text002);
+
+      SystemPos.RESET;
+      SystemPos.SETRANGE(Art,SystemPos.Art::System);
+      SystemPos.SETRANGE("Zum Verschieben markieren",TRUE);
+      SystemPos.SETRANGE("Wartungsvertragsnr.","Wartungsvertragsnr.");
+      IF SystemPos.FINDFIRST THEN
+        REPEAT
+          //IF SystemPos.Basisger„t = TRUE THEN ERROR(Text003);
+
+          IF SystemPos_aktion_gesperrt(SystemPos."Artikelnr.",SystemPos."Seriennr.",SystemPos."Nr.",
+          SystemPos."Belegzeilennr.") = FALSE THEN BEGIN
+            SystemPos."Wartungsvertragsnr." := NeuerVertrag."Wartungsvertragsnr.";
+            SystemPos."Hauptwartungsvertragsnr." := NeuerVertrag."Hauptwartungsvertragsnr.";
+            SystemPos."Zum Verschieben markieren" := FALSE;
+
+            NeueSystemPos.RESET;
+            NeueSystemPos.SETRANGE(Inaktiv,FALSE);
+            NeueSystemPos.SETRANGE(Art,NeueSystemPos.Art::System);
+            NeueSystemPos.SETRANGE(Basisger„t,TRUE);
+            NeueSystemPos.SETRANGE("Wartungsvertragsnr.",NeuerVertrag."Wartungsvertragsnr.");
+            IF NeueSystemPos.FINDFIRST THEN BEGIN
+              SystemPos."Geh”rt zu Lfd. Nr." := NeueSystemPos."Geh”rt zu Lfd. Nr.";
+            END ELSE BEGIN
+              NeueSystemPos.RESET;
+              NeueSystemPos.SETRANGE(Inaktiv,FALSE);
+              NeueSystemPos.SETRANGE(Art,NeueSystemPos.Art::System);
+              NeueSystemPos.SETRANGE("Wartungsvertragsnr.",NeuerVertrag."Wartungsvertragsnr.");
+              IF NeueSystemPos.FINDFIRST THEN BEGIN
+                SystemPos."Geh”rt zu Lfd. Nr." := NeueSystemPos."Geh”rt zu Lfd. Nr.";
+              END ELSE
+                IF SystemPos.Basisger„t = TRUE THEN
+                  SystemPos."Geh”rt zu Lfd. Nr." := SystemPos."Lfd. Nr."
+                ELSE
+                  MESSAGE(Text004,SystemPos."Seriennr.",SystemPos.FIELDCAPTION("Geh”rt zu Lfd. Nr."));
+            END;
+
+            IF SystemPos.Basisger„t = TRUE THEN BEGIN
+              IF (NeuerVertrag.Basisger„t = '') OR (NeuerVertrag."Ablauf Gew„hrleistung" = 0D) THEN BEGIN
+                NeuerVertrag."Debitornr." := AlterVertrag."Debitornr.";
+                NeuerVertrag.Basisger„t := AlterVertrag.Basisger„t;
+                NeuerVertrag."Ablauf Gew„hrleistung" := AlterVertrag."Ablauf Gew„hrleistung";
+                NeuerVertrag.MODIFY(TRUE);
+              END;
+
+              IF AlterVertrag.Klasse = AlterVertrag.Klasse::Mehrger„te THEN BEGIN
+                AlterVertrag.Volumen -= 1;
+                AlterVertrag.MODIFY(TRUE);
+                NeuerVertrag.Volumen += 1;
+                NeuerVertrag.MODIFY(TRUE);
+              END;
+
+            END;
+
+            SystemPos.MODIFY(TRUE);
+            MESSAGE(Text005,SystemPos."Seriennr.",temp_vertragsnr);
+          END;
+        UNTIL SystemPos.NEXT = 0;
+    END;
+
+    LOCAL PROCEDURE SystemPos_entfernen@1140001();
+    VAR
+      SystemPos@1140000 : Record 50024;
+    BEGIN
+      IF NOT CONFIRM(Text006,TRUE) THEN
+        EXIT;
+
+      SystemPos.RESET;
+      SystemPos.SETRANGE(Art,SystemPos.Art::System);
+      SystemPos.SETRANGE("Zum Verschieben markieren",TRUE);
+      SystemPos.SETRANGE("Wartungsvertragsnr.","Wartungsvertragsnr.");
+      IF SystemPos.FINDFIRST THEN
+        REPEAT
+          IF SystemPos.Basisger„t = TRUE THEN
+            ERROR(Text003);
+
+          IF SystemPos.SystemPos_aktion_gesperrt(SystemPos."Artikelnr.",SystemPos."Seriennr.",SystemPos."Nr.",
+          SystemPos."Belegzeilennr.") = FALSE THEN BEGIN
+            SystemPos."Wartungsvertragsnr." := '';
+            SystemPos."Hauptwartungsvertragsnr." := '';
+            SystemPos."Zum Verschieben markieren" := FALSE;
+            SystemPos."Geh”rt zu Lfd. Nr." := '';
+            SystemPos.MODIFY(TRUE);
+            MESSAGE(Text007);
+          END;
+        UNTIL SystemPos.NEXT = 0;
+    END;
+
+    LOCAL PROCEDURE SystemPos_aktion_gesperrt@1140002(Artikelnr@1140000 : Code[20];Seriennr@1140001 : Code[20];Lieferscheinnr@1140002 : Code[20];Lieferscheinzeilennr@1140003 : Integer) : Boolean;
+    VAR
+      TempSystemPos@1140004 : Record 50024;
+    BEGIN
+      //Prft, ob die Seriennr. auch tempor„r vorbelegt wurden, um Fehlbuchungen zu verhindern
+
+      TempSystemPos.RESET;
+      TempSystemPos.SETRANGE(Art,TempSystemPos.Art::Tempor„r);
+      TempSystemPos.SETRANGE("Artikelnr.",Artikelnr);
+      TempSystemPos.SETRANGE("Seriennr.",Seriennr);
+      TempSystemPos.SETRANGE("Nr.",Lieferscheinnr);
+      TempSystemPos.SETRANGE("Belegzeilennr.",Lieferscheinzeilennr);
+      TempSystemPos.SETRANGE(Vormerkung,TRUE);
+      IF TempSystemPos.FINDFIRST THEN BEGIN
+        IF CONFIRM(Text008,TRUE) THEN BEGIN
+          TempSystemPos.MODIFYALL(Vormerkung,FALSE);
+          EXIT(FALSE);
+        END ELSE
+          EXIT(TRUE);
+      END ELSE
+        EXIT(FALSE);
+    END;
+
+    LOCAL PROCEDURE SplitPosInMultiplePos@1000000008(Wartungsnr@1000000004 : Code[20]);
+    VAR
+      PosToSplit@1000000000 : Record 50024;
+      Item@1000000003 : Record 27;
+      NewPos@1000000002 : Record 50024;
+      split_sucess@1000000005 : Integer;
+      k@1000000001 : Integer;
+    BEGIN
+      IF NOT CONFIRM(Text012,TRUE) THEN
+        EXIT;
+
+      PosToSplit.RESET;
+      //PosToSplit.SETRANGE(Art,PosToSplit.Art::System);
+      PosToSplit.SETRANGE("Zum Verschieben markieren",TRUE);
+      PosToSplit.SETRANGE("Wartungsvertragsnr.",Wartungsnr);
+      IF PosToSplit.FINDFIRST THEN
+        REPEAT
+          split_sucess := 0;
+          IF NOT Item.GET(PosToSplit."Artikelnr.") THEN ERROR(Text013,PosToSplit."Artikelnr.");
+          IF STRPOS(Item.Serviceklassifizierung,'SYSTEM') <> 0 THEN ERROR(Text014,PosToSplit."Artikelnr.");
+          IF (Item."Item Tracking Code" = 'KEINE') THEN ERROR(Text015,PosToSplit."Artikelnr.",Item."Item Tracking Code");
+          IF PosToSplit.Menge > 1 THEN BEGIN
+            FOR k := 1 TO PosToSplit.Menge -1 DO BEGIN
+              NewPos.INIT;
+              NewPos.TRANSFERFIELDS(PosToSplit);
+              NewPos.Menge := 1;
+              NewPos.Benutzername := '';
+              NewPos.Passwort := '';
+              NewPos."Zum Verschieben markieren" := FALSE;
+              NewPos.INSERT(TRUE);
+              split_sucess += 1;
+            END;
+            PosToSplit.Menge := 1;
+            PosToSplit."Zum Verschieben markieren" := FALSE;
+            PosToSplit.MODIFY(TRUE);
+            MESSAGE(Text016,Wartungsnr,PosToSplit.FIELDCAPTION("Lfd. Nr."),PosToSplit."Lfd. Nr.",split_sucess);
+          END;
+        UNTIL PosToSplit.NEXT = 0
+      ELSE
+        EXIT;
+
+      CurrPage.UPDATE;
+    END;
+
+    LOCAL PROCEDURE Systeme_in_neue_Vertraege_aufteilen@1140004();
+    VAR
+      NeuerVertrag@1140000 : Record 50011;
+      AlterVertrag@1140003 : Record 50011;
+      Ansprech@1140007 : Record 50005;
+      DebKontaktBez@1140006 : Record 5054;
+      SystemPos@1140001 : Record 50024;
+      NeueSystemPos@1140002 : Record 50024;
+      gesamt_systeme@1140004 : Integer;
+      markierte_systeme@1140005 : Integer;
+    BEGIN
+      AlterVertrag.GET("Wartungsvertragsnr.");
+      gesamt_systeme    := 0;
+      markierte_systeme := 0;
+
+      SystemPos.RESET;
+      SystemPos.SETRANGE(Art,SystemPos.Art::System);
+      SystemPos.SETRANGE(Basisger„t,TRUE);
+      SystemPos.SETRANGE("Wartungsvertragsnr.","Wartungsvertragsnr.");
+      IF SystemPos.FINDFIRST THEN
+        gesamt_systeme := SystemPos.COUNT;
+
+      SystemPos.RESET;
+      SystemPos.SETRANGE(Art,SystemPos.Art::System);
+      SystemPos.SETRANGE("Zum Verschieben markieren",TRUE);
+      SystemPos.SETRANGE(Basisger„t,TRUE);
+      SystemPos.SETRANGE("Wartungsvertragsnr.","Wartungsvertragsnr.");
+      IF SystemPos.FINDFIRST THEN BEGIN
+
+        markierte_systeme := SystemPos.COUNT;
+        IF markierte_systeme = gesamt_systeme THEN
+          ERROR(Text009);
+
+        IF CONFIRM(Text010,TRUE,SystemPos.COUNT) THEN
+          REPEAT
+            IF SystemPos_aktion_gesperrt(SystemPos."Artikelnr.",SystemPos."Seriennr.",SystemPos."Nr.",
+            SystemPos."Belegzeilennr.") = FALSE THEN BEGIN
+
+              NeuerVertrag.INIT;
+              NeuerVertrag.INSERT(TRUE);
+
+              SystemPos."Wartungsvertragsnr." := NeuerVertrag."Wartungsvertragsnr.";
+              SystemPos."Hauptwartungsvertragsnr." := NeuerVertrag."Hauptwartungsvertragsnr.";
+              SystemPos."Zum Verschieben markieren" := FALSE;
+              NeueSystemPos.RESET;
+              NeueSystemPos.SETRANGE(Inaktiv,FALSE);
+              NeueSystemPos.SETRANGE(Art,NeueSystemPos.Art::System);
+              NeueSystemPos.SETRANGE(Basisger„t,TRUE);
+              NeueSystemPos.SETRANGE("Wartungsvertragsnr.",NeuerVertrag."Wartungsvertragsnr.");
+              IF NeueSystemPos.FINDFIRST THEN BEGIN
+                SystemPos."Geh”rt zu Lfd. Nr." := NeueSystemPos."Geh”rt zu Lfd. Nr.";
+              END ELSE BEGIN
+                NeueSystemPos.RESET;
+                NeueSystemPos.SETRANGE(Inaktiv,FALSE);
+                NeueSystemPos.SETRANGE(Art,NeueSystemPos.Art::System);
+                NeueSystemPos.SETRANGE("Wartungsvertragsnr.",NeuerVertrag."Wartungsvertragsnr.");
+                IF NeueSystemPos.FINDFIRST THEN
+                  BEGIN
+                    SystemPos."Geh”rt zu Lfd. Nr." := NeueSystemPos."Geh”rt zu Lfd. Nr.";
+                  END
+                ELSE
+                  IF SystemPos.Basisger„t = TRUE THEN
+                    SystemPos."Geh”rt zu Lfd. Nr." := SystemPos."Lfd. Nr."
+                  ELSE
+                    MESSAGE(Text004,SystemPos."Seriennr.",SystemPos.FIELDCAPTION("Geh”rt zu Lfd. Nr."));
+              END;
+
+              IF SystemPos.Basisger„t = TRUE THEN BEGIN
+                NeuerVertrag."Debitornr." := AlterVertrag."Debitornr.";
+                NeuerVertrag.Basisger„t := SystemPos."Artikelnr.";
+                NeuerVertrag.Startdatum := SystemPos.Belegdatum;
+                NeuerVertrag."Ablauf Gew„hrleistung" := AlterVertrag."Ablauf Gew„hrleistung";
+                NeuerVertrag."Hauptwartungsvertragsnr." := AlterVertrag."Hauptwartungsvertragsnr.";
+                NeuerVertrag.Status := NeuerVertrag.Status::System;
+                NeuerVertrag.Klasse := AlterVertrag.Klasse;
+                NeuerVertrag.Volumen := 1;
+                NeuerVertrag.Verl„ngerungen := 0;
+                NeuerVertrag.Auftragsstatus := AlterVertrag.Auftragsstatus;
+                NeuerVertrag."Auftragsnr." := AlterVertrag."Auftragsnr.";
+                NeuerVertrag."Auftragszeilennr." := AlterVertrag."Auftragszeilennr.";
+                NeuerVertrag."Lieferscheinnr." := AlterVertrag."Lieferscheinnr.";
+                NeuerVertrag."Lieferscheinzeilennr." := AlterVertrag."Lieferscheinzeilennr.";
+                NeuerVertrag.SOR := AlterVertrag.SOR;
+                NeuerVertrag."SOR Option" := AlterVertrag."SOR Option";
+                NeuerVertrag.Rabatt := AlterVertrag.Rabatt;
+                NeuerVertrag.MODIFY(TRUE);
+
+                IF AlterVertrag.Klasse = AlterVertrag.Klasse::Mehrger„te THEN BEGIN
+                  AlterVertrag.Volumen -= 1;
+                  AlterVertrag.MODIFY(TRUE);
+                END;
+
+                DebKontaktBez.RESET;
+                DebKontaktBez.SETRANGE("Business Relation Code",'DEB');
+                DebKontaktBez.SETRANGE("No.",AlterVertrag."Debitornr.");
+                IF DebKontaktBez.FINDFIRST THEN BEGIN
+                  Ansprech.RESET;
+                  Ansprech.SETRANGE("Kampagnennr.",NeuerVertrag."Wartungsvertragsnr.");
+                  Ansprech.SETRANGE("Kontaktnr.",DebKontaktBez."Contact No.");
+                  IF NOT Ansprech.FINDFIRST THEN BEGIN
+                    Ansprech.INIT;
+                    Ansprech.VALIDATE("Kontaktnr.",DebKontaktBez."Contact No.");
+                    Ansprech."Kampagnennr." := NeuerVertrag."Wartungsvertragsnr.";
+                    Ansprech.Fhrungsrolle := TRUE;
+                    Ansprech.INSERT;
+                  END;
+                END;
+              END;
+
+              SystemPos.MODIFY(TRUE);
+              MESSAGE(Text005,SystemPos."Seriennr.",NeuerVertrag."Wartungsvertragsnr.");
+            END;
+          UNTIL SystemPos.NEXT = 0;
+      END ELSE
+        ERROR(Text011);
+    END;
+
+    PROCEDURE Angebote_pruefen@1140003(ausgabe@1140004 : Boolean);
+    VAR
+      SalesHeader@1140000 : Record 36;
+      ArchSalesHeader@1140001 : Record 5107;
+      ServicePos@1140002 : Record 50024;
+      ServiceZuordnung@1140003 : Record 50027;
+      v_datum@1140005 : Date;
+      v_belegnr@1140006 : Code[20];
+      v_zeilennr@1140007 : Integer;
+      v_service_artikel@1140008 : Code[20];
+    BEGIN
+      AN_liegt_vor := FALSE;
+      hinweis_anzeigen := FALSE;
+      Beleg_Hinweistext := '';
+
+      IF Vertragsablaufdatum = 0D THEN EXIT;
+
+      IF ((Vertragsablaufdatum > WORKDATE) AND (CALCDATE('-3M',Vertragsablaufdatum) < WORKDATE)) OR (ausgabe) THEN BEGIN
+        ServicePos.RESET;
+        ServicePos.ASCENDING(FALSE);
+        ServicePos.SETRANGE("Wartungsvertragsnr.","Wartungsvertragsnr.");
+        ServicePos.SETRANGE(Art,ServicePos.Art::Service);
+        ServicePos.SETRANGE(Basisger„t,TRUE);
+        //ServicePos.SETRANGE(Inaktiv,FALSE);
+        IF ServicePos.FINDFIRST THEN BEGIN
+          //REPEAT
+          ServiceZuordnung.RESET;
+          ServiceZuordnung.SETRANGE("Belegnr.",ServicePos."Urspr. Lieferscheinnr.");
+          ServiceZuordnung.SETRANGE("Belegzeilennr.",ServicePos."Urspr. Lieferscheinzeilennr.");
+          IF ServiceZuordnung.FINDFIRST THEN
+            REPEAT
+              SalesHeader.SETRANGE("No.",ServiceZuordnung."Nr.");
+              IF SalesHeader.FINDFIRST THEN
+                IF CALCDATE('-3M',WORKDATE) < SalesHeader."Document Date" THEN BEGIN
+                  AN_liegt_vor := TRUE;
+                  v_datum := SalesHeader."Document Date";
+                  v_belegnr := SalesHeader."No.";
+                  v_zeilennr := ServiceZuordnung."Belegzeilennr.";
+                  v_service_artikel := ServiceZuordnung."SUP Artikelnr.";
+                END;
+
+              ArchSalesHeader.SETRANGE("No.",ServiceZuordnung."Nr.");
+              IF ArchSalesHeader.FINDFIRST THEN
+                IF CALCDATE('-3M',WORKDATE) < ArchSalesHeader."Document Date" THEN BEGIN
+                  AN_liegt_vor := TRUE;
+                  v_datum := ArchSalesHeader."Document Date";
+                  v_belegnr := ArchSalesHeader."No.";
+                  v_zeilennr := ServiceZuordnung."Belegzeilennr.";
+                  v_service_artikel := ServiceZuordnung."SUP Artikelnr.";
+                END;
+
+            UNTIL (ServiceZuordnung.NEXT = 0) OR (AN_liegt_vor);
+          //UNTIL (ServicePos.NEXT = 0) OR (AN_liegt_vor);
+        END;
+
+        IF AN_liegt_vor = FALSE THEN BEGIN
+          Beleg_Hinweistext := 'Vertrag l„uft bald aus, kein aktuelles AN bzw. AU in den letzten 3 Monaten vorliegend';
+          hinweis_anzeigen := TRUE;
+        END;
+      END;
+
+      IF (ausgabe) AND (AN_liegt_vor) THEN
+        MESSAGE('Folgender Beleg im Zeitraum der letzten 3 Monate gefunden:'+'\\'+'Service: %1'+'\'+
+        'Belegnr: %2, Zeile: %3 vom %4',v_service_artikel,v_belegnr,v_zeilennr,v_datum);
+
+      IF (ausgabe) AND (AN_liegt_vor = FALSE) THEN
+        MESSAGE('Es liegt kein aktueller Beleg fr die letzten 3 Monate vor.');
+    END;
+
+    LOCAL PROCEDURE SetStyle@1000000004() : Text;
+    BEGIN
+      IF SOR THEN
+        EXIT('Unfavorable')
+      ELSE
+        EXIT('');
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
