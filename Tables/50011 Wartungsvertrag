@@ -1,0 +1,162 @@
+OBJECT Table 50011 Wartungsvertrag
+{
+  OBJECT-PROPERTIES
+  {
+    Date=24.07.17;
+    Time=10:37:43;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    OnInsert=VAR
+               NoSeriesMgt@1140003 : Codeunit 396;
+               laufende_nummer@1140002 : Code[20];
+               eingabe@1140000 : Code[10];
+             BEGIN
+               laufende_nummer:='';
+               eingabe := 'TOPAS-WART';
+               NoSeriesMgt.InitSeries(eingabe,eingabe,TODAY,laufende_nummer,eingabe);
+               "Wartungsvertragsnr." := laufende_nummer;
+               "Angelegt von" := USERID;
+               "Angelegt am" := WORKDATE;
+             END;
+
+    OnModify=BEGIN
+               "Korrigiert von" := USERID;
+               "Korrigiert am" := WORKDATE;
+             END;
+
+    OnDelete=VAR
+               Servicepositionen@1140002 : Record 50024;
+               TopasBemerkung@1140001 : Record 50023;
+               Ansprechpartner@1140000 : Record 50005;
+               Kalkulation@1140003 : Record 50027;
+             BEGIN
+               //07.06.2012-ST
+               TopasBemerkung.SETRANGE(Art,TopasBemerkung.Art :: Wartungsvertrag);
+               TopasBemerkung.SETRANGE("Nr.","Wartungsvertragsnr.");
+               TopasBemerkung.DELETEALL;
+
+               Ansprechpartner.SETRANGE("Kampagnennr.","Wartungsvertragsnr.");
+               Ansprechpartner.SETRANGE("Memonr.",'');
+               Ansprechpartner.DELETEALL;
+
+               Servicepositionen.RESET;
+               //Servicepositionen.SETFILTER(Art,'%1|%2',Servicepositionen.Art:: System,Servicepositionen.Art :: Service);
+               Servicepositionen.SETFILTER("Wartungsvertragsnr.",'%1',"Wartungsvertragsnr.");
+               IF Servicepositionen.FINDFIRST THEN BEGIN
+                 REPEAT
+                   Kalkulation.RESET;
+                   Kalkulation.SETFILTER(Art,'%1',Kalkulation.Art :: "SUP-AU");
+                   Kalkulation.SETFILTER("Nr.",'%1',Servicepositionen."Auftragsnr.");
+                   Kalkulation.SETFILTER("Zeilennr.",'%1',Servicepositionen."Auftragszeilennr.");
+                   IF Kalkulation.FINDFIRST THEN
+                     Kalkulation.DELETEALL;
+                 UNTIL Servicepositionen.NEXT = 0;
+                 Servicepositionen.DELETEALL;
+               END;
+
+               Kalkulation.RESET;
+               Kalkulation.SETFILTER(Art,'%1',Kalkulation.Art :: "SUP-AU");
+               Kalkulation.SETFILTER("Wartungsvertragsnr.",'%1',"Wartungsvertragsnr.");
+               IF Kalkulation.FINDFIRST THEN
+                 Kalkulation.MODIFYALL("Wartungsvertragsnr.",'');
+             END;
+
+    LookupPageID=Page50024;
+  }
+  FIELDS
+  {
+    { 1   ;   ;Wartungsvertragsnr. ;Code20         }
+    { 2   ;   ;Status              ;Option        ;OptionString=[ ,Angebot,,,Auftrag,ACTS,ACHAT,Gekndigt,,,Beendet,,,šberleitung,,,Verloren,,,System,,,Champs Partner] }
+    { 3   ;   ;Klasse              ;Option        ;OptionString=[ ,Einzelger„t,Mehrger„te,Rahmenvertrag,Partnervertrag,Stundenpool] }
+    { 4   ;   ;Volumen             ;Decimal        }
+    { 5   ;   ;Hauptwartungsvertragsnr.;Code20    ;Description=Realisiert die Verbindung der zum AU geh”renden WV's, damit alle WV's die Belegpositionen auflisten k”nnen }
+    { 10  ;   ;Startdatum          ;Date           }
+    { 11  ;   ;Vertragsablaufdatum ;Date           }
+    { 12  ;   ;Ablauf Gew„hrleistung;Date         ;Description=07.09.11 ST }
+    { 15  ;   ;Wiedervorlage       ;Date           }
+    { 20  ;   ;Auftragsstatus      ;Option        ;OptionString=[ ,Aktuell,Archiviert] }
+    { 21  ;   ;Auftragsnr.         ;Code20        ;TableRelation=IF (Auftragsstatus=CONST(Aktuell)) "Sales Header".No. WHERE (Document Type=FILTER(Order))
+                                                                 ELSE IF (Auftragsstatus=CONST(Archiviert)) "Sales Header Archive".No. WHERE (Document Type=FILTER(Order));
+                                                   ValidateTableRelation=No;
+                                                   Description=Auftragsnr. des Basisger„tes }
+    { 22  ;   ;Auftragszeilennr.   ;Integer       ;Description=Auftragszeilennr. des Basisger„tes }
+    { 23  ;   ;Debitornr.          ;Code20         }
+    { 24  ;   ;Basisger„t          ;Code20        ;TableRelation=Item }
+    { 25  ;   ;Lieferscheinnr.     ;Code20        ;TableRelation="Sales Shipment Header";
+                                                   ValidateTableRelation=No;
+                                                   Description=Lieferscheinnr. des Basisger„tes }
+    { 26  ;   ;Lieferscheinzeilennr.;Integer      ;Description=Lieferscheinzeilennr. des Basisger„tes }
+    { 27  ;   ;Auftragsnr. Service ;Code20        ;TableRelation=IF (Auftragsstatus=CONST(Aktuell)) "Sales Header".No. WHERE (Document Type=FILTER(Order))
+                                                                 ELSE IF (Auftragsstatus=CONST(Archiviert)) "Sales Header Archive".No. WHERE (Document Type=FILTER(Order));
+                                                   ValidateTableRelation=No }
+    { 28  ;   ;Auftragszeilennr. Service;Integer   }
+    { 29  ;   ;Lieferscheinnr. Service;Code20     ;TableRelation="Sales Shipment Header";
+                                                   ValidateTableRelation=No }
+    { 30  ;   ;LS Zeilennr. Service;Integer        }
+    { 35  ;   ;Debitorname         ;Text50        ;FieldClass=FlowField;
+                                                   CalcFormula=Lookup(Customer.Name WHERE (No.=FIELD(Debitornr.)));
+                                                   Description=26.08.11 ST - Lookup auf Debitor.Name;
+                                                   Editable=No }
+    { 36  ;   ;Belegdatum          ;Date          ;Description=28.11.16 ST - Letzte Service Buchung - u.a. fr Mail-Jobs }
+    { 40  ;   ;Rabatt              ;Decimal        }
+    { 41  ;   ;Wartungs Kandidat   ;Option        ;OptionString=Ja,,,Nein;
+                                                   Description=23.04.12 ST - Einsch„tzung, ob TOPAS den Wartungsauftrag bekommen kann }
+    { 42  ;   ;SOR                 ;Boolean       ;Description=08.06.12 ST - Kennzeichung Sale or Return, wenn dies aus dem System Lieferschein hervorgeht }
+    { 43  ;   ;SOR Option          ;Code20        ;Description=08.06.12 ST - Enh„lt den Zlg.-Bedingungscode aus dem System Lieferschein }
+    { 44  ;   ;Verl„ngerungen      ;Integer       ;Description=03.07.13 ST - Z„hlt die Verl„ngerungen des Wartungsvertrages }
+    { 50  ;   ;Angelegt am         ;Date           }
+    { 51  ;   ;Angelegt von        ;Code50        ;TableRelation=Salesperson/Purchaser }
+    { 52  ;   ;Korrigiert am       ;Date           }
+    { 53  ;   ;Korrigiert von      ;Code50        ;TableRelation=Salesperson/Purchaser }
+    { 60  ;   ;Endkunde            ;Text50         }
+    { 62  ;   ;Endkunde Adresse    ;Text50         }
+    { 64  ;   ;Endkunde PLZ-Code   ;Code20        ;TableRelation=IF (Endkunde Land=CONST()) "Post Code"
+                                                                 ELSE IF (Endkunde Land=FILTER(<>'')) "Post Code" WHERE (Country/Region Code=FIELD(Endkunde Land));
+                                                   OnValidate=BEGIN
+                                                                Endkunde_Staat := '';
+                                                                PostCode.ValidatePostCode("Endkunde Ort","Endkunde PLZ-Code", Endkunde_Staat, "Endkunde Land",(CurrFieldNo <> 0) AND GUIALLOWED);
+                                                              END;
+
+                                                   ValidateTableRelation=No;
+                                                   TestTableRelation=No }
+    { 65  ;   ;Endkunde Ort        ;Text30        ;TableRelation=IF (Endkunde Land=CONST()) "Post Code".City
+                                                                 ELSE IF (Endkunde Land=FILTER(<>'')) "Post Code".City WHERE (Country/Region Code=FIELD(Endkunde Land));
+                                                   OnValidate=BEGIN
+                                                                Endkunde_Staat := '';
+                                                                PostCode.ValidateCity("Endkunde Ort","Endkunde PLZ-Code",Endkunde_Staat,"Endkunde Land",(CurrFieldNo <> 0) AND GUIALLOWED);
+                                                              END;
+
+                                                   ValidateTableRelation=No;
+                                                   TestTableRelation=No }
+    { 66  ;   ;Endkunde Land       ;Code10        ;TableRelation=Country/Region }
+    { 67  ;   ;Endkunde Kontakt    ;Text50         }
+    { 68  ;   ;Endkunde Telefonnr. ;Text30         }
+    { 69  ;   ;Endkunde E-Mail     ;Text80         }
+    { 70  ;   ;Systemhaus Kontakt  ;Text50        ;Description=18.01.16 ST }
+    { 71  ;   ;Systemhaus E-Mail   ;Text80        ;Description=18.01.16 ST }
+    { 99  ;   ;Inaktiv             ;Boolean       ;Description=29.08.11 ST }
+  }
+  KEYS
+  {
+    {    ;Wartungsvertragsnr.                     ;Clustered=Yes }
+    {    ;Debitornr.,Vertragsablaufdatum,Wartungsvertragsnr. }
+    {    ;Debitornr.,Startdatum,Wartungsvertragsnr. }
+    {    ;Debitornr.,Auftragsnr.,Wartungsvertragsnr. }
+  }
+  FIELDGROUPS
+  {
+  }
+  CODE
+  {
+    VAR
+      PostCode@1140000 : Record 225;
+      Endkunde_Staat@1000000000 : Text[30];
+
+    BEGIN
+    END.
+  }
+}
+
