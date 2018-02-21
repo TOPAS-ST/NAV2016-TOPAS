@@ -1,0 +1,602 @@
+OBJECT Page 50073 Packkontrolle
+{
+  OBJECT-PROPERTIES
+  {
+    Date=14.09.17;
+    Time=13:58:59;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    InsertAllowed=No;
+    DeleteAllowed=No;
+    SourceTable=Table50038;
+    SourceTableView=SORTING(Lieferschein Nr.,Lieferschein Zeilennr.)
+                    ORDER(Ascending);
+    PageType=ListPlus;
+    PromotedActionCategoriesML=[DEU=Neu,Vorgang,Bericht,Ansicht,Label;
+                                ENU=New,Process,Report,Display,Label];
+    OnOpenPage=BEGIN
+                 RESET;
+               END;
+
+    OnAfterGetCurrRecord=BEGIN
+                           Debitorname := '';
+                           "Debitornr." := '';
+                           Belegdatum1 := 0D;
+                           Spediteurcode1 := '';
+                           "Zlg.-Bedingungscode1" := '';
+                           Auftragsnr := '';
+                           LS_Zeilennr := '';
+
+                           Vkliefkopf.RESET;
+                           Vkliefkopf.SETRANGE("No.","Lieferschein Nr.");
+                           IF Vkliefkopf.FINDFIRST THEN BEGIN
+                             Debitorname := Vkliefkopf."Sell-to Customer Name";
+                             "Debitornr." := Vkliefkopf."Sell-to Customer No.";
+                             Belegdatum1 := Vkliefkopf."Document Date";
+                             Spediteurcode1 := Vkliefkopf."Shipping Agent Code";
+                             "Zlg.-Bedingungscode1":= Vkliefkopf."Payment Terms Code";
+                             Auftragsnr := Vkliefkopf."Order No.";
+                           END;
+
+                           //Hilfestellung fr Pakete mit Nachnahme bzw. Vorkasse
+                           Vkliefkopf.RESET;
+                           Vkliefkopf.SETRANGE("No.","Lieferschein Nr.");
+                           IF Vkliefkopf.FINDFIRST THEN BEGIN
+                             IF ((Rec."Lieferschein Nr." <> xRec."Lieferschein Nr.") AND (Vkliefkopf."Payment Terms Code" = 'BBL')) THEN
+                               MESSAGE('Nachnahme!!!');
+                             IF (Vkliefkopf."Payment Terms Code" = 'VORK') OR (Vkliefkopf."Payment Terms Code" = 'VORK-E')
+                             OR (Vkliefkopf."Payment Terms Code" = 'TT') OR (Vkliefkopf."Payment Terms Code" = 'ADV')
+                             OR (Vkliefkopf."Payment Terms Code" = 'VK-1%') OR (Vkliefkopf."Payment Terms Code" = 'VK-2%') THEN
+                               MESSAGE('Vorkasse!!!');
+                           END;
+
+                           LS_Zeilennr := FORMAT("Lieferschein Zeilennr.",0,'<Integer><1000character,.>');
+
+                           //Statistik Zusammenstellung
+                           offen_inland_text := '';
+                           offen_ausland_text := '';
+                           offen_muster_text := '';
+
+                           //Inland
+                           packkontrolle.RESET;
+                           packkontrolle.SETFILTER(Lagerortcode,'<>%1','MUST');
+                           packkontrolle.SETFILTER(Debitorenbuchungsgruppe,'<>%1','DEB_AUSL');
+                           IF packkontrolle.FINDFIRST THEN
+                             offen_inland_text := FORMAT(packkontrolle.COUNT);
+                           //Ausland
+                           packkontrolle.RESET;
+                           packkontrolle.SETFILTER(Lagerortcode,'<>%1','MUST');
+                           packkontrolle.SETFILTER(Debitorenbuchungsgruppe,'%1','DEB_AUSL');
+                           IF packkontrolle.FINDFIRST THEN
+                             offen_ausland_text := FORMAT(packkontrolle.COUNT);
+                           //Muster
+                           packkontrolle.RESET;
+                           packkontrolle.SETFILTER(Lagerortcode,'%1','MUST');
+                           IF packkontrolle.FINDFIRST THEN
+                             offen_muster_text := FORMAT(packkontrolle.COUNT);
+                         END;
+
+    ActionList=ACTIONS
+    {
+      { 1000000012;0 ;ActionContainer;
+                      ActionContainerType=RelatedInformation }
+      { 1000000013;1 ;ActionGroup }
+      { 1000000014;2 ;Action    ;
+                      Name=In_Bearbeitung;
+                      CaptionML=DEU=In Bearbeitung;
+                      RunObject=Page 50071;
+                      RunPageView=SORTING(Lieferschein Nr.,Lieferschein Zeilennr.)
+                                  ORDER(Descending)
+                                  WHERE(OK=FILTER(In Bearbeitung|Fehlerhaft));
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=DocumentEdit;
+                      PromotedCategory=Process }
+      { 1000000015;2 ;Action    ;
+                      Name=Archiv;
+                      RunObject=Page 50070;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=Archive;
+                      PromotedCategory=Process;
+                      RunPageMode=View }
+      { 1000000021;2 ;Action    ;
+                      Name=Heute_Zugesagt;
+                      CaptionML=DEU=Heute zugesagt und offen;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=OrderPromising;
+                      PromotedCategory=Process;
+                      RunPageMode=View;
+                      OnAction=BEGIN
+                                 SalesLine.RESET;
+                                 SalesLine.SETRANGE("Document Type",SalesLine."Document Type"::Order);
+                                 SalesLine.SETFILTER("Promised Delivery Date",'%1',WORKDATE);
+                                 SalesLine.SETFILTER("Location Code",'%1|%2','ZENT','KONSI');
+                                 SalesLine.SETFILTER("Outstanding Quantity",'>%1',0);
+                                 PAGE.RUN(PAGE::"Sales Lines",SalesLine);
+                               END;
+                                }
+      { 1900000000;  ;ActionContainer;
+                      ActionContainerType=ActionItems }
+      { 1       ;1   ;ActionGroup;
+                      Name=Funktionen }
+      { 1140048 ;2   ;Action    ;
+                      Name=Ueberpruefen;
+                      CaptionML=DEU=šber&prfen;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=CheckRulesSyntax;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 Packkontrolle_prfen;
+                               END;
+                                }
+      { 1140049 ;2   ;Action    ;
+                      Name=Hinzufuegen;
+                      CaptionML=DEU=&Hinzufgen;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=AddAction;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 Sub_hinzufgen.RUN;
+                               END;
+                                }
+      { 1140057 ;2   ;Action    ;
+                      Name=MAT_Label_Ausfuehren;
+                      CaptionML=DEU=&MAT Label ausfhren;
+                      Promoted=Yes;
+                      Image=BarCode;
+                      PromotedCategory=Category5;
+                      OnAction=BEGIN
+                                 IF lieferscheinnr = '' THEN ERROR(Text000);
+                                 Label_Daten_start(lieferscheinnr,0);
+                                 lieferscheinnr := '';
+                               END;
+                                }
+      { 1000000011;1 ;ActionGroup;
+                      Name=Ansichten }
+      { 1140008 ;2   ;Action    ;
+                      Name=Ansicht_InlandundEU;
+                      CaptionML=DEU=Inland und EU;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=OrderList;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 IF offen_inland_text <> '' THEN BEGIN
+                                   akt_modus := akt_modus::packkontrolle;
+                                   akt_sicht := akt_sicht::Inland_EU;
+                                   Packkontrolle_modus_starten(akt_modus, akt_sicht);
+                                 END ELSE
+                                   MESSAGE(Text001);
+                               END;
+                                }
+      { 1140009 ;2   ;Action    ;
+                      Name=Ansicht_Ausland;
+                      CaptionML=DEU=Ausland;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=ExportShipment;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 IF offen_ausland_text <> '' THEN BEGIN
+                                   akt_modus := akt_modus::packkontrolle;
+                                   akt_sicht := akt_sicht::Ausland;
+                                   Packkontrolle_modus_starten(akt_modus, akt_sicht);
+                                 END ELSE
+                                   MESSAGE(Text001);
+                               END;
+                                }
+      { 1140010 ;2   ;Action    ;
+                      Name=Ansicht_Muster;
+                      CaptionML=DEU=Muster;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=Production;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 IF offen_muster_text <> '' THEN BEGIN
+                                   akt_modus := akt_modus::packkontrolle;
+                                   akt_sicht := akt_sicht::Muster;
+                                   Packkontrolle_modus_starten(akt_modus, akt_sicht);
+                                 END ELSE
+                                   MESSAGE(Text001);
+                               END;
+                                }
+      { 1140051 ;2   ;Action    ;
+                      Name=Ansicht_Alle;
+                      CaptionML=DEU=Alle;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=ClearFilter;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 akt_modus := akt_modus::packkontrolle;
+                                 akt_sicht := akt_sicht::Alle;
+                                 Packkontrolle_modus_starten(akt_modus, akt_sicht);
+                               END;
+                                }
+    }
+  }
+  CONTROLS
+  {
+    { 1900000; ;Container ;
+                CaptionML=DEU=Packkontrolle;
+                ContainerType=ContentArea }
+
+    { 1000000006;1;Group  ;
+                Name=Status;
+                Editable=FALSE;
+                GroupType=Group;
+                Layout=Rows }
+
+    { 1000000008;2;Group  ;
+                GroupType=GridLayout;
+                Layout=Rows }
+
+    { 1000000010;3;Group  ;
+                GroupType=Group }
+
+    { 1000000002;4;Field  ;
+                Name=Offen Inland;
+                SourceExpr=offen_inland_text }
+
+    { 1000000003;4;Field  ;
+                Name=Offen Ausland;
+                SourceExpr=offen_ausland_text }
+
+    { 1000000004;4;Field  ;
+                Name=Offen Muster;
+                SourceExpr=offen_muster_text }
+
+    { 1900002;1;Group     ;
+                Name=Packkontrolle;
+                GroupType=Group }
+
+    { 1000000009;2;Group  ;
+                GroupType=Group }
+
+    { 1140004;3;Field     ;
+                Name=Debitornr.;
+                SourceExpr="Debitornr.";
+                Editable=FALSE }
+
+    { 1140003;3;Field     ;
+                Name=Debitorname;
+                SourceExpr=Debitorname;
+                Editable=FALSE }
+
+    { 1000000000;1;Group  ;
+                Name=Beleginfos;
+                GroupType=Group }
+
+    { 1140005;2;Field     ;
+                Name=Lieferschein Nr.;
+                SourceExpr="Lieferschein Nr.";
+                Editable=FALSE }
+
+    { 1140014;2;Field     ;
+                Name=Lieferschein Zeilennr.;
+                SourceExpr=LS_Zeilennr;
+                Editable=FALSE }
+
+    { 1140017;2;Field     ;
+                Name=Belegdatum;
+                SourceExpr=Belegdatum1;
+                Editable=FALSE }
+
+    { 1140020;2;Field     ;
+                Name=Auftragsnr;
+                SourceExpr=Auftragsnr;
+                Editable=FALSE }
+
+    { 1140021;2;Field     ;
+                Name=Lagerortcode;
+                SourceExpr=Lagerortcode;
+                Editable=FALSE }
+
+    { 1140022;2;Field     ;
+                Name=Zlg.-Bedingungscode;
+                SourceExpr="Zlg.-Bedingungscode1";
+                Editable=FALSE }
+
+    { 1140023;2;Field     ;
+                Name=Spediteurcode;
+                SourceExpr=Spediteurcode1;
+                Editable=FALSE }
+
+    { 1140024;2;Field     ;
+                Name=Debitorenbuchungsgruppe;
+                SourceExpr=Debitorenbuchungsgruppe;
+                Editable=FALSE }
+
+    { 1000000005;2;Field  ;
+                Name=OK;
+                SourceExpr=OK;
+                Editable=FALSE }
+
+    { 1000000007;2;Field  ;
+                SourceExpr=Fehlertext;
+                Editable=FALSE }
+
+    { 1000000001;1;Group  ;
+                Name=Eingabe;
+                GroupType=Group }
+
+    { 1140032;2;Field     ;
+                Name=Prf Artikel Nr.;
+                SourceExpr="Prf Artikel Nr." }
+
+    { 1140037;2;Field     ;
+                Name=Packung;
+                SourceExpr=Packung }
+
+    { 1140041;2;Field     ;
+                Name=Menge je VPE;
+                DecimalPlaces=0:0;
+                NotBlank=No;
+                SourceExpr=VPE }
+
+    { 1140043;2;Field     ;
+                Name=Anzahl Stange;
+                DecimalPlaces=0:0;
+                SourceExpr="Anzahl Stange" }
+
+    { 1140046;2;Field     ;
+                Name=Anzahl Lose;
+                DecimalPlaces=0:0;
+                SourceExpr="Anzahl Lose" }
+
+    { 1140038;2;Field     ;
+                Name=Versandart;
+                SourceExpr=Versandart }
+
+    { 1140033;2;Field     ;
+                Name=Paket Verfolgungsnr.;
+                AssistEdit=No;
+                ToolTipML=DEU=Bei UPS Versand bitte die letzten 10 Ziffern der Paketnr. eingeben - unsere Kundennr. 1Z672891 wird automatisch hinzugefgt;
+                SourceExpr="Paket Verfolgungsnr." }
+
+    { 1140039;2;Field     ;
+                Name=Bemerkung;
+                SourceExpr=Bemerkung1 }
+
+    { 1900005;1;Group     ;
+                CaptionML=DEU=MAT Label manuell }
+
+    { 1140059;2;Field     ;
+                Name=Lieferscheinnr.;
+                SourceExpr=lieferscheinnr }
+
+    { 1000000020;1;Group  ;
+                CaptionML=DEU=Datens„tze;
+                Visible=FALSE;
+                Enabled=FALSE;
+                Editable=FALSE;
+                GroupType=Repeater }
+
+    { 1000000018;2;Field  ;
+                Name=Lieferschein Nr._;
+                CaptionML=DEU=Lieferschein Nr.;
+                SourceExpr="Lieferschein Nr." }
+
+    { 1000000019;2;Field  ;
+                Name=Lieferschein Zeilennr._;
+                CaptionML=DEU=Lieferschein Zeilennr.;
+                SourceExpr="Lieferschein Zeilennr." }
+
+    { 1000000017;2;Field  ;
+                Name=Belegdatum_;
+                CaptionML=DEU=Belegdatum;
+                SourceExpr=Belegdatum1;
+                Editable=FALSE }
+
+    { 1000000016;2;Field  ;
+                Name=Auftragsnr_;
+                CaptionML=DEU=Auftragsnr;
+                SourceExpr=Auftragsnr }
+
+  }
+  CODE
+  {
+    VAR
+      Vkliefkopf@1140000 : Record 110;
+      Vkliefzeile@1140001 : Record 111;
+      packkontrolle@1140002 : Record 50038;
+      pack_archiv@1140003 : Record 50039;
+      SalesLine@1000000002 : Record 37;
+      Prf_Menge@1140004 : Decimal;
+      Fehlerausgabe@1140005 : Text[50];
+      Artikel_ok@1140006 : Integer;
+      Menge_ok@1140007 : Integer;
+      Paketnr_ok@1140008 : Integer;
+      Artikel@1140009 : Record 27;
+      Sub_hinzufgen@1140010 : Page 50072;
+      Debitorname@1140011 : Text[50];
+      "Debitornr."@1140012 : Code[20];
+      Belegdatum1@1140013 : Date;
+      Spediteurcode1@1140014 : Code[10];
+      "Zlg.-Bedingungscode1"@1140015 : Code[10];
+      Auftragsnr@1140016 : Code[20];
+      lieferscheinnr@1140023 : Code[20];
+      LS_Zeilennr@1140017 : Text[30];
+      akt_modus@1140018 : 'auswahl,packkontrolle';
+      akt_sicht@1140019 : 'Alle,Inland_EU,Ausland,Muster';
+      offen_inland_text@1140020 : Text[120];
+      offen_ausland_text@1140021 : Text[120];
+      offen_muster_text@1140022 : Text[120];
+      Text000@1000000000 : TextConst 'DEU=Das Feld Lieferscheinnr. darf nicht leer sein.';
+      Text001@1000000001 : TextConst 'DEU=Es gibt keine Datens„tze zum Anzeigen.';
+
+    PROCEDURE Packkontrolle_prfen@1140002();
+    BEGIN
+      packkontrolle.RESET;
+      IF akt_sicht = akt_sicht::Inland_EU THEN BEGIN
+        packkontrolle.SETFILTER(Lagerortcode,'<>%1','MUST');
+        packkontrolle.SETFILTER(Debitorenbuchungsgruppe,'<>%1','DEB_AUSL');
+      END;
+      IF akt_sicht = akt_sicht::Ausland THEN BEGIN
+        packkontrolle.SETFILTER(Lagerortcode,'<>%1','MUST');
+        packkontrolle.SETFILTER(Debitorenbuchungsgruppe,'%1','DEB_AUSL');
+      END;
+      IF akt_sicht = akt_sicht::Muster THEN BEGIN
+        packkontrolle.SETFILTER(Lagerortcode,'%1','MUST');
+      END;
+      packkontrolle.SETFILTER(OK,'%1|%2','In Bearbeitung','Fehlerhaft');
+      IF packkontrolle.FINDFIRST THEN BEGIN
+        REPEAT
+
+          //29.08.11 ST - Neue Funktion zum Fllen der Tabelle Label Daten fr Siemens
+          Label_Daten_start(packkontrolle."Lieferschein Nr.",packkontrolle."Lieferschein Zeilennr.");
+
+          Prf_Menge:=(packkontrolle.VPE*packkontrolle."Anzahl Stange")+packkontrolle."Anzahl Lose";
+
+          //Fr Handlieferscheine HLS, Belastungsanzeigen EGS oder Sonstige Lieferungen
+          IF  ((packkontrolle."Prf Artikel Nr." = packkontrolle."Artikel Nr.")
+          AND (packkontrolle.Menge = Prf_Menge)
+          AND (packkontrolle."Paket Verfolgungsnr." <> ''))
+          OR  ((packkontrolle."Paket Verfolgungsnr.") <> '')
+          AND (STRPOS(packkontrolle.Bemerkung1,'X_') = 1) THEN BEGIN // sucht das erste vorkommen des X_ in dem Feld Bemerkung1
+            pack_archiv.INIT;
+            pack_archiv."Lieferschein Nr." := packkontrolle."Lieferschein Nr.";
+            pack_archiv."Lieferschein Zeilennr." := packkontrolle."Lieferschein Zeilennr.";
+            pack_archiv.Menge := packkontrolle.Menge;
+            pack_archiv.Lagerortcode := packkontrolle.Lagerortcode;
+            pack_archiv."Artikel Nr." := packkontrolle."Artikel Nr.";
+            pack_archiv.OK := 'OK';
+            pack_archiv.VPE:=packkontrolle.VPE;
+            pack_archiv."Anzahl Stange" := packkontrolle."Anzahl Stange";
+            pack_archiv."Anzahl Lose" := packkontrolle."Anzahl Lose";
+            pack_archiv.Versandart := packkontrolle.Versandart;
+            CASE packkontrolle.Versandart OF
+              packkontrolle.Versandart :: UPS: pack_archiv."Paket Verfolgungsnr." := '1Z672891'+packkontrolle."Paket Verfolgungsnr.";
+              packkontrolle.Versandart :: Fedex: pack_archiv."Paket Verfolgungsnr." := '7'+packkontrolle."Paket Verfolgungsnr.";
+              packkontrolle.Versandart :: TNT: pack_archiv."Paket Verfolgungsnr." := packkontrolle."Paket Verfolgungsnr.";
+              packkontrolle.Versandart :: DHL: pack_archiv."Paket Verfolgungsnr." := packkontrolle."Paket Verfolgungsnr.";
+              packkontrolle.Versandart :: Post: pack_archiv."Paket Verfolgungsnr." := packkontrolle."Paket Verfolgungsnr.";
+              packkontrolle.Versandart :: Sonstiges: pack_archiv."Paket Verfolgungsnr." := packkontrolle."Paket Verfolgungsnr.";
+              packkontrolle.Versandart :: DPD: pack_archiv."Paket Verfolgungsnr." := '0130900'+packkontrolle."Paket Verfolgungsnr.";
+            END;
+            pack_archiv.Bemerkung1:=packkontrolle.Bemerkung1;
+            pack_archiv."Prf Artikel Nr.":= packkontrolle."Prf Artikel Nr.";
+            pack_archiv.Bearbeiter := packkontrolle.Bearbeiter;
+            pack_archiv.Datum := WORKDATE;
+            pack_archiv.Archivierungsgrund := packkontrolle.Archivierungsgrund;
+            pack_archiv.Packung := packkontrolle.Packung;
+            pack_archiv.Debitorenbuchungsgruppe := packkontrolle.Debitorenbuchungsgruppe;
+            pack_archiv.INSERT;
+            packkontrolle.DELETE;
+
+            Prf_Menge:=0;
+            Vkliefkopf.RESET;
+            Vkliefkopf.SETFILTER("No.",'%1',pack_archiv."Lieferschein Nr.");
+            IF Vkliefkopf.FINDFIRST THEN BEGIN
+              Vkliefkopf."Package Tracking No." := pack_archiv."Paket Verfolgungsnr.";
+              CODEUNIT.RUN(CODEUNIT :: "Shipment Header - Edit",Vkliefkopf);
+            END;
+
+            COMMIT;
+
+          END ELSE BEGIN
+            // Fehler- oder in Bearbeitungausgabe beginnt
+            IF ((packkontrolle."Prf Artikel Nr." = '')  AND (packkontrolle.VPE = 0)
+              AND (packkontrolle."Anzahl Stange" = 0) AND (packkontrolle."Anzahl Lose" = 0)
+              AND (packkontrolle.Bemerkung1 <> '') AND (packkontrolle."Paket Verfolgungsnr." = ''))
+            OR
+              ((packkontrolle."Prf Artikel Nr." = '')  AND (packkontrolle.VPE = 0)
+              AND (packkontrolle."Anzahl Stange" = 0) AND (packkontrolle."Anzahl Lose" = 0)
+              AND (packkontrolle.Bemerkung1 <> '') AND (packkontrolle."Paket Verfolgungsnr." <> ''))
+            OR
+              ((packkontrolle."Prf Artikel Nr." = '')  AND (packkontrolle.VPE = 0)
+              AND (packkontrolle."Anzahl Stange" = 0) AND (packkontrolle."Anzahl Lose" = 0)
+              AND (packkontrolle.Bemerkung1 = '') AND (packkontrolle."Paket Verfolgungsnr." = ''))
+            OR
+              ((packkontrolle."Prf Artikel Nr." = '')  AND (packkontrolle.VPE = 0)
+              AND (packkontrolle."Anzahl Stange" = 0) AND (packkontrolle."Anzahl Lose" = 0)
+              AND (packkontrolle.Bemerkung1 = '') AND (packkontrolle."Paket Verfolgungsnr." <> '')) THEN BEGIN
+                packkontrolle.OK := 'In Bearbeitung';
+                Fehlerindex := 0;
+                packkontrolle.Fehlertext := '';
+                packkontrolle.MODIFY;
+              END ELSE BEGIN
+                packkontrolle.OK := 'Fehlerhaft';
+                Artikel_ok := 0;
+                Menge_ok := 0;
+                Paketnr_ok := 0;
+                IF packkontrolle."Prf Artikel Nr." <> packkontrolle."Artikel Nr." THEN
+                  Artikel_ok := 1;
+                IF packkontrolle.Menge <> Prf_Menge THEN
+                  Menge_ok := 4;
+                //Auskommentiert 050608 ST
+                //IF (packkontrolle."Paket Verfolgungsnr." = '') AND (packkontrolle.Bemerkung1 = '') THEN
+                IF (packkontrolle."Paket Verfolgungsnr." = '') THEN
+                  Paketnr_ok := 7;
+                Fehlerindex:=Artikel_ok+Menge_ok+Paketnr_ok;
+                CASE Fehlerindex OF
+                  0: BEGIN
+                        Fehlerausgabe := '';
+                        packkontrolle.OK := 'In Bearbeitung';
+                      END;
+                  1: Fehlerausgabe := 'Artikel falsch';
+                  4: Fehlerausgabe := 'Menge falsch';
+                  5: Fehlerausgabe := 'Artikel, Menge falsch';
+                  7: Fehlerausgabe := 'Paketnr. fehlt';
+                  8: Fehlerausgabe := 'Artikel falsch, Paketnr. fehlt';
+                  11: Fehlerausgabe := 'Menge falsch, Paketnr. fehlt';
+                  12: Fehlerausgabe := 'Artikel,Menge falsch,Paketnr. fehlt';
+                END;
+                packkontrolle.Fehlertext :=Fehlerausgabe;
+                packkontrolle.MODIFY;
+              END;
+          END;
+        UNTIL packkontrolle.NEXT=0;
+        packkontrolle.RESET;
+      END;
+    END;
+
+    PROCEDURE Packkontrolle_modus_starten@1140001(modus@1140000 : 'auswahl,packkontrolle';sicht@1140001 : 'Alle,Inland_EU,Ausland,Muster');
+    BEGIN
+      CASE modus OF
+        modus :: auswahl :
+          BEGIN
+          END;
+        modus :: packkontrolle :
+          BEGIN
+            Rec.RESET;
+            CASE sicht OF
+              sicht :: Inland_EU :
+                BEGIN
+                  Rec.SETFILTER(Lagerortcode,'<>%1','MUST');
+                  Rec.SETFILTER(Debitorenbuchungsgruppe,'<>%1','DEB_AUSL');
+                  CurrPage.UPDATE;
+                END;
+              sicht :: Ausland :
+                BEGIN
+                  Rec.SETFILTER(Lagerortcode,'<>%1','MUST');
+                  Rec.SETFILTER(Debitorenbuchungsgruppe,'%1','DEB_AUSL');
+                  CurrPage.UPDATE;
+                END;
+              sicht :: Muster :
+                BEGIN
+                  Rec.SETFILTER(Lagerortcode,'%1','MUST');
+                  CurrPage.UPDATE;
+                END;
+              sicht :: Alle :
+                BEGIN
+                  CurrPage.UPDATE;
+                END;
+            END;
+          END;
+      END;
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
