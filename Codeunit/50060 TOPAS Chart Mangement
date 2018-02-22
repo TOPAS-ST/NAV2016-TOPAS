@@ -1,0 +1,339 @@
+OBJECT Codeunit 50060 TOPAS Chart Mangement
+{
+  OBJECT-PROPERTIES
+  {
+    Date=01.02.18;
+    Time=16:25:23;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    OnRun=BEGIN
+          END;
+
+  }
+  CODE
+  {
+    VAR
+      TOPAS_API@1000000002 : Codeunit 50001;
+      Period_Length@1000000000 : 'Day,Week,Month,Quarter,Year,Accounting Period';
+      DocType@1000000001 : 'Invoice,Order';
+
+    PROCEDURE GenerateInvoicesByTerritory@1000000001(VAR BusinessChartBuffer@1000000000 : Record 485;VAR PeriodLength@1000000001 : Option);
+    VAR
+      InvoicesByTerritoryQ@1000000002 : Query 50000;
+      i@1000000003 : Integer;
+      ToDate@1000000005 : Date;
+      FromDate@1000000004 : Date;
+      TotalsInvoices@1000000006 : Decimal;
+    BEGIN
+      WITH BusinessChartBuffer DO BEGIN
+        Initialize;
+        TotalsInvoices := 0;
+        DocType := DocType::Invoice;
+        //Adding Y-Axis measure in chart like: Name, DataType, ChartType to the Business Chart
+        AddMeasure('*',0,"Data Type"::Decimal,"Chart Type"::StackedColumn); //Workaround fr Farb„nderung 1. Measure blau, 2. Measure rot usw.
+        AddMeasure('Betrag',1,"Data Type"::Decimal,"Chart Type"::StackedColumn);
+
+        //Adding X-Axis measure in chart like: Name, DataType, ChartType to the Business Chart
+        SetXAxis('Gebiet',"Data Type"::String);
+
+        //Filtering Query Result
+        i := 0;
+        Period_Length := PeriodLength;
+        CalcPeriods(FromDate,ToDate);
+        InvoicesByTerritoryQ.SETRANGE(Posting_Date,FromDate,ToDate);
+        //InvoicesByTerritoryQ.SETFILTER(Territory_Code,'<>%1','');
+        InvoicesByTerritoryQ.OPEN;  //Query Open
+
+        WHILE InvoicesByTerritoryQ.READ DO BEGIN //Reading filtered Query Data
+          i += 1;
+          BusinessChartBuffer.AddColumn(InvoicesByTerritoryQ.Territory_Code); // X-Axis Values
+          SetValue('Betrag', i - 1, InvoicesByTerritoryQ.Sum_Sales_LCY); //Y-Axis Values
+          TotalsInvoices += InvoicesByTerritoryQ.Sum_Sales_LCY;
+        END;
+
+        IF TotalsInvoices <> 0 THEN BEGIN
+          i += 1;
+          BusinessChartBuffer.AddColumn('Gesamtbetrag'); // X-Axis Values
+          SetValue('Betrag', i - 1, TotalsInvoices); //Y-Axis Values
+        END;
+
+        InvoicesByTerritoryQ.CLOSE;  //Query Close
+
+      END;
+    END;
+
+    PROCEDURE GenerateInvoicesHistoryProgress@1000000008(VAR BusinessChartBuffer@1000000000 : Record 485;VAR PeriodLength@1000000001 : Option);
+    VAR
+      i@1000000003 : Integer;
+      ToDate@1000000005 : ARRAY [6] OF Date;
+      FromDate@1000000004 : ARRAY [6] OF Date;
+      Value@1000000007 : Decimal;
+      TotalValue@1000000002 : Decimal;
+      ColumnNo@1000000006 : Integer;
+      MeasureIndex@1000000008 : Integer;
+    BEGIN
+      WITH BusinessChartBuffer DO BEGIN
+        Initialize;
+        DocType := DocType::Invoice;
+        //Adding Y-Axis measure in chart like: Name, DataType, ChartType to the Business Chart
+        AddMeasure('*',0,"Data Type"::Decimal,"Chart Type"::StackedColumn); //Workaround fr Farb„nderung 1. Measure blau, 2. Measure rot usw.
+        AddMeasure('Betrag',1,"Data Type"::Decimal,"Chart Type"::StackedColumn);
+
+        //Filtering Query Result
+        MeasureIndex := 1;
+        Period_Length := PeriodLength;
+        "Period Length" := Period_Length;
+
+        //Adding X-Axis measure in chart like: Name, DataType, ChartType to the Business Chart
+        SetPeriodXAxis;
+
+        IF CalcPeriodsProgress(FromDate,ToDate,BusinessChartBuffer) THEN BEGIN
+          AddPeriods(ToDate[1],ToDate[ARRAYLEN(ToDate)]);
+
+          TotalValue := 0;
+          FOR ColumnNo := 1 TO ARRAYLEN(ToDate) DO BEGIN
+            TotalValue := GetSalesInvoiceAmount(FromDate[ColumnNo],ToDate[ColumnNo]);
+            SetValueByIndex(MeasureIndex,ColumnNo - 1,TotalValue);
+          END;
+        END;
+
+      END;
+    END;
+
+    PROCEDURE GenerateOrdersByTerritory@1000000000(VAR BusinessChartBuffer@1000000000 : Record 485;VAR PeriodLength@1000000001 : Option);
+    VAR
+      OrdersByTerritoryQ@1000000002 : Query 50001;
+      i@1000000003 : Integer;
+      ToDate@1000000005 : Date;
+      FromDate@1000000004 : Date;
+      TotalsOrders@1000000006 : Decimal;
+    BEGIN
+      WITH BusinessChartBuffer DO BEGIN
+        Initialize;
+        TotalsOrders := 0;
+        DocType := DocType::Order;
+        //Adding Y-Axis measure in chart like: Name, DataType, ChartType to the Business Chart
+        AddMeasure('*',0,"Data Type"::Decimal,"Chart Type"::StackedColumn); //Workaround fr Farb„nderung 1. Measure blau, 2. Measure rot usw.
+        AddMeasure('**',0,"Data Type"::Decimal,"Chart Type"::StackedColumn);
+        AddMeasure('Betrag',1,"Data Type"::Decimal,"Chart Type"::StackedColumn);
+
+        //Adding X-Axis measure in chart like: Name, DataType, ChartType to the Business Chart
+        SetXAxis('Gebiet',"Data Type"::String);
+
+        //Filtering Query Result
+        i := 0;
+        Period_Length := PeriodLength;
+        CalcPeriods(FromDate,ToDate);
+        OrdersByTerritoryQ.SETRANGE(Datum,FromDate,ToDate);
+        OrdersByTerritoryQ.SETFILTER(Belegart,'%1|%2|%3','AMTL','AEMT','GUMT');
+        //OrdersByTerritoryQ.SETFILTER(Territory_Code,'<>%1','');
+        OrdersByTerritoryQ.OPEN;  //Query Open
+
+        WHILE OrdersByTerritoryQ.READ DO BEGIN //Reading filtered Query Data
+          i += 1;
+          BusinessChartBuffer.AddColumn(OrdersByTerritoryQ.Gebietscode); // X-Axis Values
+          SetValue('Betrag', i - 1, OrdersByTerritoryQ.Sum_Betrag_in_EUR); //Y-Axis Values
+          TotalsOrders += OrdersByTerritoryQ.Sum_Betrag_in_EUR;
+        END;
+
+        IF TotalsOrders <> 0 THEN BEGIN
+          i += 1;
+          BusinessChartBuffer.AddColumn('Gesamtbetrag'); // X-Axis Values
+          SetValue('Betrag', i - 1, TotalsOrders); //Y-Axis Values
+        END;
+
+        OrdersByTerritoryQ.CLOSE;  //Query Close
+
+      END;
+    END;
+
+    PROCEDURE DrillDownInvoicesByTerritory@1000000005(VAR BusChartBuf@1000000004 : Record 485;VAR PeriodLength@1000000003 : Option);
+    VAR
+      CustLedgerEntry@1000000000 : Record 21;
+      ToDate@1000000002 : Date;
+      FromDate@1000000001 : Date;
+      Measure@1000000005 : Integer;
+      Territory@1000000006 : Code[10];
+      NoTerritoryFilter@1000000008 : Boolean;
+    BEGIN
+      Measure := BusChartBuf."Drill-Down X Index";
+      IF (Measure < 0) THEN
+        EXIT;
+
+      IF STRLEN(BusChartBuf.GetXValueAsText(Measure)) < 10 THEN BEGIN
+        Territory := BusChartBuf.GetXValueAsText(Measure);
+        NoTerritoryFilter := FALSE;
+      END ELSE BEGIN
+        Territory := '';
+        NoTerritoryFilter := TRUE;
+      END;
+
+      Period_Length := PeriodLength;
+      CalcPeriods(FromDate,ToDate);
+      IF NoTerritoryFilter = FALSE THEN
+        CustLedgerEntry.SETRANGE("Territory Code",Territory);
+      CustLedgerEntry.SETRANGE("Document Type",CustLedgerEntry."Document Type"::Invoice);
+      CustLedgerEntry.SETRANGE("Posting Date",FromDate,ToDate);
+      PAGE.RUN(PAGE::"Customer Ledger Entries",CustLedgerEntry);
+    END;
+
+    PROCEDURE DrillDownInvoicesProgress@1000000010(VAR BusChartBuf@1000000004 : Record 485;VAR PeriodLength@1000000003 : Option);
+    VAR
+      CustLedgerEntry@1000000000 : Record 21;
+      ToDate@1000000002 : Date;
+      FromDate@1000000001 : Date;
+      Measure@1000000005 : Integer;
+      Period@1000000006 : Date;
+    BEGIN
+      Measure := BusChartBuf."Drill-Down X Index";
+      //IF (Measure < 0) THEN
+        //EXIT;
+
+      ToDate := BusChartBuf.GetXValueAsDate(BusChartBuf."Drill-Down X Index");
+      Period_Length := PeriodLength;
+      FromDate := CalcFromDate(ToDate);
+
+      CustLedgerEntry.SETRANGE("Document Type",CustLedgerEntry."Document Type"::Invoice);
+      CustLedgerEntry.SETRANGE("Posting Date",FromDate,ToDate);
+      PAGE.RUN(PAGE::"Customer Ledger Entries",CustLedgerEntry);
+    END;
+
+    PROCEDURE DrillDownOrdersByTerritory@1000000002(VAR BusChartBuf@1000000004 : Record 485;VAR PeriodLength@1000000003 : Option);
+    VAR
+      AUmtl@1000000000 : Record 50017;
+      ToDate@1000000002 : Date;
+      FromDate@1000000001 : Date;
+      Measure@1000000005 : Integer;
+      Territory@1000000006 : Code[10];
+      NoTerritoryFilter@1000000007 : Boolean;
+    BEGIN
+      Measure := BusChartBuf."Drill-Down X Index";
+      IF (Measure < 0) THEN
+        EXIT;
+
+      IF STRLEN(BusChartBuf.GetXValueAsText(Measure)) < 10 THEN BEGIN
+        Territory := BusChartBuf.GetXValueAsText(Measure);
+        NoTerritoryFilter := FALSE;
+      END ELSE BEGIN
+        Territory := '';
+        NoTerritoryFilter := TRUE;
+      END;
+
+      Period_Length := PeriodLength;
+      CalcPeriods(FromDate,ToDate);
+      IF NoTerritoryFilter = FALSE THEN
+        AUmtl.SETRANGE(Gebietscode,Territory);
+      AUmtl.SETFILTER(Belegart,'%1|%2|%3','AMTL','AEMT','GUMT');
+      AUmtl.SETRANGE(Datum,FromDate,ToDate);
+      PAGE.RUN(PAGE::"Auftragseingang mtl.",AUmtl);
+    END;
+
+    LOCAL PROCEDURE CalcPeriods@1000000013(VAR FromDate@1002 : Date;VAR ToDate@1000 : Date) : Boolean;
+    VAR
+      MaxPeriodNo@1001 : Integer;
+      i@1005 : Integer;
+    BEGIN
+      FromDate := CalcFromDate(WORKDATE);
+      ToDate := CalcToDate(WORKDATE);
+      EXIT(TRUE);
+    END;
+
+    LOCAL PROCEDURE CalcPeriodsProgress@2(VAR FromDate@1002 : ARRAY [5] OF Date;VAR ToDate@1000 : ARRAY [6] OF Date;VAR BusChartBuf@1003 : Record 485) : Boolean;
+    VAR
+      MaxPeriodNo@1001 : Integer;
+      i@1005 : Integer;
+    BEGIN
+      MaxPeriodNo := ARRAYLEN(ToDate);
+      ToDate[MaxPeriodNo] := WORKDATE;
+      IF ToDate[MaxPeriodNo] = 0D THEN
+        EXIT(FALSE);
+      FOR i := MaxPeriodNo DOWNTO 1 DO BEGIN
+        FromDate[i] := CalcFromDate(ToDate[i]);
+        IF i > 1 THEN
+          ToDate[i - 1] := FromDate[i] - 1;
+      END;
+      EXIT(TRUE);
+    END;
+
+    PROCEDURE CalcFromDate@18(Date@1000 : Date) : Date;
+    BEGIN
+      EXIT(CalcPeriodDate(Date,TRUE));
+    END;
+
+    PROCEDURE CalcToDate@13(Date@1000 : Date) : Date;
+    BEGIN
+      EXIT(CalcPeriodDate(Date,FALSE));
+    END;
+
+    LOCAL PROCEDURE CalcPeriodDate@39(Date@1000 : Date;CalcStartDate@1001 : Boolean) : Date;
+    VAR
+      Modificator@1002 : Text[1];
+    BEGIN
+      IF Date = 0D THEN
+        EXIT(Date);
+
+      CASE Period_Length OF
+        Period_Length::Day:
+          BEGIN
+            IF DocType = DocType::Order THEN
+              EXIT(TOPAS_API.CalcNextWorkday(-1,Date));
+            EXIT(Date);
+          END;
+        Period_Length::Week,
+        Period_Length::Month,
+        Period_Length::Quarter,
+        Period_Length::Year,
+        Period_Length::"Accounting Period":
+          BEGIN
+            IF CalcStartDate THEN
+              Modificator := '-';
+            EXIT(CALCDATE(STRSUBSTNO('<%1C%2>',Modificator,GetPeriodLength),Date));
+          END;
+      END;
+    END;
+
+    PROCEDURE GetPeriodLength@31() : Text[4];
+    BEGIN
+      CASE Period_Length OF
+        Period_Length::Day:
+          EXIT('D');
+        Period_Length::Week:
+          EXIT('W');
+        Period_Length::Month:
+          EXIT('M');
+        Period_Length::Quarter:
+          EXIT('Q');
+        Period_Length::Year:
+          EXIT('Y');
+        Period_Length::"Accounting Period":
+        IF DATE2DMY(WORKDATE,2) < 7 THEN
+          EXIT('Y-6M')
+        ELSE
+          EXIT('Y+6M');
+      END;
+    END;
+
+    LOCAL PROCEDURE GetSalesInvoiceAmount@25(FromDate@1001 : Date;ToDate@1002 : Date) : Decimal;
+    VAR
+      CurrExchRate@1004 : Record 330;
+      SalesInvoiceQry@1003 : Query 50002;
+      Amount@1008 : Decimal;
+      TotalAmount@1005 : Decimal;
+    BEGIN
+      SalesInvoiceQry.SETRANGE(Document_Type,SalesInvoiceQry.Document_Type::Invoice);
+      SalesInvoiceQry.SETRANGE(PostingDate,FromDate,ToDate);
+      SalesInvoiceQry.OPEN;
+      WHILE SalesInvoiceQry.READ DO BEGIN
+        TotalAmount += SalesInvoiceQry.SalesLCY;
+      END;
+      EXIT(TotalAmount);
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
