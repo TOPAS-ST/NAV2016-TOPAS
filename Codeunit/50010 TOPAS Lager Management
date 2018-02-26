@@ -2,8 +2,8 @@ OBJECT Codeunit 50010 TOPAS Lager Management
 {
   OBJECT-PROPERTIES
   {
-    Date=21.02.18;
-    Time=15:58:40;
+    Date=26.02.18;
+    Time=09:54:55;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -441,12 +441,12 @@ OBJECT Codeunit 50010 TOPAS Lager Management
                   Label."Batch-No.#1" := AP."Lot No.";
                   Label."Batch-No.#2" := '';
                 END ELSE BEGIN
-                    //**************************************************************************************************
-                    //In Batch-No.#2 muss vor der 2 immer ein Leerzeichen stehen oder das Feld generell in
-                    //alphanumerisch wandeln (z.B. ein . oder # vor Lot. No.), damit das Label Programm den
-                    //Datamatrix Code richtig darstellen kann Batch-No.#1 muss immer numerisch sein, ansonsten
-                    //wenn Batch-No.#2 leer ist, kann der Datamatrix Code auch nicht mehr richtig gelesen werden
-                    //**************************************************************************************************
+                  //**************************************************************************************************
+                  //In Batch-No.#2 muss vor der 2 immer ein Leerzeichen stehen oder das Feld generell in
+                  //alphanumerisch wandeln (z.B. ein . oder # vor Lot. No.), damit das Label Programm den
+                  //Datamatrix Code richtig darstellen kann Batch-No.#1 muss immer numerisch sein, ansonsten
+                  //wenn Batch-No.#2 leer ist, kann der Datamatrix Code auch nicht mehr richtig gelesen werden
+                  //**************************************************************************************************
 
                   Label."Batch-Counter" := 2;
                   Label."Batch-No.#1" := COPYSTR(AP."Lot No.",1,STRPOS(AP."Lot No.",'/')-1);
@@ -555,8 +555,104 @@ OBJECT Codeunit 50010 TOPAS Lager Management
                 , l_chargenmenge, Artikel.Verpackungsmenge, splitte, r_splittmenge);
 
       IF achtung_bleihaltig = TRUE THEN
-        MESSAGE('Achtung, der Lieferschein %1 enth„lt bleihaltige Ware, bitte benutzen Sie das Label ohne RoHS Logo.',
-        ls_achtung_bleihaltig);
+        MESSAGE('Achtung, der Lieferschein %1 enth„lt bleihaltige Ware, bitte benutzen Sie das Label ohne RoHS Logo.',ls_achtung_bleihaltig);
+    END;
+
+    PROCEDURE HolePackDaten@1140001(Auftragsnr@1140000 : Code[20]);
+    VAR
+      VKliefkopf@1140002 : Record 110;
+      Vkliefzeile@1140001 : Record 111;
+      Packkontrolle@1140003 : Record 50038;
+      Pack_Archiv@1140005 : Record 50039;
+      Artikel@1140004 : Record 27;
+    BEGIN
+      //02.01.12 ST - Neueste Lieferscheine zum Auftrag in die Packkontrolle holen, bei denen die Paketnr. noch leer ist
+
+      VKliefkopf.RESET;
+      VKliefkopf.SETFILTER("Order No.",Auftragsnr);
+      VKliefkopf.SETFILTER("Package Tracking No.",'=%1','');
+      IF VKliefkopf.FINDLAST THEN BEGIN
+        Vkliefzeile.RESET;
+        Vkliefzeile.SETFILTER("Order No.",VKliefkopf."Order No.");
+        Vkliefzeile.SETFILTER(Type,'%1',Vkliefzeile.Type::Item);
+        Vkliefzeile.SETFILTER(Quantity,'>%1',0);
+        IF Vkliefzeile.FINDFIRST THEN BEGIN
+          REPEAT
+            Artikel.GET(Vkliefzeile."No.");
+            IF ((Artikel."Manufacturer Code" = '52') OR (Artikel."Manufacturer Code" = '53')
+            OR (Artikel."Manufacturer Code" = '57') OR (Artikel."Manufacturer Code" = '5710')
+            OR (Artikel."Manufacturer Code" = '5720') OR (Artikel."Manufacturer Code" = '5730')
+            OR (Artikel."Manufacturer Code" = '96') OR (Artikel."Manufacturer Code" = '9610')
+            OR (Artikel."Manufacturer Code" = '98') OR (Artikel."Manufacturer Code" = '99'))
+            OR ((Artikel."Manufacturer Code" = '59') AND ((Artikel.Serviceklassifizierung = 'SOFTWARE')
+            OR ((Artikel."Manufacturer Code" = '85') AND (Artikel.Artikelgruppe <> 'SYSTEME'))
+            OR (Artikel.Serviceklassifizierung = 'LIZENZEN')))
+            OR (Artikel.Artikelgruppe = 'DIENSTLEISTUNG') THEN BEGIN
+            END ELSE BEGIN
+              IF PackdatenEinfgenErlauben(Vkliefzeile."Document No.",Vkliefzeile."No.") = TRUE THEN BEGIN
+                Packkontrolle.RESET;
+                Packkontrolle.SETFILTER("Lieferschein Nr.",'%1',Vkliefzeile."Document No.");
+                Packkontrolle.SETFILTER("Lieferschein Zeilennr.",'%1',Vkliefzeile."Line No.");
+                IF NOT Packkontrolle.FINDFIRST THEN BEGIN
+                  Packkontrolle.INIT;
+                  Packkontrolle."Lieferschein Nr." := Vkliefzeile."Document No.";
+                  Packkontrolle."Lieferschein Zeilennr." := Vkliefzeile."Line No.";
+                  Packkontrolle.Menge := Vkliefzeile.Quantity;
+                  Packkontrolle.Lagerortcode := Vkliefzeile."Location Code";
+                  Packkontrolle."Artikel Nr." := Vkliefzeile."Artikelnr. 2";
+                  Artikel.RESET;
+                  Artikel.SETRANGE("No. 2",Packkontrolle."Artikel Nr.");
+                  IF Artikel.FINDFIRST THEN
+                    Packkontrolle.Verpackungsmenge := Artikel.Verpackungsmenge;
+                  Packkontrolle.Debitorenbuchungsgruppe := VKliefkopf."Customer Posting Group";
+                  Packkontrolle.Versandart := Packkontrolle.Versandart::UPS;
+                  Packkontrolle.INSERT;
+                END;
+              END;
+            END;
+          UNTIL Vkliefzeile.NEXT = 0;
+        END;
+      END;
+
+      // Vorhandene Archivs„tze aus Packkontrolle entfernen
+      Packkontrolle.RESET;
+      IF Packkontrolle.FINDFIRST THEN
+        REPEAT
+          Pack_Archiv.RESET;
+          Pack_Archiv.SETFILTER("Lieferschein Nr.",'%1',Packkontrolle."Lieferschein Nr.");
+          Pack_Archiv.SETFILTER("Lieferschein Zeilennr.",'%1',Packkontrolle."Lieferschein Zeilennr.");
+          IF Pack_Archiv.FINDFIRST THEN
+            Packkontrolle.DELETE;
+        UNTIL Packkontrolle.NEXT=0;
+    END;
+
+    PROCEDURE PackdatenEinfgenErlauben@1140008(docno@1140003 : Code[20];artikelnr@1140004 : Code[20]) : Boolean;
+    VAR
+      Artikel@1140001 : Record 27;
+      temp_Lieferschein@1140002 : Record 111;
+    BEGIN
+
+      Artikel.GET(artikelnr);
+      CASE Artikel."Manufacturer Code" OF
+      '59':
+        BEGIN
+          IF (Artikel.Serviceklassifizierung <> 'SYSTEM CHAMPS') THEN BEGIN
+            temp_Lieferschein.RESET;
+            temp_Lieferschein.SETFILTER("Document No.",'%1',docno);
+            temp_Lieferschein.SETFILTER(Type,'%1',temp_Lieferschein.Type::Item);
+            temp_Lieferschein.SETFILTER(Quantity,'>%1',0);
+            IF temp_Lieferschein.FINDFIRST THEN
+              REPEAT
+                Artikel.GET(temp_Lieferschein."No.");
+                IF Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS' THEN
+                  EXIT(FALSE);
+              UNTIL temp_Lieferschein.NEXT = 0;
+            EXIT(TRUE);
+          END;
+        END;
+      END;
+
+      EXIT(TRUE);
     END;
 
     BEGIN
