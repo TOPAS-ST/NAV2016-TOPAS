@@ -2,8 +2,8 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
 {
   OBJECT-PROPERTIES
   {
-    Date=07.02.18;
-    Time=10:27:59;
+    Date=28.02.18;
+    Time=11:19:44;
     Modified=Yes;
     Version List=Beleg !!ausfhrbar !!,FORNAV2.0.0.1189/1189;
   }
@@ -12,12 +12,13 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
     UseSystemPrinter=Yes;
     OnInitReport=BEGIN
                    FIBUEinrichtung.GET;
-                   CurrReport.USEREQUESTPAGE(TRUE);
+                   //CurrReport.USEREQUESTPAGE(TRUE);
+                   AnzKopien := 1;
                    ;ReportForNav:= ReportForNav.Report(CurrReport.OBJECTID,CurrReport.LANGUAGE,SERIALNUMBER,USERID,COMPANYNAME);ReportForNav.Init;
                  END;
 
     OnPreReport=BEGIN
-                  //AnzKopien:=1;
+                  AnzKopien_sich := AnzKopien;
                   ;ReportForNav.OpenDesigner:=ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
                 END;
 
@@ -45,6 +46,24 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
                OnAfterGetRecord=BEGIN
                                   CurrReport.LANGUAGE := language.GetLanguageID("Language Code");
                                   TOPAS_Funktionen.GetCompanyInformation(CompanyInfo,Firmendaten);
+                                  IF NOT kunde.GET("Sales Header"."Sell-to Customer No.") THEN CurrReport.BREAK;
+
+                                  EVALUATE(report_objectid,COPYSTR(CurrReport.OBJECTID(FALSE),STRPOS(CurrReport.OBJECTID(FALSE),' ')+1));
+                                  PrinterSelection.RESET;
+                                  PrinterSelection.SETRANGE("User ID",USERID);
+                                  PrinterSelection.SETRANGE("Report ID",report_objectid);
+                                  IF PrinterSelection.FINDFIRST() THEN BEGIN
+                                    IF (PrinterSelection."Printer Name" <> 'PDFCreator') AND (PrinterSelection."Printer Name" <> 'Bullzip PDF Printer')
+                                    AND ("Sales Header"."AB via EMail" = TRUE) THEN
+                                      pdf := TRUE
+                                    ELSE
+                                      pdf := FALSE;
+                                  END ELSE BEGIN
+                                    pdf := FALSE;
+                                  END;
+
+                                  IF ("Sales Header"."AB via EMail") OR (kunde."Best„tigung via Internet") THEN
+                                    AnzKopien := 0 ELSE AnzKopien := AnzKopien_sich;
                                   IF "Salesperson Code" = '' THEN BEGIN
                                     CLEAR(VerkEinkPerson);
                                     Verk„uferText := '';
@@ -88,16 +107,17 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
                                     IF (LieferAnAdr[i] <> VerkAdr[i]) OR (DebAdr[i] <> VerkAdr[i]) THEN
                                       LiefAdrAnzeigen := TRUE;
                                   IF "Currency Code" = '' THEN BEGIN
-                                    waehrung:='[ '+'°'+' ]';
-                                    waehrung2:='EUR';
+                                    waehrung := '[ ' + '°' + ' ]';
+                                    waehrung2 := 'EUR';
                                   END ELSE BEGIN
-                                    waehrung:='[ '+"Currency Code"+' ]';
-                                    waehrung2:="Currency Code";
+                                    waehrung := '[ ' + "Currency Code" + ' ]';
+                                    waehrung2 := "Currency Code";
                                   END;
-                                  v_FER_SPL:=FALSE;
+                                  v_FER_SPL:=  FALSE;
                                 END;
 
-               ReqFilterFields=No.,Sell-to Customer No.,No. Printed,Order Date }
+               ReqFilterFields=No.,Sell-to Customer No.,No. Printed,Order Date;
+               CalcFields=AB via EMail }
 
     { 2   ;1   ;DataItem;Debitor             ;
                DataItemTable=Table18;
@@ -117,14 +137,13 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
                DataItemTableView=SORTING(Number);
                OnPreDataItem=BEGIN
                                AnzSchleifen := ABS(AnzKopien) + 1;
-                               //AnzSchleifen := ABS(AnzKopien) + 0;
                                KopieText := '';
                                SETRANGE(Number,1,AnzSchleifen);
-                               sum_restauftragsbestand:=0;
+                               sum_restauftragsbestand := 0;
                              END;
 
                OnAfterGetRecord=BEGIN
-                                  sum_restauftragsbestand:=0;
+                                  sum_restauftragsbestand := 0;
                                   CLEAR(VerkZeile2);
                                   CLEAR(VerkBuchen);
                                   VerkBuchen.GetSalesLines("Sales Header",VerkZeile2,0);
@@ -136,13 +155,13 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
                                     ReportForNav.PrinterSettings.PaperSource(1)
                                   ELSE
                                     ReportForNav.PrinterSettings.PaperSource(3);
+
                                   v_keine_AB := '';
                                   "ab vor wandlung" := '';
-                                  "via EMail_adresse":= '';
+                                  "via EMail_adresse" := '';
                                   "via Email_unterschrift" := '';
                                   "via Email" := '';
-                                  kunde.GET("Sales Header"."Sell-to Customer No.");
-                                  IF Number > 1 THEN BEGIN
+                                  IF ((Number > 1) AND (pdf = FALSE)) OR (pdf = TRUE) OR (kunde."Best„tigung via Internet" = TRUE) THEN BEGIN
                                     IF CurrReport.LANGUAGE = 1031 THEN
                                       KopieText := 'skopie'
                                     ELSE
@@ -150,9 +169,9 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
                                     IF kunde."AB vor Wandlung" THEN "ab vor wandlung" := 'Achtung erst AB dann Wandeln !!!';
                                     IF "Sales Header"."keine Rahmen-AB an Kunden" THEN v_keine_AB := 'Keine Best„tigung an Kunden !';
                                     IF kunde."AB via EMail" THEN BEGIN
-                                      "via Email_unterschrift" :='Erledigt von ..............'  ;
+                                      "via Email_unterschrift" := 'Erledigt von ..............'  ;
                                       "via Email" := 'Achtung via E-Mail versenden !!!';
-                                      "via EMail_adresse":="Sales Header"."AB EMail-Adresse";
+                                      "via EMail_adresse" := "Sales Header"."AB EMail-Adresse";
                                     END;
                                   END;
                                   ReportForNav.PageNo := 1;
@@ -162,7 +181,7 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
                                     ELSE
                                       „nderung := 'Change'
                                   END ELSE BEGIN
-                                    „nderung :='';
+                                    „nderung := '';
                                   END;
                                   IF CurrReport.LANGUAGE = 1031 THEN BEGIN
                                     ansp_telefon := "Salesperson/Purchaser"."Phone No.";
@@ -356,8 +375,8 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
                                   MWSTBetragZeile."Amount Including VAT" := "Sales Line"."Amount Including VAT";
                                   MWSTBetragZeile.InsertLine;
                                   IF v_FER_SPL=FALSE THEN BEGIN
-                                    IF (("Sales Line"."Manufacturer Code" ='82') OR ("Sales Line"."Manufacturer Code" = '85')) THEN BEGIN
-                                      v_FER_SPL:=TRUE;
+                                    IF (("Sales Line"."Manufacturer Code" = '82') OR ("Sales Line"."Manufacturer Code" = '85')) THEN BEGIN
+                                      v_FER_SPL := TRUE;
                                     END;
                                   END;
                                 END;
@@ -432,9 +451,9 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
                OnAfterGetRecord=BEGIN
                                   IF "Sales Line".Type = "Sales Line".Type::Item THEN BEGIN
                                     IF "Sales Line"."VAT %" > 0 THEN         //sonst werden die Textzeilen mit bercksichtigt
-                                      mwst:="Sales Line"."VAT %"
+                                      mwst := "Sales Line"."VAT %"
                                     ELSE
-                                      mwst:=0;
+                                      mwst := 0;
                                   END;
                                   sum_restauftragsbestand := sum_restauftragsbestand + ROUND((("Sales Line"."Outstanding Amount") / (100 + mwst) * 100),0.01);
                                 END;
@@ -493,13 +512,13 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
                OnAfterGetRecord=BEGIN
                                   liefert := FORMAT("Verkaufsz."."Promised Delivery Date") ;
                                   IF "Verkaufsz."."Shipment Date" = (31122053D) THEN
-                                    liefert:='Abruf';
+                                    liefert := 'Abruf';
                                   IF "Verkaufsz."."Shipment Date" = (31122055D) THEN
-                                    liefert:='folgt';
+                                    liefert := 'folgt';
                                 END;
 
                OnPostDataItem=BEGIN
-                                liefert:='';
+                                liefert := '';
                               END;
 
                DataItemLinkReference=Sales Line;
@@ -741,6 +760,7 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
       language@1140051 : Record 8;
       kunde@1000000005 : Record 18;
       vkzgutschrift@1000000004 : Record 114;
+      PrinterSelection@1000000006 : Record 78;
       VerkDruckZ„hler@1140013 : Codeunit 313;
       FormatAdr@1140014 : Codeunit 365;
       VerkBuchen@1140015 : Codeunit 80;
@@ -758,6 +778,7 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
       waehrung2@1000000002 : Code[10];
       MehrZeilen@1140024 : Boolean;
       AnzKopien@1140025 : Integer;
+      AnzKopien_sich@1000000008 : Integer;
       AnzSchleifen@1140026 : Integer;
       Titel@1140054 : Text[30];
       KopieText@1140027 : Text[30];
@@ -784,6 +805,8 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
       v_keine_AB@1140030 : Text[30];
       v_FER_SPL@1140052 : Boolean;
       seite@1140053 : Text[30];
+      pdf@1000000007 : Boolean;
+      report_objectid@1000000009 : Integer;
       ReportForNav@5000 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
       ReportForNavClient@5003 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
       ReportForNavDialog@5001 : Dialog;
@@ -810,18 +833,18 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
     LOCAL PROCEDURE OnPreSectionRundungsRahmen_Body8@5045(VAR RundungsRahmen@1000000000 : Record 2000000026);
     BEGIN
       WITH RundungsRahmen DO BEGIN
-        ReportForNav.ShowOutput((VerkZeile2.Type =VerkZeile2.Type::Item) AND (VerkZeile2."No."=''));
+        ReportForNav.ShowOutput((VerkZeile2.Type = VerkZeile2.Type::Item) AND (VerkZeile2."No." = ''));
       END;
     END;
 
     LOCAL PROCEDURE OnPreSectionRundungsRahmen_Body9@5046(VAR RundungsRahmen@1000000000 : Record 2000000026);
     BEGIN
       WITH RundungsRahmen DO BEGIN
-        ReportForNav.ShowOutput((VerkZeile2.Type =VerkZeile2.Type::"G/L Account") AND (VerkZeile2."Outstanding Quantity">0));
+        ReportForNav.ShowOutput((VerkZeile2.Type = VerkZeile2.Type::"G/L Account") AND (VerkZeile2."Outstanding Quantity" > 0));
         IF VerkZeile2.Type = VerkZeile2.Type::"G/L Account" THEN
           BEGIN
-            sum_restauftragsbestand:=sum_restauftragsbestand+VerkZeile2.Amount;
-            SumPorto:=VerkZeile2.Amount;
+            sum_restauftragsbestand := sum_restauftragsbestand+VerkZeile2.Amount;
+            SumPorto := VerkZeile2.Amount;
           END;
       END;
     END;
@@ -843,15 +866,14 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
     LOCAL PROCEDURE OnPreSectionRundungsRahmen_Footer15@5049(VAR RundungsRahmen@1000000000 : Record 2000000026);
     BEGIN
       WITH RundungsRahmen DO BEGIN
-         ReportForNav.ShowOutput(v_FER_SPL=FALSE);
+         ReportForNav.ShowOutput(v_FER_SPL = FALSE);
       END;
     END;
 
     LOCAL PROCEDURE OnPreSectionItem_Body18@5050(VAR Item@1000000000 : Record 27);
     BEGIN
       WITH Item DO BEGIN
-        ReportForNav.ShowOutput((VerkZeile2.Type = VerkZeile2.Type::Item) AND
-        (VerkZeile2."Shipment Date" = (31122055D)));
+        ReportForNav.ShowOutput((VerkZeile2.Type = VerkZeile2.Type::Item) AND (VerkZeile2."Shipment Date" = (31122055D)));
         "Sales Line".CALCFIELDS("offene Menge aus Rahmen im AU");
       END;
     END;
@@ -859,8 +881,7 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
     LOCAL PROCEDURE OnPreSectionItem_Body19@5051(VAR Item@1000000000 : Record 27);
     BEGIN
       WITH Item DO BEGIN
-        ReportForNav.ShowOutput((VerkZeile2.Type = VerkZeile2.Type::Item) AND
-        (VerkZeile2."Shipment Date" = (31122053D)));
+        ReportForNav.ShowOutput((VerkZeile2.Type = VerkZeile2.Type::Item) AND (VerkZeile2."Shipment Date" = (31122053D)));
         "Sales Line".CALCFIELDS("offene Menge aus Rahmen im AU");
       END;
     END;
@@ -868,8 +889,7 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
     LOCAL PROCEDURE OnPreSectionItem_Body20@5052(VAR Item@1000000000 : Record 27);
     BEGIN
       WITH Item DO BEGIN
-        ReportForNav.ShowOutput((VerkZeile2.Type = VerkZeile2.Type::Item) AND
-        (VerkZeile2."Shipment Date" < (31122053D)));
+        ReportForNav.ShowOutput((VerkZeile2.Type = VerkZeile2.Type::Item) AND (VerkZeile2."Shipment Date" < (31122053D)));
         "Sales Line".CALCFIELDS("offene Menge aus Rahmen im AU");
       END;
     END;
@@ -877,15 +897,14 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
     LOCAL PROCEDURE OnPreSectionItem_Body21@5053(VAR Item@1000000000 : Record 27);
     BEGIN
       WITH Item DO BEGIN
-        ReportForNav.ShowOutput((VerkZeile2."Description 2" <> '') );
+        ReportForNav.ShowOutput((VerkZeile2."Description 2" <> ''));
       END;
     END;
 
     LOCAL PROCEDURE OnPreSectionItem_Body22@5054(VAR Item@1000000000 : Record 27);
     BEGIN
       WITH Item DO BEGIN
-        ReportForNav.ShowOutput((VerkZeile2.Type = VerkZeile2.Type::Item) AND
-        ("Sales Line"."Cross-Reference No." <> ''));
+        ReportForNav.ShowOutput((VerkZeile2.Type = VerkZeile2.Type::Item) AND ("Sales Line"."Cross-Reference No." <> ''));
       END;
     END;
 
@@ -906,7 +925,7 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
     LOCAL PROCEDURE OnPreSectionItem_Body25@5057(VAR Item@1000000000 : Record 27);
     BEGIN
       WITH Item DO BEGIN
-        ReportForNav.ShowOutput((VerkZeile2."VAT Prod. Posting Group"='13B2') AND (VerkZeile2."Outstanding Quantity"> 0));
+        ReportForNav.ShowOutput((VerkZeile2."VAT Prod. Posting Group" = '13B2') AND (VerkZeile2."Outstanding Quantity" > 0));
       END;
     END;
 
@@ -928,7 +947,7 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
     BEGIN
       WITH "Sales Cr.Memo Line" DO BEGIN
         //Holt das Buchungsdatum aus dem Sales Cr.Memo Header
-        Buchung:=vkzgutschrift."Posting Date";
+        Buchung := vkzgutschrift."Posting Date";
       END;
     END;
 
@@ -937,35 +956,30 @@ OBJECT Report 50115 TOPAS_Rahmenauft.Best„tigung
       WITH MWStZ„hler DO BEGIN
          // Diese Einschr„nkung des Reports wieder entfernen, wenn keine Zeilen mit 16%MWSt vorhanden sind.
          // Dies gilt auch fr die n„chsten Zeilen des Reports.
-         ReportForNav.ShowOutput("Sales Header"."No.">'AUR100212');
       END;
     END;
 
     LOCAL PROCEDURE OnPreSectionMWStZahler_TransHeader33@5062(VAR MWStZ„hler@1000000000 : Record 2000000026);
     BEGIN
       WITH MWStZ„hler DO BEGIN
-         ReportForNav.ShowOutput("Sales Header"."No.">'AUR100212');
       END;
     END;
 
     LOCAL PROCEDURE OnPreSectionMWStZahler_Body34@5063(VAR MWStZ„hler@1000000000 : Record 2000000026);
     BEGIN
       WITH MWStZ„hler DO BEGIN
-         ReportForNav.ShowOutput("Sales Header"."No.">'AUR100212');
       END;
     END;
 
     LOCAL PROCEDURE OnPreSectionMWStZahler_TransFooter35@5064(VAR MWStZ„hler@1000000000 : Record 2000000026);
     BEGIN
       WITH MWStZ„hler DO BEGIN
-          ReportForNav.ShowOutput("Sales Header"."No.">'AUR100212');
       END;
     END;
 
     LOCAL PROCEDURE OnPreSectionMWStZahler_Footer36@5065(VAR MWStZ„hler@1000000000 : Record 2000000026);
     BEGIN
       WITH MWStZ„hler DO BEGIN
-           ReportForNav.ShowOutput("Sales Header"."No.">'AUR100212');
       END;
     END;
 
