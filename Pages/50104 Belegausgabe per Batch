@@ -3,7 +3,7 @@ OBJECT Page 50104 Belegausgabe per Batch
   OBJECT-PROPERTIES
   {
     Date=28.02.18;
-    Time=11:51:03;
+    Time=13:57:07;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -53,6 +53,7 @@ OBJECT Page 50104 Belegausgabe per Batch
                                  selected := 0;
                                  IF ((Žnd_Best_PDF) OR (Žnd_Best_Druck) OR (AU_Best_PDF) OR (AU_Best_Druck)) THEN selected += 1;
                                  IF (Rechnung_PDF) THEN selected += 1;
+                                 IF (Rahmenauftrag_PDF) THEN selected += 1;
                                  IF (Bestellung_PDF) THEN selected += 1;
                                  IF (Servicevertr„ge_PDF) THEN selected += 1;
 
@@ -145,6 +146,10 @@ OBJECT Page 50104 Belegausgabe per Batch
                 CaptionML=DEU=Rechnungen als PDF;
                 SourceExpr=Rechnung_PDF }
 
+    { 1000000012;3;Field  ;
+                CaptionML=DEU=Rahmenauftrag als PDF;
+                SourceExpr=Rahmenauftrag_PDF }
+
     { 1140018;3;Field     ;
                 CaptionML=DEU=Bestellungen als PDF;
                 SourceExpr=Bestellung_PDF }
@@ -180,6 +185,7 @@ OBJECT Page 50104 Belegausgabe per Batch
       AU_Best_Druck@1140010 : Boolean;
       interne_AB_nicht_drucken@1140009 : Boolean;
       Rechnung_PDF@1140000 : Boolean;
+      Rahmenauftrag_PDF@1000000010 : Boolean;
       Bestellung_PDF@1140024 : Boolean;
       Servicevertr„ge_PDF@1140025 : Boolean;
       TOPAS_API@1140002 : Codeunit 50001;
@@ -345,8 +351,6 @@ OBJECT Page 50104 Belegausgabe per Batch
 
 
 
-
-
       // Rechnungen per PDF
       IF Rechnung_PDF THEN BEGIN
         inv_header.RESET;
@@ -355,6 +359,18 @@ OBJECT Page 50104 Belegausgabe per Batch
         inv_header.SETFILTER("No.",belegnr);
         IF inv_header.FINDFIRST THEN BEGIN
           Bullzip_PDF.BullzipPDF_Invoice(inv_header,AttachmentPath,50076);
+        END;
+      END;
+
+
+      // Rahmenauftrag per PDF
+      IF Rahmenauftrag_PDF THEN BEGIN
+        rahmen.RESET;
+        rahmen.SETFILTER("Posting Date",'%1',Tagesdatum);
+        rahmen.SETFILTER("Location Code",'<>%1','MUST');
+        rahmen.SETFILTER("No.",belegnr);
+        IF rahmen.FINDFIRST THEN BEGIN
+          Bullzip_PDF.BullzipPDF_Order(rahmen,AttachmentPath,50115);
         END;
       END;
 
@@ -504,7 +520,7 @@ OBJECT Page 50104 Belegausgabe per Batch
         inv_header.SETFILTER("No.",belegnr);
         IF inv_header.FINDFIRST THEN BEGIN
           REPEAT
-
+            subject := '';
             body := '';
             email_addr := '';
             Customer.GET(inv_header."Bill-to Customer No.");
@@ -553,6 +569,39 @@ OBJECT Page 50104 Belegausgabe per Batch
       END;
 
 
+      // Mail-Job fr Rahmenauftrag
+      IF Rahmenauftrag_PDF THEN BEGIN
+        rahmen.RESET;
+        rahmen.SETFILTER("Posting Date",'%1',Tagesdatum);
+        rahmen.SETFILTER("Location Code",'<>%1','MUST');
+        rahmen.SETFILTER("No.",belegnr);
+        IF rahmen.FINDFIRST THEN BEGIN
+          REPEAT
+            subject := '';
+            body := '';
+            email_addr := '';
+            IF rahmen."Language Code" <> 'ENU' THEN BEGIN
+              body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
+                      'anbei erhalten Sie Ihre Kontraktbest„tigung.' + FORMAT(chr);
+              subject := 'Ihre Kontraktbest„tigung: ' + rahmen."External Document No.";
+            END ELSE BEGIN
+              body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
+                      'attached you will find your contract confirmation.' + FORMAT(chr);
+              subject := 'Your Contract Confirmation: ' + rahmen."External Document No.";
+            END;
+
+            email_addr := rahmen."AB EMail-Adresse";
+            IF email_addr = '' THEN BEGIN
+              Customer.GET(rahmen."Sell-to Customer No.");
+              email_addr := Customer."Rech EMail-Adresse";
+            END;
+
+            TOPAS_API.NewMail(email_addr,'','',subject,body,AttachmentPath,rahmen."No." + '.pdf');
+          UNTIL rahmen.NEXT = 0;
+        END;
+      END;
+
+
       // Mail-Job fr Bestellungen
       IF Bestellung_PDF THEN BEGIN
         purch_header.RESET;
@@ -562,6 +611,7 @@ OBJECT Page 50104 Belegausgabe per Batch
         purch_header.SETFILTER("No.",belegnr);
         IF purch_header.FINDFIRST THEN BEGIN
           REPEAT
+            subject := '';
             body := '';
             IF purch_header."Language Code" <> 'ENU' THEN BEGIN
               body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
@@ -634,6 +684,7 @@ OBJECT Page 50104 Belegausgabe per Batch
 
                 FOR k := 1 TO i DO BEGIN
                   IF au_wartungsnr[k] <> '' THEN BEGIN
+                    subject := '';
                     body := '';
                     IF Ship_Header."Language Code" <> 'ENU' THEN BEGIN
                       IF STRPOS(au_wartungsnr[k],',') = 0 THEN
