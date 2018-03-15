@@ -1,0 +1,461 @@
+OBJECT Page 50037 Dokumentenversand šbersicht
+{
+  OBJECT-PROPERTIES
+  {
+    Date=31.08.17;
+    Time=14:06:07;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    SourceTable=Table50032;
+    DelayedInsert=Yes;
+    PageType=List;
+    CardPageID=Dokumentenversand Karte;
+    PromotedActionCategoriesML=[DEU=Neu,Vorgang,Bericht,Dokumente verwalten,Anzeige;
+                                ENU=New,Process,Report,Documents manage,Display];
+    OnOpenPage=BEGIN
+                 erledigte_ausgeblendet := TRUE;
+                 IF GETFILTER("Mandantennr.") = '' THEN BEGIN
+                   IF STRPOS(UPPERCASE(USERID),'SBRINCKMANN') <> 0 THEN
+                     SETFILTER(Aktion,'%1',Aktion::Schulung)
+                   ELSE
+                     SETFILTER(Status,'<>%1&<>%2&<>%3&<>%4&<>%5',Status :: Komplett,Status :: Abgebrochen,Status :: "Direkt Komplett",
+                               Status :: teilgenommen,Status::Abgelehnt);
+                 END;
+               END;
+
+    OnAfterGetRecord=BEGIN
+                       betreuer_innen := '';
+                       IF Kontakt.GET("Mandantennr.") THEN
+                           betreuer_innen := Kontakt."Betreuer Innendienst";
+
+                       IF Kontakt.GET("Kontaktnr.") THEN
+                         Kontakt_EMail := Kontakt."E-Mail"
+                       ELSE
+                         Kontakt_EMail := '';
+
+                       Verteiler.RESET;
+                       Verteiler.SETFILTER("Contact No.",'%1',"Kontaktnr.");
+                       Verteiler.SETFILTER("Mailing Group Code",'%1|%2','UNSUB','NO EMAIL');
+                       IF Verteiler.FINDFIRST THEN
+                         email_style := TRUE
+                       ELSE
+                         email_style := FALSE;
+
+                       IF GETFILTER(Status) <> '' THEN
+                         hinweis_text := 'Achtung Filter Status'
+                       ELSE
+                         hinweis_text := '';
+                     END;
+
+    OnNewRecord=BEGIN
+                  Kontakt_EMail := '';
+                  betreuer_innen := '';
+                END;
+
+    OnAfterGetCurrRecord=BEGIN
+                           comment := FALSE;
+
+                           "TOPAS-Bemerkungen".RESET;
+                           "TOPAS-Bemerkungen".SETRANGE("Nr.","Lfd. Nr.");
+                           "TOPAS-Bemerkungen".SETRANGE(Art,"TOPAS-Bemerkungen".Art::Dokumentenversand);
+                           IF "TOPAS-Bemerkungen".FINDFIRST THEN
+                             comment := TRUE;
+                         END;
+
+    ActionList=ACTIONS
+    {
+      { 1900000000;0 ;ActionContainer;
+                      ActionContainerType=RelatedInformation }
+      { 1       ;1   ;ActionGroup;
+                      CaptionML=[DEU=Allgmein;
+                                 ENU=General] }
+      { 1140037 ;2   ;Action    ;
+                      Name=Karte;
+                      CaptionML=DEU=&Karte;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=DocumentEdit;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 IF (Korrespondenzart <> Korrespondenzart::" ") OR ("Lfd. Nr." <> '') THEN BEGIN
+                                   COMMIT;
+                                   Doku.RESET;
+                                   Doku.SETFILTER(Doku."Lfd. Nr.",'%1',"Lfd. Nr.");
+                                   IF Doku.FINDFIRST THEN
+                                     PAGE.RUN(PAGE::"Dokumentenversand Karte",Doku);
+                                 END ELSE
+                                   ERROR(Text002,FIELDCAPTION(Korrespondenzart));
+                               END;
+                                }
+      { 1140064 ;2   ;Action    ;
+                      Name=Bemerkung;
+                      ToolTipML=DEU=RMA-Bemerkung Annahme;
+                      RunObject=Page 50083;
+                      RunPageView=WHERE(Art=FILTER(Dokumentenversand));
+                      RunPageLink=Nr.=FIELD(Lfd. Nr.);
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=ViewComments;
+                      PromotedCategory=Process }
+      { 1140047 ;2   ;Action    ;
+                      Name=Anleitung;
+                      CaptionML=DEU=&Anleitung;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=Document;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 IF Linie = '' THEN
+                                   ERROR(Text001,FIELDCAPTION(Linie))
+                                 ELSE BEGIN
+                                   "TOPAS-Bemerkungen".RESET;
+                                   "TOPAS-Bemerkungen".SETFILTER("Nr.",'%1',Linie);
+                                   "TOPAS-Bemerkungen".SETFILTER(Art,'%1',"TOPAS-Bemerkungen".Art::Anleitung);
+                                   PAGE.RUNMODAL(PAGE::"TOPAS Bemerkungen","TOPAS-Bemerkungen");
+                                 END;
+                               END;
+                                }
+      { 1900000001;0 ;ActionContainer;
+                      ActionContainerType=ActionItems }
+      { 1140054 ;1   ;ActionGroup;
+                      Name=Funktionen;
+                      CaptionML=DEU=Funktionen }
+      { 1140065 ;2   ;Action    ;
+                      Name=DateiAblegen;
+                      CaptionML=DEU=Datei ablegen;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=ExportFile;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 Speicherort := TOPAS_API.Save_FileDialog;
+                               END;
+                                }
+      { 1140066 ;2   ;Action    ;
+                      Name=DateiOeffnen;
+                      CaptionML=DEU=Datei ”ffnen;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=TestFile;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 TOPAS_API.OpenFile(Speicherort);
+                               END;
+                                }
+      { 1140074 ;2   ;Action    ;
+                      Name=TemplateNeu;
+                      CaptionML=DEU=Neues Template / Žndern;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=Template;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 New_Template;
+                               END;
+                                }
+      { 1140075 ;2   ;Action    ;
+                      Name=TemplateAuswahl;
+                      CaptionML=DEU=Template ausw„hlen;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=EditJournal;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 Open_Template;
+                                 Dateiname := Return_filename(Speicherort);
+                                 MODIFY(TRUE);
+                               END;
+                                }
+      { 1000000000;1 ;ActionGroup;
+                      Name=Anzeige }
+      { 1000000002;2 ;Action    ;
+                      Name=ErledigteAnzeigen;
+                      CaptionML=DEU=Erledigte ein-/ausblenden;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=ShowList;
+                      PromotedCategory=Category5;
+                      OnAction=BEGIN
+                                 IF erledigte_ausgeblendet THEN BEGIN
+                                   SETRANGE(Status);
+                                   erledigte_ausgeblendet := FALSE;
+                                 END ELSE BEGIN
+                                   SETFILTER(Status,'<>%1&<>%2&<>%3&<>%4&<>%5',Status::Komplett,Status::Abgebrochen,Status::"Direkt Komplett",
+                                             Status::teilgenommen,Status::Abgelehnt);
+                                   erledigte_ausgeblendet := TRUE;
+                                 END;
+
+                                 IF GETFILTER(Status) <> '' THEN
+                                   hinweis_text := 'Achtung Filter Status'
+                                 ELSE
+                                   hinweis_text := '';
+                               END;
+                                }
+    }
+  }
+  CONTROLS
+  {
+    { 1900000;0;Container ;
+                ContainerType=ContentArea }
+
+    { 1000000003;1;Group  ;
+                Name=Info;
+                Visible=erledigte_ausgeblendet;
+                GroupType=Group }
+
+    { 1000000005;2;Group  ;
+                GroupType=FixedLayout }
+
+    { 1000000006;3;Group  ;
+                GroupType=Group }
+
+    { 1000000004;4;Field  ;
+                Name=Hinweis;
+                SourceExpr=hinweis_text;
+                Editable=FALSE;
+                Style=Unfavorable;
+                StyleExpr=TRUE }
+
+    { 1900001;1;Group     ;
+                GroupType=Repeater }
+
+    { 1140001;2;Field     ;
+                Name=Lfd. Nr.;
+                SourceExpr="Lfd. Nr." }
+
+    { 1140009;2;Field     ;
+                Name=Belegdatum;
+                SourceExpr=Belegdatum }
+
+    { 1140069;2;Field     ;
+                Name=Aktion;
+                SourceExpr=Aktion }
+
+    { 1140003;2;Field     ;
+                Name=Korrespondenzart;
+                SourceExpr=Korrespondenzart }
+
+    { 1140005;2;Field     ;
+                Name=Betreff;
+                SourceExpr=Betreff }
+
+    { 1140051;2;Field     ;
+                Name=Linie;
+                SourceExpr=Linie;
+                Visible=FALSE }
+
+    { 1140071;2;Field     ;
+                Name=Linienkurzname;
+                SourceExpr=Linienkurzname }
+
+    { 1140021;2;Field     ;
+                Name=Status;
+                SourceExpr=Status;
+                OnValidate=BEGIN
+                             IF (Status <> xRec.Status) AND (Status <> Status ::" ") AND (Belegdatum <> WORKDATE) THEN
+                               IF CONFIRM(Text000,TRUE,FIELDCAPTION(Belegdatum)) THEN
+                                   Belegdatum := WORKDATE;
+                           END;
+                            }
+
+    { 1140038;2;Field     ;
+                Name=Statustext;
+                SourceExpr=Statustext }
+
+    { 1140011;2;Field     ;
+                Name=Kontaktnr.;
+                SourceExpr="Kontaktnr.";
+                OnValidate=BEGIN
+                             CALCFIELDS(Kontaktname,Mandantenname);
+                           END;
+                            }
+
+    { 1140013;2;Field     ;
+                Name=Kontaktname;
+                SourceExpr=Kontaktname }
+
+    { 1000000007;2;Field  ;
+                Name=Kontakt E-Mail;
+                SourceExpr=Kontakt_EMail;
+                Editable=FALSE;
+                Style=Unfavorable;
+                StyleExpr=email_style }
+
+    { 1140050;2;Field     ;
+                Name=betreuer_innen;
+                CaptionML=DEU=Betreuer Innendienst;
+                SourceExpr=betreuer_innen }
+
+    { 1140015;2;Field     ;
+                Name=Mandantennr.;
+                SourceExpr="Mandantennr.";
+                Visible=FALSE;
+                OnValidate=BEGIN
+                             IF ("Mandantennr." <> xRec."Mandantennr.") AND (xRec."Mandantennr." <> '') THEN
+                               ERROR(Text001,FIELDCAPTION("Mandantennr."));
+                           END;
+                            }
+
+    { 1140017;2;Field     ;
+                Name=Mandantenname;
+                SourceExpr=Mandantenname }
+
+    { 1140058;2;Field     ;
+                Name=Kontaktnr. Hersteller;
+                SourceExpr="Kontaktnr. Hersteller";
+                OnValidate=BEGIN
+                             CALCFIELDS("Kontaktname Hersteller");
+                           END;
+                            }
+
+    { 1140060;2;Field     ;
+                Name=Kontaktname Hersteller;
+                SourceExpr="Kontaktname Hersteller" }
+
+    { 1000000001;2;Field  ;
+                Name=Bemerkung vorhanden;
+                SourceExpr=comment }
+
+    { 1140007;2;Field     ;
+                Name=Speicherort;
+                SourceExpr=Speicherort;
+                OnLookup=BEGIN
+                           TOPAS_API.OpenFile(Speicherort);
+                         END;
+
+                OnAssistEdit=BEGIN
+                               Speicherort := TOPAS_API.Save_FileDialog;
+                             END;
+                              }
+
+    { 1140056;2;Field     ;
+                Name=Dateiname;
+                SourceExpr=Dateiname }
+
+    { 1140029;2;Field     ;
+                Name=Laufzeit;
+                SourceExpr=Laufzeit }
+
+    { 1140031;2;Field     ;
+                Name=Ablaufdatum;
+                SourceExpr=Ablaufdatum }
+
+    { 1140039;2;Field     ;
+                Name=Schulung;
+                SourceExpr=Schulung;
+                Visible=FALSE }
+
+    { 1140048;2;Field     ;
+                Name=Schulungsdatum;
+                SourceExpr=Schulungsdatum;
+                Visible=FALSE }
+
+    { 1140041;2;Field     ;
+                Name=Datei 1;
+                SourceExpr="Datei 1";
+                Visible=FALSE;
+                OnLookup=BEGIN
+                           TOPAS_API.OpenFile("Datei 1");
+                         END;
+
+                OnAssistEdit=BEGIN
+                               "Datei 1" := TOPAS_API.Save_FileDialog;
+                             END;
+                              }
+
+    { 1140043;2;Field     ;
+                Name=Datei 2;
+                SourceExpr="Datei 2";
+                Visible=FALSE;
+                OnLookup=BEGIN
+                           TOPAS_API.OpenFile("Datei 2");
+                         END;
+
+                OnAssistEdit=BEGIN
+                               "Datei 2" := TOPAS_API.Save_FileDialog;
+                             END;
+                              }
+
+    { 1140045;2;Field     ;
+                Name=Datei 3;
+                SourceExpr="Datei 3";
+                Visible=FALSE;
+                OnLookup=BEGIN
+                           TOPAS_API.OpenFile("Datei 3");
+                         END;
+
+                OnAssistEdit=BEGIN
+                               "Datei 3" := TOPAS_API.Save_FileDialog;
+                             END;
+                              }
+
+    { 1140019;2;Field     ;
+                Name=Versandadresse;
+                SourceExpr=Versandadresse;
+                Visible=FALSE }
+
+    { 1140023;2;Field     ;
+                Name=Feedback;
+                SourceExpr=Feedback;
+                Visible=FALSE }
+
+    { 1140025;2;Field     ;
+                Name=Feedbacktext;
+                SourceExpr=Feedbacktext }
+
+    { 1000000008;2;Field  ;
+                SourceExpr="Interne Info" }
+
+    { 1140027;2;Field     ;
+                Name=Fehlermeldung;
+                SourceExpr=Fehlermeldung;
+                Visible=FALSE }
+
+    { 1140033;2;Field     ;
+                Name=Belegart;
+                SourceExpr=Belegart;
+                Visible=FALSE }
+
+    { 1140035;2;Field     ;
+                Name=Belegnr.;
+                SourceExpr="Belegnr.";
+                Visible=FALSE }
+
+    { 1140078;2;Field     ;
+                Name=Anzahl;
+                SourceExpr=Anzahl }
+
+    { 1140080;2;Field     ;
+                Name=Zust„ndig Bearb;
+                SourceExpr="Zust„ndig Bearb" }
+
+  }
+  CODE
+  {
+    VAR
+      Doku@1140007 : Record 50032;
+      Kontakt@1140014 : Record 5050;
+      Opt_tab@1140000 : Record 50001;
+      "TOPAS-Bemerkungen"@1140006 : Record 50023;
+      Verteiler@1000000005 : Record 5056;
+      TOPAS_API@1000000000 : Codeunit 50001;
+      hinweis_text@1140010 : Text[250];
+      erledigte_ausgeblendet@1000000001 : Boolean;
+      comment@1140005 : Boolean;
+      Text000@1140001 : TextConst 'DEU=M”chten Sie das %1 automatisch anpassen lassen?';
+      Text001@1140002 : TextConst 'DEU=Sie k”nnen von hier nicht die %1 „ndern.';
+      Text002@1140003 : TextConst 'DEU=Bitte geben Sie zuerst eine %1 an.';
+      Text003@1140011 : TextConst 'DEU=Es wurden abgeschlossene Eintr„ge ausgeblendet. Klicken Sie oben auf die Funktion "Erledigte ein-/ausblenden" um diese wieder sichtbar zu machen.';
+      betreuer_innen@1140013 : Code[20];
+      counter@1000000002 : ARRAY [2] OF Integer;
+      Kontakt_EMail@1000000003 : Text;
+      email_style@1000000004 : Boolean;
+
+    BEGIN
+    END.
+  }
+}
+
