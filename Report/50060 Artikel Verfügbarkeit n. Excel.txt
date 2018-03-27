@@ -1,0 +1,978 @@
+OBJECT Report 50060 Artikel Verfgbarkeit n. Excel
+{
+  OBJECT-PROPERTIES
+  {
+    Date=19.05.17;
+    Time=15:22:02;
+    Modified=Yes;
+    Version List=Topas Bericht ohne ForNAV;
+  }
+  PROPERTIES
+  {
+    ShowPrintStatus=No;
+    ProcessingOnly=Yes;
+    OnPostReport=BEGIN
+                   CREATE (Excel,FALSE,TRUE);                                   //erzeugt excel
+                   Book := Excel.Workbooks.Add(-4167);                          //legt neue datei in excel an
+                   Sheet := Excel.ActiveSheet;                                  //definiert aktives worksheet
+
+                   Sheet.Range('A:B').ColumnWidth := 20;
+                   Sheet.Range('A1:L1').Font.Bold := TRUE;
+                   Sheet.Range('A1:L1').Cells.Borders.Item(9).LineStyle := 1;
+                   Sheet.Range('H:H').Font.Color := 255;
+                   Sheet.Range('H1').Font.Color := 0;
+
+                   Sheet.Range('A1').Value := 'Artikel';                        // definiert die Beschriftung der berschriftszeile
+                   Sheet.Range('B1').Value := 'Kunde';
+                   Sheet.Range('C1').Value := 'Datum';
+                   Sheet.Range('D1').Value := 'Wunschdatum';
+                   Sheet.Range('E1').Value := 'Beleg';
+                   Sheet.Range('F1').Value := 'Menge';
+                   Sheet.Range('G1').Value := 'Verfgbar';
+                   Sheet.Range('H1').Value := 'neg. Verfg.';
+                   Sheet.Range('J1').Value := 'SI-Lager';
+                   Sheet.Range('K1').Value := 'Rest Rahmen';
+                   Sheet.Range('L1').Value := 'Angebote';
+
+                   j := '3';                                                    // <- Import in excel ab Zeile 3
+
+                   Sheet.Range('A3:L3').Cells.Borders.Item(9).LineStyle := 1;
+
+                   //Artikel Infos
+
+                   Rahmenrestmenge := 0;
+                   Verkaufszeile.SETFILTER(Verkaufszeile."Location Code",'%1|%2','ZENT','KONSI');
+                   Verkaufszeile.SETFILTER("Document Type",'%1',Verkaufszeile."Document Type"::"Blanket Order");
+                   Verkaufszeile.SETFILTER("No.",'%1',Item."No.");
+                   IF Verkaufszeile.FIND('-') THEN BEGIN
+                     REPEAT
+                       Verkaufszeile.CALCFIELDS("offene Menge aus Rahmen im AU");
+                       Rahmenrestmenge:=Rahmenrestmenge+(Verkaufszeile."Quantity (Base)"-Verkaufszeile."Qty. Shipped (Base)" -
+                       Verkaufszeile."offene Menge aus Rahmen im AU");
+                     UNTIL Verkaufszeile.NEXT = 0;
+                   END;
+
+                   Item.CALCFIELDS("Menge im Rahmen","Menge in Angebot");
+                   Sheet.Range('J3').Value := FORMAT(Item.Sicherheitslager);
+                   Sheet.Range('K3').Value := FORMAT(Rahmenrestmenge);
+                   Sheet.Range('L3').Value := FORMAT(Item."Menge in Angebot");
+
+                   v_art_posten.RESET;
+                   //v_art_posten.SETFILTER("Item No.",'%1','HFJ11-2450ERL');
+                   v_art_posten.SETFILTER("Item No.",'%1',Item."No.");
+                   v_art_posten.SETFILTER(v_art_posten."Location Code",'%1|%2','ZENT','KONSI');
+                   v_art_posten.SETFILTER(v_art_posten.Open,'%1',TRUE);
+                   IF v_art_posten.FIND('-') THEN BEGIN
+                     REPEAT
+                       v_lagerbestand:= v_lagerbestand + v_art_posten."Remaining Quantity";
+                     UNTIL v_art_posten.NEXT = 0;
+                   END;
+
+                   v_verfgbarkeit := v_verfgbarkeit + v_lagerbestand;
+                   Sheet.Range('A'+j).Value := Item."No.";
+                   Sheet.Range('C'+j).Value := WORKDATE;
+                   Sheet.Range('E'+j).Value := 'Lager';
+                   Sheet.Range('F'+j).Value := v_lagerbestand;
+                   Sheet.Range('G'+j).Value := v_verfgbarkeit;
+
+                   j := '5';
+
+                   {
+                   v_woche:=DATE2DWY(WORKDATE - 21, 2);
+                   v_jahr:=DATE2DWY(WORKDATE - 21, 3);
+                   v_datum1:=DWY2DATE(1,v_woche,v_jahr);
+                   v_datum2:=DWY2DATE(7,v_woche,v_jahr);
+
+
+
+
+                   //v_datum1:=020810D;
+                   //v_datum2:=080810D;
+                   v_anzahl:=0;
+
+                   // Z„hlschleife fr 120 Wochen
+                   REPEAT
+                   v_datum1:=v_datum1 + 7;
+                   v_datum2:=v_datum2 + 7;
+                   auftrag_bestell_pos();
+                   v_anzahl := v_anzahl + 1;
+                   UNTIL v_anzahl = 120;
+                   Restmengen();
+                   Rest_2053();
+                   Rest_2054();
+                   Rest_2055();
+
+                   Sheet.Range('A'+j).Value := 'ENDE';
+
+
+                   //Excel.Visible(TRUE);
+                   j := INCSTR (j);
+                   j := INCSTR (j);
+                   j := INCSTR (j);
+                   }
+                   neue_Variante;
+                 END;
+
+  }
+  DATASET
+  {
+    { 1000000000;;DataItem;                  ;
+               DataItemTable=Table27 }
+
+  }
+  REQUESTPAGE
+  {
+    PROPERTIES
+    {
+    }
+    CONTROLS
+    {
+    }
+  }
+  LABELS
+  {
+  }
+  CODE
+  {
+    VAR
+      Excel@1000000028 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00024500-0000-0000-C000-000000000046}:Unknown Automation Server.Application";
+      Book@1000000027 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";
+      Range@1000000026 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";
+      Sheet@1000000025 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020820-0000-0000-C000-000000000046}:Unknown Automation Server.Worksheet";
+      k@1000000024 : Text[30];
+      j@1000000023 : Text[30];
+      v_lagerbestand@1000000021 : Integer;
+      v_bestellbestand@1000000020 : Integer;
+      v_auftragsbestand@1000000019 : Integer;
+      v_verfgbarkeit@1000000018 : Integer;
+      v_heute@1000000017 : Date;
+      v_woche@1000000016 : Integer;
+      v_jahr@1000000015 : Integer;
+      v_datumtext@1000000014 : Text[30];
+      v_datum1@1000000013 : Date;
+      v_datum2@1000000012 : Date;
+      v_silager@1000000011 : Decimal;
+      Verkaufszeile@1000000010 : Record 37;
+      v_art_posten@1000000009 : Record 32;
+      v_vkk@1000000008 : Record 36;
+      v_vkz@1000000007 : Record 37;
+      v_ekk@1000000006 : Record 38;
+      v_ekz@1000000005 : Record 39;
+      v_arti@1000000004 : Record 27;
+      v_anzahl@1000000003 : Integer;
+      v_tage@1000000002 : Integer;
+      Rahmenrestmenge@1000000001 : Decimal;
+      v_anzahl1@1000000000 : Integer;
+
+    PROCEDURE auftrag_bestell_pos@1140002();
+    BEGIN
+      // KW ermitteln
+      v_woche:=DATE2DWY(v_datum1, 2);
+      v_jahr:=DATE2DWY(v_datum1, 3);
+      v_datumtext:=(FORMAT(v_woche, 0) + '_' + FORMAT(v_jahr, 0));
+
+      //Bestellbestand
+
+      v_bestellbestand := 0;
+      v_ekz.RESET;
+      v_ekz.SETFILTER(v_ekz."No.",'%1',Item."No.");
+      v_ekz.SETFILTER(v_ekz."Location Code",'%1|%2','ZENT','KONSI');
+      v_ekz.SETFILTER(v_ekz."Outstanding Quantity",'>%1',0);
+      v_ekz.SETFILTER(v_ekz."Promised Receipt Date",'%1..%2',v_datum1,v_datum2);
+      IF v_ekz.FIND('-') THEN BEGIN
+        REPEAT
+            v_bestellbestand := v_bestellbestand + v_ekz."Outstanding Quantity";
+        UNTIL v_ekz.NEXT = 0;
+
+        v_verfgbarkeit := v_verfgbarkeit + v_bestellbestand;
+        Sheet.Range('A'+j).Value :=  v_datumtext;
+        Sheet.Range('B'+j).Value := v_ekz.Description;
+        Sheet.Range('C'+j).Value := v_ekz."Promised Receipt Date";
+        IF v_ekz."Requested Receipt Date" <> 0D THEN
+          Sheet.Range('D'+j).Value := v_ekz."Requested Receipt Date";
+        Sheet.Range('E'+j).Value := 'Bestell';
+        Sheet.Range('F'+j).Value := v_bestellbestand;
+        Sheet.Range('G'+j).Value := v_verfgbarkeit;
+        j := INCSTR (j);
+      END;
+
+      //Auftragsbestand
+
+      v_auftragsbestand := 0;
+      v_vkz.RESET;
+      v_vkz.SETFILTER(v_vkz."No.",'%1',Item."No.");
+      v_vkz.SETFILTER(v_vkz."Location Code",'%1|%2','ZENT','KONSI');
+      v_vkz.SETFILTER(v_vkz."Outstanding Quantity",'>%1',0);
+      v_vkz.SETFILTER(v_vkz."Document Type",'%1',v_vkz."Document Type"::Order);
+      v_vkz.SETFILTER(v_vkz."Promised Delivery Date",'%1..%2',v_datum1,v_datum2);
+      IF v_vkz.FINDFIRST THEN BEGIN
+        REPEAT
+           v_auftragsbestand := v_auftragsbestand + v_vkz."Outstanding Quantity";
+        UNTIL v_vkz.NEXT = 0;
+
+        v_verfgbarkeit := v_verfgbarkeit - v_auftragsbestand;
+        Sheet.Range('A'+j).Value :=  v_datumtext;
+        v_vkk.SETFILTER(v_vkk."No.",'%1',v_vkz."Document No.");
+        IF v_vkk.FINDFIRST THEN BEGIN
+          Sheet.Range('B'+j).Value :=  v_vkk."Sell-to Customer Name";
+        END;
+        Sheet.Range('C'+j).Value := v_vkz."Promised Delivery Date";
+        Sheet.Range('D'+j).Value := v_vkz."Requested Delivery Date";
+        Sheet.Range('E'+j).Value := 'Auftrag';
+        Sheet.Range('F'+j).Value := v_auftragsbestand;
+
+        IF v_verfgbarkeit < 0 THEN BEGIN
+          Sheet.Range('H'+j).Value := v_verfgbarkeit;
+        END ELSE BEGIN
+          Sheet.Range('G'+j).Value := v_verfgbarkeit;
+        END;
+        j := INCSTR (j);
+      END;
+    END;
+
+    PROCEDURE Restmengen@1140027();
+    BEGIN
+
+      //Bestellbestand
+
+      v_bestellbestand := 0;
+      v_ekz.RESET;
+      v_ekz.SETFILTER(v_ekz."No.",'%1',Item."No.");
+      v_ekz.SETFILTER(v_ekz."Location Code",'%1|%2','ZENT','KONSI');
+      v_ekz.SETFILTER(v_ekz."Outstanding Quantity",'>%1',0);
+      v_ekz.SETFILTER(v_ekz."Promised Receipt Date",'%1..%2',v_datum1,30122053D);
+      IF v_ekz.FIND('-') THEN BEGIN
+        REPEAT
+           v_bestellbestand := v_bestellbestand + v_ekz."Outstanding Quantity";
+        UNTIL v_ekz.NEXT = 0;
+
+        v_verfgbarkeit := v_verfgbarkeit + v_bestellbestand;
+        Sheet.Range('A'+j).Value := 'Restl. Mengen';
+        Sheet.Range('B'+j).Value := v_ekz.Description;
+        Sheet.Range('C'+j).Value := v_ekz."Promised Receipt Date";
+        Sheet.Range('D'+j).Value := v_ekz."Requested Receipt Date";
+        Sheet.Range('E'+j).Value := 'Bestell';
+        Sheet.Range('F'+j).Value := v_bestellbestand;
+        Sheet.Range('G'+j).Value := v_verfgbarkeit;
+        j := INCSTR (j);
+      END;
+
+      //Auftragsbestand
+
+      v_auftragsbestand := 0;
+      v_vkz.RESET;
+      v_vkz.SETFILTER(v_vkz."No.",'%1',Item."No.");
+      v_vkz.SETFILTER(v_vkz."Location Code",'%1|%2','ZENT','KONSI');
+      v_vkz.SETFILTER(v_vkz."Outstanding Quantity",'>%1',0);
+      v_vkz.SETFILTER(v_vkz."Document Type",'%1',v_vkz."Document Type"::Order);
+      v_vkz.SETFILTER(v_vkz."Promised Delivery Date",'%1..%2',v_datum1,30122053D);
+      IF v_vkz.FIND('-') THEN BEGIN
+        REPEAT
+           v_auftragsbestand := v_auftragsbestand + v_vkz."Outstanding Quantity";
+        UNTIL v_vkz.NEXT = 0;
+
+        v_verfgbarkeit := v_verfgbarkeit - v_auftragsbestand;
+        Sheet.Range('A'+j).Value := 'Restl. Mengen';
+        v_vkk.SETFILTER(v_vkk."No.",'%1',v_vkz."Document No.");
+        IF v_vkk.FINDFIRST THEN BEGIN
+          Sheet.Range('B'+j).Value :=  v_vkk."Sell-to Customer Name";
+        END;
+        Sheet.Range('C'+j).Value := v_vkz."Promised Delivery Date";
+        Sheet.Range('D'+j).Value := v_vkz."Requested Delivery Date";
+        Sheet.Range('E'+j).Value := 'Auftrag';
+        Sheet.Range('F'+j).Value := v_auftragsbestand;
+
+        IF v_verfgbarkeit < 0 THEN BEGIN
+          Sheet.Range('H'+j).Value := v_verfgbarkeit;
+        END ELSE BEGIN
+          Sheet.Range('G'+j).Value := v_verfgbarkeit;
+        END;
+        j := INCSTR (j);
+      END;
+    END;
+
+    PROCEDURE Rest_2053@1140007();
+    BEGIN
+
+      //Bestellbestand
+
+      v_bestellbestand := 0;
+      v_ekz.RESET;
+      v_ekz.SETFILTER(v_ekz."No.",'%1',Item."No.");
+      v_ekz.SETFILTER(v_ekz."Location Code",'%1|%2','ZENT','KONSI');
+      v_ekz.SETFILTER(v_ekz."Outstanding Quantity",'>%1',0);
+      v_ekz.SETFILTER(v_ekz."Promised Receipt Date",'%1',31122053D);
+      IF v_ekz.FIND('-') THEN BEGIN
+        REPEAT
+           v_bestellbestand := v_bestellbestand + v_ekz."Outstanding Quantity";
+        UNTIL v_ekz.NEXT = 0;
+
+        v_verfgbarkeit := v_verfgbarkeit + v_bestellbestand;
+        Sheet.Range('A'+j).Value :=  'KW_2053';
+        Sheet.Range('B'+j).Value := v_ekz.Description;
+        Sheet.Range('C'+j).Value := v_ekz."Promised Receipt Date";
+        Sheet.Range('D'+j).Value := v_ekz."Requested Receipt Date";
+        Sheet.Range('E'+j).Value := 'Bestell';
+        Sheet.Range('F'+j).Value := v_bestellbestand;
+        Sheet.Range('G'+j).Value := v_verfgbarkeit;
+        j := INCSTR (j);
+      END;
+
+      //Auftragsbestand
+
+      v_auftragsbestand := 0;
+      v_vkz.RESET;
+      v_vkz.SETFILTER(v_vkz."No.",'%1',Item."No.");
+      v_vkz.SETFILTER(v_vkz."Location Code",'%1|%2','ZENT','KONSI');
+      v_vkz.SETFILTER(v_vkz."Outstanding Quantity",'>%1',0);
+      v_vkz.SETFILTER(v_vkz."Document Type",'%1',v_vkz."Document Type"::Order);
+      v_vkz.SETFILTER(v_vkz."Promised Delivery Date",'%1',31122053D);
+      IF v_vkz.FIND('-') THEN BEGIN
+        REPEAT
+          v_auftragsbestand := v_auftragsbestand + v_vkz."Outstanding Quantity";
+        UNTIL v_vkz.NEXT = 0;
+
+        v_verfgbarkeit := v_verfgbarkeit - v_auftragsbestand;
+        Sheet.Range('A'+j).Value := 'KW_2053';
+        v_vkk.SETFILTER(v_vkk."No.",'%1',v_vkz."Document No.");
+        IF v_vkk.FINDFIRST THEN BEGIN
+        Sheet.Range('B'+j).Value :=  v_vkk."Sell-to Customer Name";
+        END;
+        Sheet.Range('C'+j).Value := v_vkz."Promised Delivery Date";
+        Sheet.Range('D'+j).Value := v_vkz."Requested Delivery Date";
+        Sheet.Range('E'+j).Value := 'Auftrag';
+        Sheet.Range('F'+j).Value := v_auftragsbestand;
+
+        IF v_verfgbarkeit < 0 THEN BEGIN
+          Sheet.Range('H'+j).Value := v_verfgbarkeit;
+        END ELSE BEGIN
+          Sheet.Range('G'+j).Value := v_verfgbarkeit;
+        END;
+        j := INCSTR (j);
+      END;
+    END;
+
+    PROCEDURE Rest_2054@1140008();
+    BEGIN
+      //Bestellbestand
+
+      v_bestellbestand := 0;
+      v_ekz.RESET;
+      v_ekz.SETFILTER(v_ekz."No.",'%1',Item."No.");
+      v_ekz.SETFILTER(v_ekz."Location Code",'%1|%2','ZENT','KONSI');
+      v_ekz.SETFILTER(v_ekz."Outstanding Quantity",'>%1',0);
+      v_ekz.SETFILTER(v_ekz."Promised Receipt Date",'%1',31122054D);
+      IF v_ekz.FIND('-') THEN BEGIN
+        REPEAT
+          v_bestellbestand := v_bestellbestand + v_ekz."Outstanding Quantity";
+        UNTIL v_ekz.NEXT = 0;
+
+         v_verfgbarkeit:=v_verfgbarkeit + v_bestellbestand;
+           Sheet.Range('A'+j).Value := 'KW_2054';
+           Sheet.Range('B'+j).Value := v_ekz.Description;
+           Sheet.Range('C'+j).Value := v_ekz."Promised Receipt Date";
+           Sheet.Range('D'+j).Value := v_ekz."Requested Receipt Date";
+           Sheet.Range('E'+j).Value := 'Bestell';
+           Sheet.Range('F'+j).Value := v_bestellbestand;
+           Sheet.Range('G'+j).Value := v_verfgbarkeit;
+      j := INCSTR (j);
+      END;
+
+      //Auftragsbestand
+
+      v_auftragsbestand := 0;
+      v_vkz.RESET;
+      v_vkz.SETFILTER(v_vkz."No.",'%1',Item."No.");
+      v_vkz.SETFILTER(v_vkz."Location Code",'%1|%2','ZENT','KONSI');
+      v_vkz.SETFILTER(v_vkz."Outstanding Quantity",'>%1',0);
+      v_vkz.SETFILTER(v_vkz."Document Type",'%1',v_vkz."Document Type"::Order);
+      v_vkz.SETFILTER(v_vkz."Promised Delivery Date",'%1',31122054D);
+      IF v_vkz.FIND('-') THEN BEGIN
+        REPEAT
+           v_auftragsbestand := v_auftragsbestand + v_vkz."Outstanding Quantity";
+        UNTIL v_vkz.NEXT = 0;
+
+        v_verfgbarkeit := v_verfgbarkeit - v_auftragsbestand;
+        Sheet.Range('A'+j).Value := 'KW_2054';
+        v_vkk.SETFILTER(v_vkk."No.",'%1',v_vkz."Document No.");
+        IF v_vkk.FINDFIRST THEN BEGIN
+        Sheet.Range('B'+j).Value :=  v_vkk."Sell-to Customer Name";
+        END;
+        Sheet.Range('C'+j).Value := v_vkz."Promised Delivery Date";
+        Sheet.Range('D'+j).Value := v_vkz."Requested Delivery Date";
+        Sheet.Range('E'+j).Value := 'Auftrag';
+        Sheet.Range('F'+j).Value := v_auftragsbestand;
+
+        IF v_verfgbarkeit < 0 THEN BEGIN
+          Sheet.Range('H'+j).Value := v_verfgbarkeit;
+        END ELSE BEGIN
+          Sheet.Range('G'+j).Value := v_verfgbarkeit;
+        END;
+        j := INCSTR (j);
+      END;
+    END;
+
+    PROCEDURE Rest_2055@1140009();
+    BEGIN
+      //Bestellbestand
+      v_anzahl1 := 0;
+      v_bestellbestand := 0;
+      v_ekz.RESET;
+      v_ekz.SETFILTER(v_ekz."No.",'%1',Item."No.");
+      v_ekz.SETFILTER(v_ekz."Location Code",'%1|%2','ZENT','KONSI');
+      v_ekz.SETFILTER(v_ekz."Outstanding Quantity",'>%1',0);
+      v_ekz.SETFILTER(v_ekz."Promised Receipt Date",'%1',31122055D);
+      IF v_ekz.FIND('-') THEN BEGIN
+        REPEAT
+          v_bestellbestand := v_bestellbestand + v_ekz."Outstanding Quantity";
+          v_anzahl1 += 1;
+        UNTIL v_ekz.NEXT = 0;
+
+        v_verfgbarkeit := v_verfgbarkeit + v_bestellbestand;
+        Sheet.Range('A'+j).Value :=  'KW_2055';
+        IF v_anzahl1 = 1 THEN BEGIN
+          Sheet.Range('B'+j).Value := v_ekz.Description;
+        END ELSE BEGIN
+          Sheet.Range('B'+j).Value := 'Anzahl Pos.: '+FORMAT(v_anzahl1);
+        END;
+        Sheet.Range('C'+j).Value := v_ekz."Promised Receipt Date";
+        Sheet.Range('D'+j).Value := v_ekz."Requested Receipt Date";
+        Sheet.Range('E'+j).Value := 'Bestell';
+        Sheet.Range('F'+j).Value := v_bestellbestand;
+        Sheet.Range('G'+j).Value := v_verfgbarkeit;
+      j := INCSTR (j);
+      END;
+
+      //Auftragsbestand
+      v_anzahl1 := 0;
+      v_auftragsbestand := 0;
+      v_vkz.RESET;
+      v_vkz.SETFILTER(v_vkz."No.",'%1',Item."No.");
+      v_vkz.SETFILTER(v_vkz."Location Code",'%1|%2','ZENT','KONSI');
+      v_vkz.SETFILTER(v_vkz."Outstanding Quantity",'>%1',0);
+      v_vkz.SETFILTER(v_vkz."Document Type",'%1',v_vkz."Document Type"::Order);
+      v_vkz.SETFILTER(v_vkz."Promised Delivery Date",'%1',31122055D);
+      IF v_vkz.FIND('-') THEN BEGIN
+        REPEAT
+          v_auftragsbestand := v_auftragsbestand + v_vkz."Outstanding Quantity";
+          v_anzahl1 += 1;
+        UNTIL v_vkz.NEXT = 0;
+
+        v_verfgbarkeit := v_verfgbarkeit - v_auftragsbestand;
+        Sheet.Range('A'+j).Value :=  'KW_2055';
+        v_vkk.SETFILTER(v_vkk."No.",'%1',v_vkz."Document No.");
+        IF v_vkk.FINDFIRST THEN BEGIN
+          IF v_anzahl1 = 1 THEN BEGIN
+            Sheet.Range('B'+j).Value :=  v_vkk."Sell-to Customer Name";
+          END ELSE BEGIN
+            Sheet.Range('B'+j).Value := 'Anzahl Pos.: '+FORMAT(v_anzahl1);
+          END;
+        END;
+        Sheet.Range('C'+j).Value := v_vkz."Promised Delivery Date";
+        Sheet.Range('D'+j).Value := v_vkz."Requested Delivery Date";
+        Sheet.Range('E'+j).Value := 'Auftrag';
+        Sheet.Range('F'+j).Value := v_auftragsbestand;
+
+        IF v_verfgbarkeit < 0 THEN BEGIN
+          Sheet.Range('H'+j).Value := v_verfgbarkeit;
+        END ELSE BEGIN
+          Sheet.Range('G'+j).Value := v_verfgbarkeit;
+        END;
+        j := INCSTR (j);
+      END;
+    END;
+
+    PROCEDURE neue_Variante@1140000();
+    BEGIN
+
+      Sheet.Range('A'+j).Value := 'Anlagedatum';
+      Sheet.Range('B'+j).Value := 'Kunde';
+      Sheet.Range('C'+j).Value := 'Best„tigt';
+      Sheet.Range('D'+j).Value := 'Gewnscht';
+      Sheet.Range('E'+j).Value := 'Art';
+      Sheet.Range('F'+j).Value := 'Menge';
+      Sheet.Range('G'+j).Value := 'Verfgbar';
+
+      j := INCSTR(j);
+
+      v_verfgbarkeit := v_lagerbestand;
+
+      v_datum1 := (WORKDATE -20);
+      v_datum2 := (WORKDATE -20);
+      v_anzahl := 0;
+
+      // Z„hlschleife fr 400 Tage
+      REPEAT
+        v_datum1 := v_datum1 + 1;
+        v_datum2 := v_datum2 + 1;
+        neue_auftrag_bestell_pos();
+        v_anzahl := v_anzahl + 1;
+      UNTIL v_anzahl = 400;
+      Restmengen();
+      Rest_2053();
+      Rest_2054();
+      Rest_2055();
+      j := INCSTR(j);
+      Sheet.Range('A'+j).Value := 'ENDE';
+
+      Excel.Visible(TRUE);
+    END;
+
+    PROCEDURE neue_auftrag_bestell_pos@1140001();
+    BEGIN
+      // Tage ermitteln
+      //v_woche:=DATE2DWY(v_datum1, 2);
+      //v_jahr:=DATE2DWY(v_datum1, 3);
+      //v_datumtext:=(FORMAT(v_woche, 0) + '_' + FORMAT(v_jahr, 0));
+
+      //Bestellbestand
+
+
+
+      v_bestellbestand := 0;
+      v_ekz.RESET;
+      v_ekz.SETFILTER(v_ekz."No.",'%1',Item."No.");
+      v_ekz.SETFILTER(v_ekz."Location Code",'%1|%2','ZENT','KONSI');
+      v_ekz.SETFILTER(v_ekz."Outstanding Quantity",'>%1',0);
+      v_ekz.SETFILTER(v_ekz."Promised Receipt Date",'%1',v_datum1);
+      IF v_ekz.FIND('-') THEN BEGIN
+        REPEAT
+      //     v_bestellbestand:=v_bestellbestand + v_ekz."Outstanding Quantity";
+
+          v_verfgbarkeit := v_verfgbarkeit +  v_ekz."Outstanding Quantity";
+      //     Sheet.Range('A'+j).Value :=  v_datum1;
+      //     Sheet.Range('A'+j).Value := v_ekz."Order Date";
+          Sheet.Range('B'+j).Value := v_ekz.Description;
+          Sheet.Range('C'+j).Value := v_ekz."Promised Receipt Date";
+          IF v_ekz."Requested Receipt Date" <> 0D THEN BEGIN
+            Sheet.Range('D'+j).Value := v_ekz."Requested Receipt Date";
+          END;
+          Sheet.Range('E'+j).Value := v_ekz."Document No.";
+          Sheet.Range('F'+j).Value := FORMAT(v_ekz."Outstanding Quantity");
+          Sheet.Range('G'+j).Value := FORMAT(v_verfgbarkeit);
+
+          j := INCSTR(j);
+        UNTIL v_ekz.NEXT = 0;
+      END;
+
+      //Auftragsbestand
+
+      v_auftragsbestand := 0;
+      v_vkz.RESET;
+      v_vkz.SETFILTER(v_vkz."No.",'%1',Item."No.");
+      v_vkz.SETFILTER(v_vkz."Location Code",'%1|%2','ZENT','KONSI');
+      v_vkz.SETFILTER(v_vkz."Outstanding Quantity",'>%1',0);
+      v_vkz.SETFILTER(v_vkz."Document Type",'%1',v_vkz."Document Type"::Order);
+      v_vkz.SETFILTER(v_vkz."Promised Delivery Date",'%1',v_datum1);
+      IF v_vkz.FIND('-') THEN BEGIN
+        REPEAT
+      //   v_auftragsbestand:=v_auftragsbestand + v_vkz."Outstanding Quantity";
+
+          v_verfgbarkeit := v_verfgbarkeit - v_vkz."Outstanding Quantity";
+          v_vkk.RESET;
+          v_vkk.SETFILTER(v_vkk."No.",'%1',v_vkz."Document No.");
+          IF v_vkk.FINDFIRST THEN
+            Sheet.Range('A'+j).Value := v_vkk."Order Date";
+          v_vkk.SETFILTER(v_vkk."No.",'%1',v_vkz."Document No.");
+          IF v_vkk.FINDFIRST THEN BEGIN
+            Sheet.Range('B'+j).Value :=  v_vkk."Sell-to Customer Name";
+          END;
+          Sheet.Range('C'+j).Value := v_vkz."Promised Delivery Date";
+          Sheet.Range('D'+j).Value := v_vkz."Requested Delivery Date";
+          Sheet.Range('E'+j).Value := v_vkz."Document No.";
+          Sheet.Range('F'+j).Value := FORMAT(v_vkz."Outstanding Quantity");
+          IF v_vkz."Requested Delivery Date"< v_vkz."Promised Delivery Date" THEN BEGIN
+            Sheet.Range('G'+j).Value := 'XXX'
+          END;
+
+          IF v_verfgbarkeit < 0 THEN BEGIN
+            Sheet.Range('H'+j).Value := FORMAT(v_verfgbarkeit);
+          END ELSE BEGIN
+            Sheet.Range('G'+j).Value := FORMAT(v_verfgbarkeit);
+          END;
+
+          j := INCSTR (j);
+        UNTIL v_vkz.NEXT = 0;
+      END;
+    END;
+
+    EVENT Sheet@1000000025::SelectionChange@1543(Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000025::BeforeDoubleClick@1537(Target@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range";VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000025::BeforeRightClick@1534(Target@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range";VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000025::Activate@304();
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000025::Deactivate@1530();
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000025::Calculate@279();
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000025::Change@1545(Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000025::FollowHyperlink@1470(Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00024431-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Hyperlink");
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000025::PivotTableUpdate@2156(Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000025::PivotTableAfterValueChange@2886(TargetPivotTable@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";TargetRange@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000025::PivotTableBeforeAllocateChanges@2889(TargetPivotTable@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1000000002 : Integer;ValueChangeEnd@1000000001 : Integer;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000025::PivotTableBeforeCommitChanges@2892(TargetPivotTable@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1000000002 : Integer;ValueChangeEnd@1000000001 : Integer;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000025::PivotTableBeforeDiscardChanges@2893(TargetPivotTable@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1000000001 : Integer;ValueChangeEnd@1000000000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000025::PivotTableChangeSync@2894(Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::Open@1923();
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::Activate@304();
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::Deactivate@1530();
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::BeforeClose@1546(VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::BeforeSave@1547(SaveAsUI@1000000001 : Boolean;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::BeforePrint@1549(VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::NewSheet@1550(Sh@1000000000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::AddinInstall@1552();
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::AddinUninstall@1553();
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::WindowResize@1554(Wn@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Window");
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::WindowActivate@1556(Wn@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Window");
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::WindowDeactivate@1557(Wn@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Window");
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::SheetSelectionChange@1558(Sh@1000000001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::SheetBeforeDoubleClick@1559(Sh@1000000002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range";VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::SheetBeforeRightClick@1560(Sh@1000000002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range";VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::SheetActivate@1561(Sh@1000000000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::SheetDeactivate@1562(Sh@1000000000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::SheetCalculate@1563(Sh@1000000000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::SheetChange@1564(Sh@1000000001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::SheetFollowHyperlink@1854(Sh@1000000001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00024431-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Hyperlink");
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::SheetPivotTableUpdate@2157(Sh@1000000001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::PivotTableCloseConnection@2158(Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::PivotTableOpenConnection@2159(Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::Sync@2266(SyncEventType@1000000000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::BeforeXmlImport@2283(Map@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";Url@1000000002 : Text;IsRefresh@1000000001 : Boolean;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::AfterXmlImport@2285(Map@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";IsRefresh@1000000001 : Boolean;Result@1000000000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::BeforeXmlExport@2287(Map@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";Url@1000000001 : Text;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::AfterXmlExport@2288(Map@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";Url@1000000001 : Text;Result@1000000000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::RowsetComplete@2610(Description@1000000002 : Text;Sheet@1000000001 : Text;Success@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::SheetPivotTableAfterValueChange@2895(Sh@1000000002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";TargetRange@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::SheetPivotTableBeforeAllocateChanges@2896(Sh@1000000004 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1000000002 : Integer;ValueChangeEnd@1000000001 : Integer;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::SheetPivotTableBeforeCommitChanges@2897(Sh@1000000004 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1000000002 : Integer;ValueChangeEnd@1000000001 : Integer;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::SheetPivotTableBeforeDiscardChanges@2898(Sh@1000000003 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1000000001 : Integer;ValueChangeEnd@1000000000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::SheetPivotTableChangeSync@2899(Sh@1000000001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::AfterSave@2900(Success@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000027::NewChart@2901(Ch@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020821-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Chart");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::NewWorkbook@1565(Wb@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::SheetSelectionChange@1558(Sh@1000000001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::SheetBeforeDoubleClick@1559(Sh@1000000002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range";VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::SheetBeforeRightClick@1560(Sh@1000000002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range";VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::SheetActivate@1561(Sh@1000000000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::SheetDeactivate@1562(Sh@1000000000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::SheetCalculate@1563(Sh@1000000000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::SheetChange@1564(Sh@1000000001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WorkbookOpen@1567(Wb@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WorkbookActivate@1568(Wb@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WorkbookDeactivate@1569(Wb@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WorkbookBeforeClose@1570(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WorkbookBeforeSave@1571(Wb@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";SaveAsUI@1000000001 : Boolean;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WorkbookBeforePrint@1572(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WorkbookNewSheet@1573(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Sh@1000000000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WorkbookAddinInstall@1574(Wb@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WorkbookAddinUninstall@1575(Wb@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WindowResize@1554(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Wn@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Window");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WindowActivate@1556(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Wn@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Window");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WindowDeactivate@1557(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Wn@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Window");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::SheetFollowHyperlink@1854(Sh@1000000001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00024431-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Hyperlink");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::SheetPivotTableUpdate@2157(Sh@1000000001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WorkbookPivotTableCloseConnection@2160(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WorkbookPivotTableOpenConnection@2161(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WorkbookSync@2289(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";SyncEventType@1000000000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WorkbookBeforeXmlImport@2290(Wb@1000000004 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Map@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";Url@1000000002 : Text;IsRefresh@1000000001 : Boolean;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WorkbookAfterXmlImport@2291(Wb@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Map@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";IsRefresh@1000000001 : Boolean;Result@1000000000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WorkbookBeforeXmlExport@2292(Wb@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Map@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";Url@1000000001 : Text;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WorkbookAfterXmlExport@2293(Wb@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Map@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.XmlMap";Url@1000000001 : Text;Result@1000000000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WorkbookRowsetComplete@2611(Wb@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Description@1000000002 : Text;Sheet@1000000001 : Text;Success@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::AfterCalculate@2612();
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::SheetPivotTableAfterValueChange@2895(Sh@1000000002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";TargetRange@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Range");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::SheetPivotTableBeforeAllocateChanges@2896(Sh@1000000004 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1000000002 : Integer;ValueChangeEnd@1000000001 : Integer;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::SheetPivotTableBeforeCommitChanges@2897(Sh@1000000004 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1000000002 : Integer;ValueChangeEnd@1000000001 : Integer;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::SheetPivotTableBeforeDiscardChanges@2898(Sh@1000000003 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.PivotTable";ValueChangeStart@1000000001 : Integer;ValueChangeEnd@1000000000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::ProtectedViewWindowOpen@2903(Pvw@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.ProtectedViewWindow");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::ProtectedViewWindowBeforeEdit@2905(Pvw@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.ProtectedViewWindow";VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::ProtectedViewWindowBeforeClose@2906(Pvw@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.ProtectedViewWindow";Reason@1000000001 : Integer;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::ProtectedViewWindowResize@2908(Pvw@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.ProtectedViewWindow");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::ProtectedViewWindowActivate@2909(Pvw@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.ProtectedViewWindow");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::ProtectedViewWindowDeactivate@2910(Pvw@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.ProtectedViewWindow");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WorkbookAfterSave@2911(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Success@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000028::WorkbookNewChart@2912(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Workbook";Ch@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020821-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Chart");
+    BEGIN
+    END;
+
+    BEGIN
+    END.
+  }
+  RDLDATA
+  {
+  }
+}
+
