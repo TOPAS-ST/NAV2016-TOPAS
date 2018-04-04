@@ -2,8 +2,8 @@ OBJECT Codeunit 50008 TOPAS Service Modul
 {
   OBJECT-PROPERTIES
   {
-    Date=03.01.18;
-    Time=12:47:56;
+    Date=04.04.18;
+    Time=09:36:05;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -37,6 +37,9 @@ OBJECT Codeunit 50008 TOPAS Service Modul
       Text52005@1000000017 : TextConst 'DEU=Bitte hinterlegen Sie die Laufzeit fr Artikel %1 in der Optionstabelle (Feld Code), damit der Service-Preis fr Artikel %2 richtig ermittelt werden kann.';
       Text52006@1000000018 : TextConst 'DEU=Bitte hinterlegen Sie den MSRP-Preis als Vk-Preis im Artikel %1, damit der Vk-Preis fr die %2 automatisch berechnet werden kann. Vergewissern Sie sich auch, dass das Arbeitsdatum innerhalb des Start- und Enddatums des Vk-Preises liegt.\Oder setzen Sie den Haken "%3" im Artikel.';
       Text52007@1000000019 : TextConst 'DEU=Bitte hinterlegen Sie fr Artikel %1 in der Service Preistabelle sowohl den ACTS Euro und/oder den ACTS USD MSRP.';
+      Text39_000@1000000021 : TextConst 'DEU=Diese Funktion ist nur fr Artikel mit Kennzeichnung %1 gestattet.';
+      Text39_001@1000000022 : TextConst 'DEU=Die Einkaufszeile wurde aktualisiert. Der EK-Preis betr„gt nun %1.';
+      Text39_002@1000000023 : TextConst 'DEU=Diese Bestellzeile wurde noch nicht mit Service Einzelpositionen verknpft oder der W„hrungscode stimmt nicht mit dem Service Einkaufsw„hrungscode berein.';
 
     PROCEDURE CreateSystemFromShipHeader@1140001(ShipNo@1000000001 : Code[20]);
     VAR
@@ -371,7 +374,7 @@ OBJECT Codeunit 50008 TOPAS Service Modul
               END;
 
               SeriennrVerfolgung.RESET;
-              //SeriennrVerfolgung.SETFILTER("Item Tracking",'%1',SeriennrVerfolgung."Item Tracking":: "Serial No.");
+              //SeriennrVerfolgung.SETFILTER("Item Tracking",'%1',SeriennrVerfolgung."Item Tracking"::"Serial No.");
               SeriennrVerfolgung.SETFILTER("Document No.",'%1',Liefzeile."Document No.");
               SeriennrVerfolgung.SETFILTER("Document Line No.",'%1',Liefzeile."Line No.");
               IF SeriennrVerfolgung.FINDFIRST THEN
@@ -832,7 +835,7 @@ OBJECT Codeunit 50008 TOPAS Service Modul
               END;
 
               SeriennrHistorie.RESET;
-              //SeriennrHistorie.SETFILTER("Item Tracking",'%1',SeriennrHistorie."Item Tracking":: "Serial No.");
+              //SeriennrHistorie.SETFILTER("Item Tracking",'%1',SeriennrHistorie."Item Tracking"::"Serial No.");
               SeriennrHistorie.SETFILTER("Shipment No.",'%1',Beleghistorie."Belegnr.");
               SeriennrHistorie.SETFILTER("Shipment Line No.",'%1',Beleghistorie."Zeilennr.");
               IF SeriennrHistorie.FINDFIRST THEN
@@ -1615,7 +1618,7 @@ OBJECT Codeunit 50008 TOPAS Service Modul
       i@1140000 : Integer;
     BEGIN
       //***************************************************************************************************
-      //        TOPAS 01.03.11 ST - ™ffnet die Champ Kalkulation fr den ausgew„hlten Champ Artikel
+      //        TOPAS 01.03.11 ST - ™ffnet die Champ Kalkulation fr den ausgew„hlten Service Artikel
       //        TOPAS 21.10.13 ST - Anpassung um Splicecom Lizenz Aufstellung
       //***************************************************************************************************
       WITH SalesLine DO BEGIN
@@ -1646,6 +1649,32 @@ OBJECT Codeunit 50008 TOPAS Service Modul
         CalcRelaDoc.SETRANGE("Zeilennr.","Line No.");
         PAGE.RUN(50023,CalcRelaDoc);
       END;
+    END;
+
+    PROCEDURE CalcServiceDCFromPurchLine@1000000000(ItemNo@1140003 : Code[20];DocNo@1140001 : Code[20];LineNo@1140002 : Integer;CurrencyCode@1000000001 : Code[10]) : Decimal;
+    VAR
+      Item@1000000000 : Record 27;
+      Services@1140000 : Record 50024;
+      service_dc@1140005 : Decimal;
+    BEGIN
+      IF Item.GET(ItemNo) AND (Item."Software Upgrade Protection" = FALSE) THEN
+        ERROR(Text39_000,Item.FIELDCAPTION("Software Upgrade Protection"));
+
+      Services.RESET;
+      Services.SETRANGE(Art,Services.Art::Service);
+      Services.SETRANGE("BET-Nr.",DocNo);
+      Services.SETRANGE("BET-Pos.",LineNo);
+      Services.SETRANGE("Service W„hrungscode",CurrencyCode);
+      Services.SETRANGE(Inaktiv,FALSE);
+      IF Services.FINDFIRST THEN BEGIN
+        service_dc := 0;
+        REPEAT
+          service_dc := service_dc + (Services."Service DC" * Services.Menge);
+        UNTIL Services.NEXT = 0;
+        MESSAGE(Text39_001,service_dc);
+        EXIT(service_dc);
+      END ELSE
+        MESSAGE(Text39_002);
     END;
 
     BEGIN
