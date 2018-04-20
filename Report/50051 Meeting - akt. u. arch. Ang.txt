@@ -2,41 +2,18 @@ OBJECT Report 50051 Meeting - akt. & arch. Ang.
 {
   OBJECT-PROPERTIES
   {
-    Date=30.11.17;
-    Time=10:30:41;
+    Date=20.04.18;
+    Time=13:38:40;
     Modified=Yes;
     Version List=FORNAV2.0.0.1189/1189;
   }
   PROPERTIES
   {
     OnInitReport=BEGIN
-                   ReportForNav:= ReportForNav.Report(CurrReport.OBJECTID,CurrReport.LANGUAGE,SERIALNUMBER,USERID,COMPANYNAME);ReportForNav.Init;
+                   ReportForNav := ReportForNav.Report(CurrReport.OBJECTID,CurrReport.LANGUAGE,SERIALNUMBER,USERID,COMPANYNAME);ReportForNav.Init;
                  END;
 
     OnPreReport=BEGIN
-                  //*******************************************************************************************************
-                  //                    Sicherheitsabfrage ob Temp Tabelle auch Berichtstabelle ist
-                  //*******************************************************************************************************
-                  IF Berichtstabelle.TABLECAPTION <> 'Berichtstabelle' THEN
-                    ERROR('Eine Sicherheitssperre verhindert die Ausfhrung dieses Berichtes.'+
-                          'Stellen Sie sicher, dass die TABLECAPTION der Berichtstabelle auch auf Berichtstabelle lautet.');
-                  Berichtstabelle.RESET;
-                  IF Berichtstabelle.ISEMPTY = FALSE THEN BEGIN
-                    REPEAT
-                      Berichtstabelle.RESET;
-                      IF Berichtstabelle.ISEMPTY = FALSE THEN BEGIN
-                        SLEEP(500);
-                        counter += 1;
-                      END;
-                      IF counter MOD 30 = 0 THEN BEGIN
-                        Berichtstabelle.FINDFIRST;
-                        IF CONFIRM('Die Berichtstabelle ist seit %1 durch Anwender %2 gesperrt. Wollen Sie die Anwendung abbrechen?',
-                        TRUE,Berichtstabelle.Uhrzeit,Berichtstabelle.User,counter,TRUE) THEN
-                          ERROR('');
-                      END;
-                    UNTIL Berichtstabelle.ISEMPTY = TRUE;
-                  END;
-
                   IF datefilter = datefilter::LW THEN BEGIN
                     Startdatum := TOPAS_Funktionen.CalcDateByFormula(WORKDATE,TRUE,datefilter);
                     Enddatum := TOPAS_Funktionen.CalcDateByFormula(WORKDATE,FALSE,datefilter);
@@ -49,379 +26,605 @@ OBJECT Report 50051 Meeting - akt. & arch. Ang.
                     Arch_Angebote_listen;
                   END;
 
-                  //*******************************************************************************************************
-                  //         Temp Datensatz erzeugt, damit die Berichtsansicht eine neue Seite fr arch. Angebote
-                  //              ”ffnet und auf dieser neuen Seite der Header nicht zweimal angedruckt wird
-                  //*******************************************************************************************************
+                  Berichtstabelle_Customer.COPY(Berichtstabelle,TRUE);
+                  Berichtstabelle_SalesHeader.COPY(Berichtstabelle,TRUE);
+                  Berichtstabelle_SalesLine.COPY(Berichtstabelle,TRUE);
+                  Berichtstabelle_Campaign.COPY(Berichtstabelle,TRUE);
+                  Berichtstabelle_ToDo.COPY(Berichtstabelle,TRUE);
+                  Berichtstabelle_Comment.COPY(Berichtstabelle,TRUE);
 
-                  Berichtstabelle_temp.RESET;
-                  Berichtstabelle_temp.SETFILTER(Berichtstabelle_temp.Tabelle,'%1','ARCH_DEBITOR');
-                  IF Berichtstabelle_temp.FINDFIRST THEN BEGIN
-                    Berichtstabelle.INIT;
-                    Berichtstabelle.Tabelle := 'TEMP';
-                    Berichtstabelle.Index := 'XXXX';
-                    Berichtstabelle.INSERT;
-                  END;
-                  ;ReportForNav.OpenDesigner:=ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
+                  ;ReportForNav.OpenDesigner := ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
                 END;
 
     OnPostReport=BEGIN
-                   IF Berichtstabelle.TABLECAPTION = 'Berichtstabelle' THEN
-                     Berichtstabelle.DELETEALL;
                    ;ReportForNav.Post;
                  END;
 
   }
   DATASET
   {
-    { 1   ;    ;DataItem;Debitor             ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
-                                 WHERE(Tabelle=FILTER(DEBITOR));
+    { 1000000000;;DataItem;CopyCustomer      ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=FILTER(>0));
                OnPreDataItem=BEGIN
-                               IF sort = sort :: Nr THEN
-                                 Debitor.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
-                               IF sort = sort :: Name THEN
-                                 Debitor.SETCURRENTKEY("Feld 10",Datum,Index);
+                               Berichtstabelle_Customer.RESET;
+                               Berichtstabelle_Customer.SETFILTER(Tabelle,'%1','DEBITOR');
+                               IF sort = sort::Nr THEN
+                                 Berichtstabelle_Customer.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               IF sort = sort::Name THEN
+                                 Berichtstabelle_Customer.SETCURRENTKEY("Feld 10",Datum,Index);
+                               SETRANGE(Number,1,Berichtstabelle_Customer.COUNT);
                              END;
-                              }
+
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_Customer.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_Customer.NEXT;
+                                  END;
+                                END;
+                                 }
 
     { 2   ;1   ;Column  ;TODAY_0_4           ;
+               IncludeCaption=No;
                SourceExpr=FORMAT(TODAY,0,4) }
 
     { 3   ;1   ;Column  ;USERID              ;
+               IncludeCaption=No;
                SourceExpr=USERID }
 
     { 4   ;1   ;Column  ;Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Teams;
+               IncludeCaption=No;
                SourceExpr='Verk„ufercode: '+verk„ufer+' Betreuer Innendienst: ' + betreuer + ' Teams: ' + teams + ' Gebietscode: ' + gebietscode + '  Belegdatum: ' + FORMAT(Startdatum) + '..' + FORMAT(Enddatum) +  ' Status: ' + FORMAT(status) + 'Erledigt: ' + FORMAT(erledigt) }
 
     { 5   ;1   ;Column  ;ReportForNavPageNo  ;
+               IncludeCaption=No;
                SourceExpr=FORMAT(ReportForNav.PageNo) }
 
-    { 6   ;1   ;DataItem;Belegkopf           ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
-                                 WHERE(Tabelle=FILTER(BELEGKOPF));
-               DataItemLink=Index=FIELD(Index) }
+    { 1000000001;1;DataItem;CopySalesHeader  ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=FILTER(>0));
+               OnPreDataItem=BEGIN
+                               Berichtstabelle_SalesHeader.RESET;
+                               Berichtstabelle_SalesHeader.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               Berichtstabelle_SalesHeader.SETFILTER(Tabelle,'%1','BELEGKOPF');
+                               Berichtstabelle_SalesHeader.SETFILTER(Index,'%1',Berichtstabelle_Customer.Index);
+                               SETRANGE(Number,1,Berichtstabelle_SalesHeader.COUNT);
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_SalesHeader.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_SalesHeader.NEXT;
+                                  END;
+                                END;
+                                 }
 
     { 7   ;2   ;Column  ;Feld19_Debitor      ;
-               SourceExpr=Debitor."Feld 19" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Customer."Feld 19" }
 
     { 8   ;2   ;Column  ;Feld13_Debitor      ;
-               SourceExpr=Debitor."Feld 13" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Customer."Feld 13" }
 
     { 9   ;2   ;Column  ;Feld9_Belegkopf     ;
-               SourceExpr="Feld 9" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader."Feld 9" }
 
     { 10  ;2   ;Column  ;Feld6_Debitor       ;
-               SourceExpr=Debitor."Feld 6" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Customer."Feld 6" }
 
     { 11  ;2   ;Column  ;Index_Belegkopf     ;
-               SourceExpr=Index }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader.Index }
 
     { 12  ;2   ;Column  ;Feld10_Debitor      ;
-               SourceExpr=Debitor."Feld 10" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Customer."Feld 10" }
 
     { 13  ;2   ;Column  ;Feld12_Debitor      ;
-               SourceExpr=Debitor."Feld 12" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Customer."Feld 12" }
 
     { 14  ;2   ;Column  ;Feld7_Belegkopf     ;
-               SourceExpr="Feld 7" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader."Feld 7" }
 
     { 15  ;2   ;Column  ;Feld6_Belegkopf     ;
-               SourceExpr="Feld 6" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader."Feld 6" }
 
     { 16  ;2   ;Column  ;Feld2_Belegkopf     ;
-               SourceExpr="Feld 2" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader."Feld 2" }
 
     { 17  ;2   ;Column  ;Feld12_Belegkopf    ;
-               SourceExpr="Feld 12" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader."Feld 12" }
 
     { 18  ;2   ;Column  ;Feld10_Belegkopf    ;
-               SourceExpr="Feld 10" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader."Feld 10" }
 
     { 19  ;2   ;Column  ;Belegnr_Belegkopf   ;
-               SourceExpr="Belegnr." }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader."Belegnr." }
 
     { 20  ;2   ;Column  ;Feld3_Belegkopf     ;
-               SourceExpr="Feld 3" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader."Feld 3" }
 
     { 21  ;2   ;Column  ;Feld4_Belegkopf     ;
-               SourceExpr="Feld 4" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader."Feld 4" }
 
     { 22  ;2   ;Column  ;Datum_Belegkopf     ;
-               SourceExpr=Datum }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader.Datum }
 
-    { 23  ;2   ;DataItem;Projekte            ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
-                                 WHERE(Tabelle=FILTER(PROJEKT));
-               DataItemLink=Index=FIELD(Belegnr.) }
+    { 1000000002;2;DataItem;CopyCampaign     ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=FILTER(>0));
+               OnPreDataItem=BEGIN
+                               Berichtstabelle_Campaign.RESET;
+                               Berichtstabelle_Campaign.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               Berichtstabelle_Campaign.SETFILTER(Tabelle,'%1','PROJEKT');
+                               Berichtstabelle_Campaign.SETFILTER(Index,'%1',Berichtstabelle_SalesHeader."Belegnr.");
+                               SETRANGE(Number,1,Berichtstabelle_Campaign.COUNT);
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_Campaign.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_Campaign.NEXT;
+                                  END;
+                                END;
+                                 }
 
     { 24  ;3   ;Column  ;Feld4_Projekte      ;
-               SourceExpr="Feld 4" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Campaign."Feld 4" }
 
     { 25  ;3   ;Column  ;Feld9_Projekte      ;
-               SourceExpr="Feld 9" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Campaign."Feld 9" }
 
     { 26  ;3   ;Column  ;Feld1_Projekte      ;
-               SourceExpr="Feld 1" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Campaign."Feld 1" }
 
     { 27  ;3   ;Column  ;Feld5_Projekte      ;
-               SourceExpr="Feld 5" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Campaign."Feld 5" }
 
     { 28  ;3   ;Column  ;Feld8_Projekte      ;
-               SourceExpr="Feld 8" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Campaign."Feld 8" }
 
     { 29  ;3   ;Column  ;Belegnr_Projekte    ;
-               SourceExpr="Belegnr." }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Campaign."Belegnr." }
 
-    { 30  ;2   ;DataItem;Aufgaben            ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
-                                 WHERE(Tabelle=FILTER(AUFGABE));
-               DataItemLink=Index=FIELD(Belegnr.) }
+    { 1000000003;2;DataItem;CopyToDo         ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=FILTER(>0));
+               OnPreDataItem=BEGIN
+                               Berichtstabelle_ToDo.RESET;
+                               Berichtstabelle_ToDo.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               Berichtstabelle_ToDo.SETFILTER(Tabelle,'%1','AUFGABE');
+                               Berichtstabelle_ToDo.SETFILTER(Index,'%1',Berichtstabelle_SalesHeader."Belegnr.");
+                               SETRANGE(Number,1,Berichtstabelle_ToDo.COUNT);
+                             END;
 
-    { 31  ;3   ;DataItem;Bemerkung           ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
-                                 WHERE(Tabelle=FILTER(BEMERKUNG));
-               DataItemLink=Belegnr.=FIELD(Belegnr.) }
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_ToDo.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_ToDo.NEXT;
+                                  END;
+                                END;
+                                 }
+
+    { 1000000004;3;DataItem;CopyComment      ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=FILTER(>0));
+               OnPreDataItem=BEGIN
+                               Berichtstabelle_Comment.RESET;
+                               Berichtstabelle_Comment.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               Berichtstabelle_Comment.SETFILTER(Tabelle,'%1','BEMERKUNG');
+                               Berichtstabelle_Comment.SETFILTER("Belegnr.",'%1',Berichtstabelle_ToDo."Belegnr.");
+                               SETRANGE(Number,1,Berichtstabelle_Comment.COUNT);
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_Comment.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_Comment.NEXT;
+                                  END;
+                                END;
+                                 }
 
     { 32  ;4   ;Column  ;Feld10_Bemerkung    ;
-               SourceExpr="Feld 10" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Comment."Feld 10" }
 
     { 33  ;4   ;Column  ;Feld1_Bemerkung     ;
-               SourceExpr="Feld 1" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Comment."Feld 1" }
 
     { 34  ;4   ;Column  ;Datum_Bemerkung     ;
-               SourceExpr=Datum }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Comment.Datum }
 
-    { 35  ;2   ;DataItem;Belegzeile          ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
-                                 WHERE(Tabelle=FILTER(BELEGZEILE));
-               DataItemLink=Index=FIELD(Belegnr.) }
+    { 1000000005;2;DataItem;CopySalesLine    ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=FILTER(>0));
+               OnPreDataItem=BEGIN
+                               Berichtstabelle_SalesLine.RESET;
+                               Berichtstabelle_SalesLine.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               Berichtstabelle_SalesLine.SETFILTER(Tabelle,'%1','BELEGZEILE');
+                               Berichtstabelle_SalesLine.SETFILTER(Index,'%1',Berichtstabelle_SalesHeader."Belegnr.");
+                               SETRANGE(Number,1,Berichtstabelle_SalesLine.COUNT);
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_SalesLine.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_SalesLine.NEXT;
+                                  END;
+                                END;
+                                 }
 
     { 36  ;3   ;Column  ;Feld16_Belegzeile   ;
-               SourceExpr="Feld 16" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesLine."Feld 16" }
 
     { 37  ;3   ;Column  ;Feld11_Belegzeile   ;
-               SourceExpr="Feld 11" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesLine."Feld 11" }
 
     { 38  ;3   ;Column  ;Feld8_Belegzeile    ;
-               SourceExpr="Feld 8" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesLine."Feld 8" }
 
     { 39  ;3   ;Column  ;Feld14_Belegzeile   ;
-               SourceExpr="Feld 14" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesLine."Feld 14" }
 
     { 40  ;3   ;Column  ;Feld13_Belegzeile   ;
-               SourceExpr="Feld 13" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesLine."Feld 13" }
 
     { 41  ;3   ;Column  ;Feld7_Belegzeile    ;
-               SourceExpr="Feld 7" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesLine."Feld 7" }
 
     { 42  ;3   ;Column  ;Feld10_Belegzeile   ;
-               SourceExpr="Feld 10" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesLine."Feld 10" }
 
     { 43  ;3   ;Column  ;Feld6_Belegzeile    ;
-               SourceExpr="Feld 6" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesLine."Feld 6" }
 
     { 44  ;3   ;Column  ;Feld3_Belegzeile    ;
-               SourceExpr="Feld 3" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesLine."Feld 3" }
 
     { 45  ;3   ;Column  ;Feld4_Belegzeile    ;
                DecimalPlaces=0:0;
-               SourceExpr="Feld 4" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesLine."Feld 4" }
 
     { 46  ;3   ;Column  ;Feld5_Belegzeile    ;
                DecimalPlaces=0:3;
-               SourceExpr="Feld 5" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesLine."Feld 5" }
 
     { 47  ;3   ;Column  ;Feld12_Belegzeile   ;
                DecimalPlaces=0:2;
-               SourceExpr="Feld 12" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesLine."Feld 12" }
 
     { 48  ;3   ;Column  ;Feld15_Belegzeile   ;
-               SourceExpr="Feld 15" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesLine."Feld 15" }
 
     { 49  ;3   ;Column  ;ItemDescription__ItemDescription2;
+               IncludeCaption=No;
                SourceExpr=Item.Description + ' ' + Item."Description 2" }
 
-    { 50  ;    ;DataItem;NewPage             ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
-                                 WHERE(Tabelle=FILTER(TEMP)) }
-
-    { 51  ;    ;DataItem;Arch_Debitor        ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
-                                 WHERE(Tabelle=FILTER(ARCH_DEBITOR));
+    { 1000000006;;DataItem;CopyArchCustomer  ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=FILTER(>0));
                OnPreDataItem=BEGIN
-                               IF sort = sort :: Nr THEN
-                                 Arch_Debitor.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
-                               IF sort = sort :: Name THEN
-                                 Arch_Debitor.SETCURRENTKEY("Feld 10",Datum,Index);
+                               Berichtstabelle_Customer.RESET;
+                               Berichtstabelle_Customer.SETFILTER(Tabelle,'%1','ARCH_DEBITOR');
+                               IF sort = sort::Nr THEN
+                                 Berichtstabelle_Customer.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               IF sort = sort::Name THEN
+                                 Berichtstabelle_Customer.SETCURRENTKEY("Feld 10",Datum,Index);
+                               SETRANGE(Number,1,Berichtstabelle_Customer.COUNT);
                              END;
-                              }
+
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_Customer.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_Customer.NEXT;
+                                  END;
+                                END;
+                                 }
 
     { 52  ;1   ;Column  ;TODAY_0_42          ;
+               IncludeCaption=No;
                SourceExpr=FORMAT(TODAY,0,4) }
 
     { 53  ;1   ;Column  ;USERID2             ;
+               IncludeCaption=No;
                SourceExpr=USERID }
 
     { 54  ;1   ;Column  ;Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Team2;
+               IncludeCaption=No;
                SourceExpr='Verk„ufercode: '+verk„ufer+' Betreuer Innendienst: ' + betreuer + ' Teams: ' + teams + ' Gebietscode: ' + gebietscode + '  Belegdatum: ' + FORMAT(Startdatum) + '..' + FORMAT(Enddatum) +  ' Status: ' + FORMAT(status) }
 
     { 55  ;1   ;Column  ;ReportForNavPageNo2 ;
+               IncludeCaption=No;
                SourceExpr=FORMAT(ReportForNav.PageNo) }
 
-    { 56  ;1   ;DataItem;Arch_Belegkopf      ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
-                                 WHERE(Tabelle=FILTER(ARCH_BELEGKOPF));
-               DataItemLink=Index=FIELD(Index) }
+    { 1000000007;1;DataItem;CopyArchSalesHeader;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=FILTER(>0));
+               OnPreDataItem=BEGIN
+                               Berichtstabelle_SalesHeader.RESET;
+                               Berichtstabelle_SalesHeader.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               Berichtstabelle_SalesHeader.SETFILTER(Tabelle,'%1','ARCH_BELEGKOPF');
+                               Berichtstabelle_SalesHeader.SETFILTER(Index,'%1',Berichtstabelle_Customer.Index);
+                               SETRANGE(Number,1,Berichtstabelle_SalesHeader.COUNT);
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_SalesHeader.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_SalesHeader.NEXT;
+                                  END;
+                                END;
+                                 }
 
     { 57  ;2   ;Column  ;Feld19_Arch_Debitor ;
-               SourceExpr=Arch_Debitor."Feld 19" }
+               SourceExpr=Berichtstabelle_Customer."Feld 19" }
 
     { 58  ;2   ;Column  ;Feld13_Arch_Debitor ;
-               SourceExpr=Arch_Debitor."Feld 13" }
+               SourceExpr=Berichtstabelle_Customer."Feld 13" }
 
     { 59  ;2   ;Column  ;Feld9_Arch_Belegkopf;
-               SourceExpr="Feld 9" }
+               SourceExpr=Berichtstabelle_SalesHeader."Feld 9" }
 
     { 60  ;2   ;Column  ;Feld6_Arch_Debitor  ;
-               SourceExpr=Arch_Debitor."Feld 6" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Customer."Feld 6" }
 
     { 61  ;2   ;Column  ;Index_Arch_Belegkopf;
-               SourceExpr=Index }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader.Index }
 
     { 62  ;2   ;Column  ;Feld10_Arch_Debitor ;
-               SourceExpr=Arch_Debitor."Feld 10" }
+               SourceExpr=Berichtstabelle_Customer."Feld 10" }
 
     { 63  ;2   ;Column  ;Feld12_Arch_Debitor ;
-               SourceExpr=Arch_Debitor."Feld 12" }
+               SourceExpr=Berichtstabelle_Customer."Feld 12" }
 
     { 64  ;2   ;Column  ;Feld7_Arch_Belegkopf;
-               SourceExpr="Feld 7" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader."Feld 7" }
 
     { 65  ;2   ;Column  ;Feld6_Arch_Belegkopf;
-               SourceExpr="Feld 6" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader."Feld 6" }
 
     { 66  ;2   ;Column  ;Feld2_Arch_Belegkopf;
-               SourceExpr="Feld 2" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader."Feld 2" }
 
     { 67  ;2   ;Column  ;Feld10_Arch_Belegkopf;
-               SourceExpr="Feld 10" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader."Feld 10" }
 
     { 68  ;2   ;Column  ;Belegnr_Arch_Belegkopf;
-               SourceExpr="Belegnr." }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader."Belegnr." }
 
     { 69  ;2   ;Column  ;Feld19_Arch_Belegkopf;
-               SourceExpr="Feld 19" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader."Feld 19" }
 
     { 70  ;2   ;Column  ;Feld4_Arch_Belegkopf;
-               SourceExpr="Feld 4" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader."Feld 4" }
 
     { 71  ;2   ;Column  ;Datum_Arch_Belegkopf;
-               SourceExpr=Datum }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_SalesHeader.Datum }
 
-    { 72  ;2   ;DataItem;Arch_Projekte       ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
-                                 WHERE(Tabelle=FILTER(ARCH_PROJEKT));
-               DataItemLink=Index=FIELD(Belegnr.) }
+    { 1000000008;2;DataItem;CopyCampaing2    ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=FILTER(>0));
+               OnPreDataItem=BEGIN
+                               Berichtstabelle_Campaign.RESET;
+                               Berichtstabelle_Campaign.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               Berichtstabelle_Campaign.SETFILTER(Tabelle,'%1','ARCH_PROJEKT');
+                               Berichtstabelle_Campaign.SETFILTER(Index,'%1',Berichtstabelle_SalesHeader."Belegnr.");
+                               SETRANGE(Number,1,Berichtstabelle_Campaign.COUNT);
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_Campaign.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_Campaign.NEXT;
+                                  END;
+                                END;
+                                 }
 
     { 73  ;3   ;Column  ;Feld4_Arch_Projekte ;
-               SourceExpr="Feld 4" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Campaign."Feld 4" }
 
     { 74  ;3   ;Column  ;Feld9_Arch_Projekte ;
-               SourceExpr="Feld 9" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Campaign."Feld 9" }
 
     { 75  ;3   ;Column  ;Feld1_Arch_Projekte ;
-               SourceExpr="Feld 1" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Campaign."Feld 1" }
 
     { 76  ;3   ;Column  ;Feld5_Arch_Projekte ;
-               SourceExpr="Feld 5" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Campaign."Feld 5" }
 
     { 77  ;3   ;Column  ;Feld8_Arch_Projekte ;
-               SourceExpr="Feld 8" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Campaign."Feld 8" }
 
     { 78  ;3   ;Column  ;Belegnr_Arch_Projekte;
-               SourceExpr="Belegnr." }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Campaign."Belegnr." }
 
-    { 79  ;2   ;DataItem;Arch_Aufgaben       ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
-                                 WHERE(Tabelle=FILTER(ARCH_AUFGABE));
-               DataItemLink=Index=FIELD(Belegnr.) }
+    { 1000000009;2;DataItem;CopyToDo2        ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=FILTER(>0));
+               OnPreDataItem=BEGIN
+                               Berichtstabelle_ToDo.RESET;
+                               Berichtstabelle_ToDo.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               Berichtstabelle_ToDo.SETFILTER(Tabelle,'%1','ARCH_AUFGABE');
+                               Berichtstabelle_ToDo.SETFILTER(Index,'%1',Berichtstabelle_SalesHeader."Belegnr.");
+                               SETRANGE(Number,1,Berichtstabelle_ToDo.COUNT);
+                             END;
 
-    { 80  ;3   ;DataItem;Arch_Bemerkung      ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
-                                 WHERE(Tabelle=FILTER(ARCH_BEMERKUNG));
-               DataItemLink=Belegnr.=FIELD(Belegnr.) }
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_ToDo.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_ToDo.NEXT;
+                                  END;
+                                END;
+                                 }
+
+    { 1000000010;3;DataItem;CopyComment2     ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=FILTER(>0));
+               OnPreDataItem=BEGIN
+                               Berichtstabelle_Comment.RESET;
+                               Berichtstabelle_Comment.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               Berichtstabelle_Comment.SETFILTER(Tabelle,'%1','ARCH_BEMERKUNG');
+                               Berichtstabelle_Comment.SETFILTER("Belegnr.",'%1',Berichtstabelle_ToDo."Belegnr.");
+                               SETRANGE(Number,1,Berichtstabelle_Comment.COUNT);
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_Comment.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_Comment.NEXT;
+                                  END;
+                                END;
+                                 }
 
     { 81  ;4   ;Column  ;Feld10_Arch_Bemerkung;
-               SourceExpr="Feld 10" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Comment."Feld 10" }
 
     { 82  ;4   ;Column  ;Feld1_Arch_Bemerkung;
-               SourceExpr="Feld 1" }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Comment."Feld 1" }
 
     { 83  ;4   ;Column  ;Datum_Arch_Bemerkung;
-               SourceExpr=Datum }
+               IncludeCaption=No;
+               SourceExpr=Berichtstabelle_Comment.Datum }
 
-    { 84  ;2   ;DataItem;Arch_Belegzeile     ;
-               DataItemTable=Table50037;
-               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
-                                 WHERE(Tabelle=FILTER(ARCH_BELEGZEILE));
-               DataItemLink=Index=FIELD(Belegnr.) }
+    { 1000000011;2;DataItem;CopyArchSalesLine;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=FILTER(>0));
+               OnPreDataItem=BEGIN
+                               Berichtstabelle_SalesLine.RESET;
+                               Berichtstabelle_SalesLine.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               Berichtstabelle_SalesLine.SETFILTER(Tabelle,'%1','ARCH_BELEGZEILE');
+                               Berichtstabelle_SalesLine.SETFILTER(Index,'%1',Berichtstabelle_SalesHeader."Belegnr.");
+                               SETRANGE(Number,1,Berichtstabelle_SalesLine.COUNT);
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN BEGIN
+                                    Berichtstabelle_SalesLine.FIND('-');
+                                  END ELSE BEGIN
+                                    Berichtstabelle_SalesLine.NEXT;
+                                  END;
+                                END;
+                                 }
 
     { 85  ;3   ;Column  ;Feld16_Arch_Belegzeile;
-               SourceExpr="Feld 16" }
+               SourceExpr=Berichtstabelle_SalesLine."Feld 16" }
 
     { 86  ;3   ;Column  ;Feld11_Arch_Belegzeile;
-               SourceExpr="Feld 11" }
+               SourceExpr=Berichtstabelle_SalesLine."Feld 11" }
 
     { 87  ;3   ;Column  ;Feld8_Arch_Belegzeile;
-               SourceExpr="Feld 8" }
+               SourceExpr=Berichtstabelle_SalesLine."Feld 8" }
 
     { 88  ;3   ;Column  ;Feld14_Arch_Belegzeile;
-               SourceExpr="Feld 14" }
+               SourceExpr=Berichtstabelle_SalesLine."Feld 14" }
 
     { 89  ;3   ;Column  ;Feld13_Arch_Belegzeile;
-               SourceExpr="Feld 13" }
+               SourceExpr=Berichtstabelle_SalesLine."Feld 13" }
 
     { 90  ;3   ;Column  ;Feld7_Arch_Belegzeile;
-               SourceExpr="Feld 7" }
+               SourceExpr=Berichtstabelle_SalesLine."Feld 7" }
 
     { 91  ;3   ;Column  ;Feld10_Arch_Belegzeile;
-               SourceExpr="Feld 10" }
+               SourceExpr=Berichtstabelle_SalesLine."Feld 10" }
 
     { 92  ;3   ;Column  ;Feld6_Arch_Belegzeile;
-               SourceExpr="Feld 6" }
+               SourceExpr=Berichtstabelle_SalesLine."Feld 6" }
 
     { 93  ;3   ;Column  ;Feld3_Arch_Belegzeile;
-               SourceExpr="Feld 3" }
+               SourceExpr=Berichtstabelle_SalesLine."Feld 3" }
 
     { 94  ;3   ;Column  ;Feld4_Arch_Belegzeile;
                DecimalPlaces=0:0;
-               SourceExpr="Feld 4" }
+               SourceExpr=Berichtstabelle_SalesLine."Feld 4" }
 
     { 95  ;3   ;Column  ;Feld5_Arch_Belegzeile;
                DecimalPlaces=0:3;
-               SourceExpr="Feld 5" }
+               SourceExpr=Berichtstabelle_SalesLine."Feld 5" }
 
     { 96  ;3   ;Column  ;Feld12_Arch_Belegzeile;
                DecimalPlaces=0:2;
-               SourceExpr="Feld 12" }
+               SourceExpr=Berichtstabelle_SalesLine."Feld 12" }
 
     { 97  ;3   ;Column  ;Feld15_Arch_Belegzeile;
-               SourceExpr="Feld 15" }
+               SourceExpr=Berichtstabelle_SalesLine."Feld 15" }
 
     { 98  ;3   ;Column  ;ItemDescription__ItemDescription22;
+               IncludeCaption=No;
                SourceExpr=Item.Description + ' ' + Item."Description 2" }
 
   }
@@ -525,8 +728,13 @@ OBJECT Report 50051 Meeting - akt. & arch. Ang.
   CODE
   {
     VAR
-      Berichtstabelle@1140000 : Record 50037;
-      Berichtstabelle_temp@1140022 : Record 50037;
+      Berichtstabelle@1000000010 : TEMPORARY Record 50037;
+      Berichtstabelle_Customer@1000000003 : TEMPORARY Record 50037;
+      Berichtstabelle_SalesHeader@1000000004 : TEMPORARY Record 50037;
+      Berichtstabelle_SalesLine@1000000008 : TEMPORARY Record 50037;
+      Berichtstabelle_Campaign@1000000005 : TEMPORARY Record 50037;
+      Berichtstabelle_ToDo@1000000006 : TEMPORARY Record 50037;
+      Berichtstabelle_Comment@1000000007 : TEMPORARY Record 50037;
       Customer@1140012 : Record 18;
       Campaign@1140018 : Record 5071;
       Comment@1140020 : Record 5061;
@@ -553,7 +761,6 @@ OBJECT Report 50051 Meeting - akt. & arch. Ang.
       status@1140008 : ' ,Offen,Freigegeben,Genehmigung ausstehend,Vorauszahlung ausstehend';
       belegzeilen_vorhanden@1140015 : Boolean;
       arch_belegzeilen_vorhanden@1140026 : Boolean;
-      counter@1140021 : Integer;
       sort@1140023 : 'Nr,Name';
       datefilter@1000000001 : 'N,LD,LW,LM';
       nur_archivierte@1140028 : Boolean;
@@ -588,23 +795,16 @@ OBJECT Report 50051 Meeting - akt. & arch. Ang.
     BEGIN
       WITH Belegzeile DO BEGIN
         IF Item.GET("Feld 19") THEN
-          ReportForNav.ShowOutput(Item.Herstellerkurzname ='FER')
+          ReportForNav.ShowOutput(Item.Herstellerkurzname = 'FER')
         ELSE
           ReportForNav.ShowOutput(FALSE);
-      END;
-    END;
-
-    LOCAL PROCEDURE OnPreSectionNewPage_Header11@5013(VAR NewPage@1000000000 : Record 50037);
-    BEGIN
-      WITH NewPage DO BEGIN
-        ReportForNav.NewPageWithoutTransportTotals;
       END;
     END;
 
     LOCAL PROCEDURE OnPreSectionArch_Debitor_Header12@5014(VAR Arch_Debitor@1000000000 : Record 50037);
     BEGIN
       WITH Arch_Debitor DO BEGIN
-        //ReportForNav.NewPageWithoutTransportTotals;
+        ReportForNav.NewPageWithoutTransportTotals;
       END;
     END;
 
@@ -620,7 +820,7 @@ OBJECT Report 50051 Meeting - akt. & arch. Ang.
     LOCAL PROCEDURE OnPreSectionArch_Belegzeile_Body19@5016(VAR Arch_Belegzeile@1000000000 : Record 50037);
     BEGIN
       WITH Arch_Belegzeile DO BEGIN
-        ReportForNav.ShowOutput(("Feld 11" <> '') AND (("Feld 11" <> System_Projektinfo_temp) OR ("Belegnr." <> Belegnr_temp )));
+        ReportForNav.ShowOutput(("Feld 11" <> '') AND (("Feld 11" <> System_Projektinfo_temp) OR ("Belegnr." <> Belegnr_temp)));
         System_Projektinfo_temp := "Feld 11";
         Belegnr_temp  := "Belegnr.";
       END;
@@ -630,9 +830,9 @@ OBJECT Report 50051 Meeting - akt. & arch. Ang.
     BEGIN
       WITH Arch_Belegzeile DO BEGIN
         IF Item.GET("Feld 19") THEN
-          ReportForNav.ShowOutput(Item.Herstellerkurzname ='FER')
+          ReportForNav.ShowOutput(Item.Herstellerkurzname = 'FER')
         ELSE
-            ReportForNav.ShowOutput(FALSE);
+          ReportForNav.ShowOutput(FALSE);
       END;
     END;
 
@@ -642,184 +842,174 @@ OBJECT Report 50051 Meeting - akt. & arch. Ang.
       //                                 Akt. Angebote werden durchsucht
       //*******************************************************************************************************
       SalesHeader.RESET;
-      IF (Startdatum<>0D) AND (Enddatum=0D) THEN
-        SalesHeader.SETFILTER(SalesHeader."Document Date",'>=%1',Startdatum);
-      IF (Startdatum<>0D) AND (Enddatum<>0D) THEN
-        SalesHeader.SETFILTER(SalesHeader."Document Date",'>=%1&<=%2',Startdatum,Enddatum);
-      IF (Startdatum=0D) AND (Enddatum<>0D) THEN
+      IF (Startdatum <> 0D) AND (Enddatum = 0D) THEN
+        SalesHeader.SETFILTER("Document Date",'>=%1',Startdatum);
+      IF (Startdatum <> 0D) AND (Enddatum <> 0D) THEN
+        SalesHeader.SETFILTER("Document Date",'>=%1&<=%2',Startdatum,Enddatum);
+      IF (Startdatum = 0D) AND (Enddatum <> 0D) THEN
         SalesHeader.SETFILTER("Document Date",'<=%1',Enddatum);
       SalesHeader.SETFILTER("Betreuer Innendienst",betreuer);
       SalesHeader.SETFILTER("Salesperson Code",verk„ufer);
       SalesHeader.SETFILTER(Teams,teams);
       SalesHeader.SETFILTER("Territory Code",gebietscode);
       SalesHeader.SETFILTER("Sell-to Country/Region Code",land);
-      SalesHeader.SETFILTER("Document Type",'%1',SalesHeader."Document Type" :: Quote);
+      SalesHeader.SETFILTER("Document Type",'%1',SalesHeader."Document Type"::Quote);
       IF SalesHeader.FINDFIRST THEN
         REPEAT
           belegzeilen_vorhanden := FALSE;
           SalesLine.RESET;
-          SalesLine.SETFILTER(SalesLine."Document No.",SalesHeader."No.");
-          SalesLine.SETFILTER(SalesLine.Type,'%1',SalesLine.Type :: Item);
-          SalesLine.SETFILTER(SalesLine."Manufacturer Code",hersteller);
-          IF SalesLine.FINDFIRST THEN
-            BEGIN
-              belegzeilen_vorhanden := TRUE;
-              Berichtstabelle_temp.RESET;
-              Berichtstabelle_temp.SETFILTER(Tabelle,'%1','DEBITOR');
-              Berichtstabelle_temp.SETFILTER(Index,'%1',SalesHeader."Sell-to Customer No.");
-              IF NOT Berichtstabelle_temp.FINDFIRST THEN
-                BEGIN
-                  //*******************************************************************************************************
-                  //                                     Debitor Daten schreiben
-                  //*******************************************************************************************************
-                  Berichtstabelle.INIT;
-                    Berichtstabelle.Tabelle := 'DEBITOR';
-                    Berichtstabelle.Index := SalesHeader."Sell-to Customer No.";
-                    Customer.GET(SalesHeader."Sell-to Customer No.");
-                    Berichtstabelle."Feld 6" := Customer."Post Code";
-                    Berichtstabelle."Feld 10" := Customer.Name;
-                    Berichtstabelle."Feld 12" := Customer.City;
-                    Berichtstabelle."Feld 19" := Customer."Country/Region Code";
-                    Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-                    Berichtstabelle.User := USERID;
-                    //*******************************************************************************************************
-                    //           Prfung, ob Bestcker oder H„ndler und ob berhaupt eine Branche hinterlegt ist
-                    //*******************************************************************************************************
-                    Cont_rel.RESET;
-                    Cont_rel.SETFILTER(Cont_rel."No.",'%1',Customer."No.");
-                    Cont_rel.SETFILTER(Cont_rel."Business Relation Code",'%1','DEB');
-                    IF Cont_rel.FINDFIRST THEN
-                      BEGIN
-                        Branche.RESET;
-                        Branche.SETFILTER(Branche."Contact No.",'%1',Cont_rel."Contact No.");
-                        IF Branche.FINDFIRST THEN
-                          BEGIN
-                            Branche.SETFILTER(Branche."Industry Group Code",'%1|%2','BESTšCKER','HŽNDLER');
-                            IF Branche.FINDFIRST THEN
-                              BEGIN
-                                Berichtstabelle."Feld 13" := Branche."Industry Group Code";
-                              END;
-                         END
-                       ELSE
-                         Berichtstabelle."Feld 13" := 'Branchen fehlen!'
-                      END;
-                  Berichtstabelle.INSERT;
-                END;
-              REPEAT
-                //*******************************************************************************************************
-                //                                      Angebotszeilen schreiben
-                //*******************************************************************************************************
-                Berichtstabelle.INIT;
-                  Berichtstabelle.Tabelle := 'BELEGZEILE';
-                  Berichtstabelle.Index := SalesLine."Document No.";
-                  Berichtstabelle."Belegnr." := SalesLine."Document No.";
-                  Berichtstabelle."Zeilennr." := SalesLine."Line No.";
-                  Berichtstabelle."Feld 3" := SalesLine."Artikelnr. 2";
-                  Berichtstabelle."Feld 4" := SalesLine.Quantity;
-                  Berichtstabelle."Feld 5" := SalesLine."Unit Price";
-                  IF Item.GET(SalesLine."No.") THEN
-                    BEGIN
-                      IF Item.Registrierbar THEN
-                        Berichtstabelle."Feld 6" := 'R   ' + Item.Herstellerkurzname
-                      ELSE
-                        Berichtstabelle."Feld 6" := Item.Herstellerkurzname;
-                    END;
-                  IF SalesHeader."Currency Code" = '' THEN
-                    Berichtstabelle."Feld 7" := '°'
-                  ELSE
-                    Berichtstabelle."Feld 7" := SalesHeader."Currency Code";
-                  Berichtstabelle."Feld 8" := SalesLine."Kampagnennr.";
-                  Berichtstabelle."Feld 10" := FORMAT(SalesLine.Amount);
-                  Berichtstabelle."Feld 11" := SalesLine."System Projektinfos";
-                  Berichtstabelle."Feld 12" := FORMAT(ROUND(SalesLine."Profit %",0.01));
-                  Berichtstabelle."Feld 13" := FORMAT(SalesLine."DC-Preis (EKW)");
-                  IF Quotedaten.GET(SalesLine."Quotenr.") THEN
-                    Berichtstabelle."Feld 14" := FORMAT(Quotedaten.Quotepreis);
-                  Berichtstabelle."Feld 15" := SalesLine.LZ_Text;
-                  Berichtstabelle."Feld 16" := SalesLine.Endkunde;
-                  Berichtstabelle."Feld 19" := SalesLine."No.";
-                  Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-                  Berichtstabelle.User := USERID;
-                Berichtstabelle.INSERT;
-              UNTIL SalesLine.NEXT = 0;
+          SalesLine.SETFILTER("Document No.",SalesHeader."No.");
+          SalesLine.SETFILTER(Type,'%1',SalesLine.Type::Item);
+          SalesLine.SETFILTER("Manufacturer Code",hersteller);
+          IF SalesLine.FINDFIRST THEN BEGIN
+            belegzeilen_vorhanden := TRUE;
+            Berichtstabelle.RESET;
+            Berichtstabelle.SETFILTER(Tabelle,'%1','DEBITOR');
+            Berichtstabelle.SETFILTER(Index,'%1',SalesHeader."Sell-to Customer No.");
+            IF NOT Berichtstabelle.FINDFIRST THEN BEGIN
+              //*******************************************************************************************************
+              //                                     Debitor Daten schreiben
+              //*******************************************************************************************************
+              Berichtstabelle.INIT;
+              Berichtstabelle.Tabelle := 'DEBITOR';
+              Berichtstabelle.Index := SalesHeader."Sell-to Customer No.";
+              Customer.GET(SalesHeader."Sell-to Customer No.");
+              Berichtstabelle."Feld 6" := Customer."Post Code";
+              Berichtstabelle."Feld 10" := Customer.Name;
+              Berichtstabelle."Feld 12" := Customer.City;
+              Berichtstabelle."Feld 19" := Customer."Country/Region Code";
+              Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+              Berichtstabelle.User := USERID;
+              //*******************************************************************************************************
+              //           Prfung, ob Bestcker oder H„ndler und ob berhaupt eine Branche hinterlegt ist
+              //*******************************************************************************************************
+              Cont_rel.RESET;
+              Cont_rel.SETFILTER("No.",'%1',Customer."No.");
+              Cont_rel.SETFILTER("Business Relation Code",'%1','DEB');
+              IF Cont_rel.FINDFIRST THEN BEGIN
+                Branche.RESET;
+                Branche.SETFILTER("Contact No.",'%1',Cont_rel."Contact No.");
+                IF Branche.FINDFIRST THEN BEGIN
+                  Branche.SETFILTER("Industry Group Code",'%1|%2','BESTšCKER','HŽNDLER');
+                  IF Branche.FINDFIRST THEN BEGIN
+                    Berichtstabelle."Feld 13" := Branche."Industry Group Code";
+                  END;
+                END ELSE
+                  Berichtstabelle."Feld 13" := 'Branchen fehlen!'
+              END;
+              Berichtstabelle.INSERT;
             END;
+            REPEAT
+              //*******************************************************************************************************
+              //                                      Angebotszeilen schreiben
+              //*******************************************************************************************************
+              Berichtstabelle.INIT;
+              Berichtstabelle.Tabelle := 'BELEGZEILE';
+              Berichtstabelle.Index := SalesLine."Document No.";
+              Berichtstabelle."Belegnr." := SalesLine."Document No.";
+              Berichtstabelle."Zeilennr." := SalesLine."Line No.";
+              Berichtstabelle."Feld 3" := SalesLine."Artikelnr. 2";
+              Berichtstabelle."Feld 4" := SalesLine.Quantity;
+              Berichtstabelle."Feld 5" := SalesLine."Unit Price";
+              IF Item.GET(SalesLine."No.") THEN BEGIN
+                IF Item.Registrierbar THEN
+                  Berichtstabelle."Feld 6" := 'R   ' + Item.Herstellerkurzname
+                ELSE
+                  Berichtstabelle."Feld 6" := Item.Herstellerkurzname;
+              END;
+              IF SalesHeader."Currency Code" = '' THEN
+                Berichtstabelle."Feld 7" := '°'
+              ELSE
+                Berichtstabelle."Feld 7" := SalesHeader."Currency Code";
+              Berichtstabelle."Feld 8" := SalesLine."Kampagnennr.";
+              Berichtstabelle."Feld 10" := FORMAT(SalesLine.Amount);
+              Berichtstabelle."Feld 11" := SalesLine."System Projektinfos";
+              Berichtstabelle."Feld 12" := FORMAT(ROUND(SalesLine."Profit %",0.01));
+              Berichtstabelle."Feld 13" := FORMAT(SalesLine."DC-Preis (EKW)");
+              IF Quotedaten.GET(SalesLine."Quotenr.") THEN
+                Berichtstabelle."Feld 14" := FORMAT(Quotedaten.Quotepreis);
+              Berichtstabelle."Feld 15" := SalesLine.LZ_Text;
+              Berichtstabelle."Feld 16" := SalesLine.Endkunde;
+              Berichtstabelle."Feld 19" := SalesLine."No.";
+              Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+              Berichtstabelle.User := USERID;
+              Berichtstabelle.INSERT;
+            UNTIL SalesLine.NEXT = 0;
+          END;
           //*******************************************************************************************************
           //     Nachtr„glich alle anderen Daten schreiben, wenn auch wirklich Angebotszeilen vorhanden sind
           //*******************************************************************************************************
-          IF belegzeilen_vorhanden THEN
-            BEGIN
-              //Angebotskopf
+          IF belegzeilen_vorhanden THEN BEGIN
+            //Angebotskopf
+            Berichtstabelle.INIT;
+            Berichtstabelle.Tabelle := 'BELEGKOPF';
+            Berichtstabelle.Index := SalesHeader."Sell-to Customer No.";
+            Berichtstabelle.Datum := SalesHeader."Document Date";
+            Berichtstabelle."Belegnr." := SalesHeader."No.";
+            IF SalesHeader."Currency Code" = '' THEN
+              Berichtstabelle."Feld 2" := '°'
+            ELSE
+              Berichtstabelle."Feld 2" :=  SalesHeader."Currency Code";
+              //Berichtstabelle."Feld 3" := SalesHeader.Angebotsstatus;
+            SalesHeader.CALCFIELDS(Amount);
+            Berichtstabelle."Feld 4" := SalesHeader.Amount;
+            Berichtstabelle."Feld 6" := SalesHeader."Betreuer Innendienst";
+            Berichtstabelle."Feld 7" := SalesHeader."Salesperson Code";
+            Berichtstabelle."Feld 8" := SalesHeader.Teams;
+            Berichtstabelle."Feld 9" := SalesHeader."Territory Code";
+            Berichtstabelle."Feld 10" := SalesHeader.Kontaktperson;
+            Berichtstabelle."Feld 12" := FORMAT(SalesHeader.Status);
+            Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+            Berichtstabelle.User := USERID;
+            Berichtstabelle.INSERT;
+            //Projektdaten
+            IF Campaign.GET(SalesHeader."Campaign No.") THEN BEGIN
               Berichtstabelle.INIT;
-                Berichtstabelle.Tabelle := 'BELEGKOPF';
-                Berichtstabelle.Index := SalesHeader."Sell-to Customer No.";
-                Berichtstabelle.Datum := SalesHeader."Document Date";
-                Berichtstabelle."Belegnr." := SalesHeader."No.";
-                IF SalesHeader."Currency Code" = '' THEN
-                  Berichtstabelle."Feld 2" := '°'
-                ELSE
-                  Berichtstabelle."Feld 2" :=  SalesHeader."Currency Code";
-       //         Berichtstabelle."Feld 3" := SalesHeader.Angebotsstatus;
-                SalesHeader.CALCFIELDS(Amount);
-                Berichtstabelle."Feld 4" := SalesHeader.Amount;
-                Berichtstabelle."Feld 6" := SalesHeader."Betreuer Innendienst";
-                Berichtstabelle."Feld 7" := SalesHeader."Salesperson Code";
-                Berichtstabelle."Feld 8" := SalesHeader.Teams;
-                Berichtstabelle."Feld 9" := SalesHeader."Territory Code";
-                Berichtstabelle."Feld 10" := SalesHeader.Kontaktperson;
-                Berichtstabelle."Feld 12" := FORMAT(SalesHeader.Status);
-                Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-                Berichtstabelle.User := USERID;
+              Berichtstabelle.Tabelle := 'PROJEKT';
+              Berichtstabelle.Index := SalesHeader."No.";
+              Berichtstabelle."Belegnr." := Campaign."No.";
+              Berichtstabelle."Feld 1" := Campaign.Description;
+              Berichtstabelle."Feld 4" := Campaign.Projektvolumen;
+              Berichtstabelle."Feld 5" := Campaign.Projektwert;
+              Berichtstabelle."Feld 8" := Campaign.Projektstatus;
+              Berichtstabelle."Feld 9" := Campaign.Projektklasse;
+              Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+              Berichtstabelle.User := USERID;
               Berichtstabelle.INSERT;
-              //Projektdaten
-              IF Campaign.GET(SalesHeader."Campaign No.") THEN
-                BEGIN
-                  Berichtstabelle.INIT;
-                    Berichtstabelle.Tabelle := 'PROJEKT';
-                    Berichtstabelle.Index := SalesHeader."No.";
-                    Berichtstabelle."Belegnr." := Campaign."No.";
-                    Berichtstabelle."Feld 1" := Campaign.Description;
-                    Berichtstabelle."Feld 4" := Campaign.Projektvolumen;
-                    Berichtstabelle."Feld 5" := Campaign.Projektwert;
-                    Berichtstabelle."Feld 8" := Campaign.Projektstatus;
-                    Berichtstabelle."Feld 9" := Campaign.Projektklasse;
-                    Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-                    Berichtstabelle.User := USERID;
-                  Berichtstabelle.INSERT;
-               END;
-              //Aufgaben
-              ToDo.RESET;
-              ToDo.SETFILTER(ToDo."System To-do Type",'%1',ToDo."System To-do Type" :: Organizer);
-              ToDo.SETFILTER("Belegnr.",'%1',SalesHeader."No.");
-              IF ToDo.FINDFIRST THEN
-                BEGIN
-                  Berichtstabelle.INIT;
-                    Berichtstabelle.Tabelle := 'AUFGABE';
-                    Berichtstabelle.Index := SalesHeader."No.";
-                    Berichtstabelle."Belegnr." := ToDo."No.";
-                    Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-                    Berichtstabelle.User := USERID;
-                  Berichtstabelle.INSERT;
-                  //Bemerkung
-                  Comment.RESET;
-                  Comment.SETFILTER("Table Name",'%1',Comment."Table Name" :: "To-do");
-                  Comment.SETFILTER("No.",'%1',ToDo."No.");
-                  IF Comment.FINDFIRST THEN
-                    REPEAT
-                      Berichtstabelle.INIT;
-                        Berichtstabelle.Tabelle := 'BEMERKUNG';
-                        Berichtstabelle.Index := ToDo."No.";
-                        Berichtstabelle."Belegnr." := Comment."No.";
-                        Berichtstabelle.Datum := Comment.Date;
-                        Berichtstabelle."Zeilennr." := Comment."Line No.";
-                        Berichtstabelle."Feld 1" := Comment.Comment;
-                        IF Comment.Date <> 0D THEN
-                          Berichtstabelle."Feld 10" := 'Bemerkung vom: ';
-                        Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-                        Berichtstabelle.User := USERID;
-                      Berichtstabelle.INSERT;
-                    UNTIL Comment.NEXT = 0;
-                END;
             END;
+            //Aufgaben
+            ToDo.RESET;
+            ToDo.SETFILTER("System To-do Type",'%1',ToDo."System To-do Type"::Organizer);
+            ToDo.SETFILTER("Belegnr.",'%1',SalesHeader."No.");
+            IF ToDo.FINDFIRST THEN BEGIN
+              Berichtstabelle.INIT;
+              Berichtstabelle.Tabelle := 'AUFGABE';
+              Berichtstabelle.Index := SalesHeader."No.";
+              Berichtstabelle."Belegnr." := ToDo."No.";
+              Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+              Berichtstabelle.User := USERID;
+              Berichtstabelle.INSERT;
+              //Bemerkung
+              Comment.RESET;
+              Comment.SETFILTER("Table Name",'%1',Comment."Table Name"::"To-do");
+              Comment.SETFILTER("No.",'%1',ToDo."No.");
+              IF Comment.FINDFIRST THEN
+                REPEAT
+                  Berichtstabelle.INIT;
+                  Berichtstabelle.Tabelle := 'BEMERKUNG';
+                  Berichtstabelle.Index := ToDo."No.";
+                  Berichtstabelle."Belegnr." := Comment."No.";
+                  Berichtstabelle.Datum := Comment.Date;
+                  Berichtstabelle."Zeilennr." := Comment."Line No.";
+                  Berichtstabelle."Feld 1" := Comment.Comment;
+                  IF Comment.Date <> 0D THEN
+                    Berichtstabelle."Feld 10" := 'Bemerkung vom: ';
+                  Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                  Berichtstabelle.User := USERID;
+                  Berichtstabelle.INSERT;
+                UNTIL Comment.NEXT = 0;
+            END;
+          END;
         UNTIL SalesHeader.NEXT = 0;
     END;
 
@@ -829,12 +1019,12 @@ OBJECT Report 50051 Meeting - akt. & arch. Ang.
       //                                Archivierte Angebote werden durchsucht
       //*******************************************************************************************************
       ArchSalesHeader.RESET;
-      IF (Startdatum<>0D) AND (Enddatum=0D) THEN
-        ArchSalesHeader.SETFILTER(ArchSalesHeader."Document Date",'>=%1',Startdatum);
-      IF (Startdatum<>0D) AND (Enddatum<>0D) THEN
-        ArchSalesHeader.SETFILTER(ArchSalesHeader."Document Date",'>=%1&<=%2',Startdatum,Enddatum);
-      IF (Startdatum=0D) AND (Enddatum<>0D) THEN
-        ArchSalesHeader.SETFILTER(ArchSalesHeader."Document Date",'<=%1',Enddatum);
+      IF (Startdatum <> 0D) AND (Enddatum = 0D) THEN
+        ArchSalesHeader.SETFILTER("Document Date",'>=%1',Startdatum);
+      IF (Startdatum <> 0D) AND (Enddatum <> 0D) THEN
+        ArchSalesHeader.SETFILTER("Document Date",'>=%1&<=%2',Startdatum,Enddatum);
+      IF (Startdatum = 0D) AND (Enddatum <> 0D) THEN
+        ArchSalesHeader.SETFILTER("Document Date",'<=%1',Enddatum);
       ArchSalesHeader.SETFILTER("Betreuer Innendienst",betreuer);
       ArchSalesHeader.SETFILTER("Salesperson Code",verk„ufer);
       ArchSalesHeader.SETFILTER(Teams,teams);
@@ -843,177 +1033,166 @@ OBJECT Report 50051 Meeting - akt. & arch. Ang.
       ArchSalesHeader.SETFILTER(Erledigtstatus,erledigt);
       ArchSalesHeader.SETFILTER("Document Type",'%1',ArchSalesHeader."Document Type" :: Quote);
       //Neue Zeile w/ doppelter Version
-      ArchSalesHeader.SETFILTER(ArchSalesHeader."Version No.",'%1',1);
-
+      ArchSalesHeader.SETFILTER("Version No.",'%1',1);
       IF ArchSalesHeader.FINDFIRST THEN
         REPEAT
           arch_belegzeilen_vorhanden := FALSE;
           ArchSalesLine.RESET;
-          ArchSalesLine.SETFILTER(ArchSalesLine."Document No.",ArchSalesHeader."No.");
-          ArchSalesLine.SETFILTER(ArchSalesLine.Type,'%1',ArchSalesLine.Type :: Item);
-          ArchSalesLine.SETFILTER(ArchSalesLine."Manufacturer Code",hersteller);
+          ArchSalesLine.SETFILTER("Document No.",ArchSalesHeader."No.");
+          ArchSalesLine.SETFILTER(Type,'%1',ArchSalesLine.Type :: Item);
+          ArchSalesLine.SETFILTER("Manufacturer Code",hersteller);
           // Neue Zeile w/ dopplter Version
-          ArchSalesLine.SETFILTER(ArchSalesLine."Version No.",'%1',1);
-          IF ArchSalesLine.FINDFIRST THEN
-            BEGIN
-              arch_belegzeilen_vorhanden := TRUE;
-              Berichtstabelle_temp.RESET;
-              Berichtstabelle_temp.SETFILTER(Tabelle,'%1','ARCH_DEBITOR');
-              Berichtstabelle_temp.SETFILTER(Index,'%1',ArchSalesHeader."Sell-to Customer No.");
-              IF NOT Berichtstabelle_temp.FINDFIRST THEN
-                BEGIN
-                  //*******************************************************************************************************
-                  //                                     Debitor Daten schreiben
-                  //*******************************************************************************************************
-                  Berichtstabelle.INIT;
-                    Berichtstabelle.Tabelle := 'ARCH_DEBITOR';
-                    Berichtstabelle.Index := ArchSalesHeader."Sell-to Customer No.";
-                    Customer.GET(ArchSalesHeader."Sell-to Customer No.");
-                    Berichtstabelle."Feld 6" := Customer."Post Code";
-                    Berichtstabelle."Feld 10" := Customer.Name;
-                    Berichtstabelle."Feld 12" := Customer.City;
-                    Berichtstabelle."Feld 19" := Customer."Country/Region Code";
-                    Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-                    Berichtstabelle.User := USERID;
-                    //*******************************************************************************************************
-                    //           Prfung, ob Bestcker oder H„ndler und ob berhaupt eine Branche hinterlegt ist
-                    //*******************************************************************************************************
-                    Cont_rel.RESET;
-                    Cont_rel.SETFILTER(Cont_rel."No.",'%1',Customer."No.");
-                    Cont_rel.SETFILTER(Cont_rel."Business Relation Code",'%1','DEB');
-                    IF Cont_rel.FINDFIRST THEN
-                      BEGIN
-                        Branche.RESET;
-                        Branche.SETFILTER(Branche."Contact No.",'%1',Cont_rel."Contact No.");
-                        IF Branche.FINDFIRST THEN
-                          BEGIN
-                            Branche.SETFILTER(Branche."Industry Group Code",'%1|%2','BESTšCKER','HŽNDLER');
-                            IF Branche.FINDFIRST THEN
-                              BEGIN
-                                Berichtstabelle."Feld 13" := Branche."Industry Group Code";
-                              END;
-                         END
-                       ELSE
-                         Berichtstabelle."Feld 13" := 'Branchen fehlen!'
-                      END;
-                  Berichtstabelle.INSERT;
-                END;
-              REPEAT
-                //*******************************************************************************************************
-                //                                      Angebotszeilen schreiben
-                //*******************************************************************************************************
-                Berichtstabelle.INIT;
-                  Berichtstabelle.Tabelle := 'ARCH_BELEGZEILE';
-                  Berichtstabelle.Index := ArchSalesLine."Document No.";
-                  Berichtstabelle."Belegnr." := ArchSalesLine."Document No.";
-                  Berichtstabelle."Zeilennr." := ArchSalesLine."Line No.";
-                  Berichtstabelle."Feld 3" := ArchSalesLine."Artikelnr. 2";
-                  Berichtstabelle."Feld 4" := ArchSalesLine.Quantity;
-                  Berichtstabelle."Feld 5" := ArchSalesLine."Unit Price";
-                  IF Item.GET(ArchSalesLine."No.") THEN
-                    BEGIN
-                      IF Item.Registrierbar THEN
-                        Berichtstabelle."Feld 6" := 'R   ' + Item.Herstellerkurzname
-                      ELSE
-                        Berichtstabelle."Feld 6" := Item.Herstellerkurzname;
-                    END;
-                  IF ArchSalesHeader."Currency Code" = '' THEN
-                    Berichtstabelle."Feld 7" := '°'
-                  ELSE
-                    Berichtstabelle."Feld 7" := ArchSalesHeader."Currency Code";
-                  Berichtstabelle."Feld 8" := ArchSalesLine."Kampagnennr.";
-                  Berichtstabelle."Feld 10" := FORMAT(ArchSalesLine.Amount);
-                  Berichtstabelle."Feld 11" := ArchSalesLine."System Projektinfos";
-                  Berichtstabelle."Feld 12" := FORMAT(ROUND(ArchSalesLine."Profit %",0.01));
-                  Berichtstabelle."Feld 13" := FORMAT(ArchSalesLine."DC-Preis (EKW)");
-                  IF Quotedaten.GET(ArchSalesLine."Quotenr.") THEN
-                    Berichtstabelle."Feld 14" := FORMAT(Quotedaten.Quotepreis);
-                  Berichtstabelle."Feld 15" := ArchSalesLine.LZ_Text;
-                  Berichtstabelle."Feld 16" := ArchSalesLine.Endkunde;
-                  Berichtstabelle."Feld 19" := ArchSalesLine."No.";
-                  Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-                  Berichtstabelle.User := USERID;
-                Berichtstabelle.INSERT;
-              UNTIL ArchSalesLine.NEXT = 0;
+          ArchSalesLine.SETFILTER("Version No.",'%1',1);
+          IF ArchSalesLine.FINDFIRST THEN BEGIN
+            arch_belegzeilen_vorhanden := TRUE;
+            Berichtstabelle.RESET;
+            Berichtstabelle.SETFILTER(Tabelle,'%1','ARCH_DEBITOR');
+            Berichtstabelle.SETFILTER(Index,'%1',ArchSalesHeader."Sell-to Customer No.");
+            IF NOT Berichtstabelle.FINDFIRST THEN BEGIN
+              //*******************************************************************************************************
+              //                                     Debitor Daten schreiben
+              //*******************************************************************************************************
+              Berichtstabelle.INIT;
+              Berichtstabelle.Tabelle := 'ARCH_DEBITOR';
+              Berichtstabelle.Index := ArchSalesHeader."Sell-to Customer No.";
+              Customer.GET(ArchSalesHeader."Sell-to Customer No.");
+              Berichtstabelle."Feld 6" := Customer."Post Code";
+              Berichtstabelle."Feld 10" := Customer.Name;
+              Berichtstabelle."Feld 12" := Customer.City;
+              Berichtstabelle."Feld 19" := Customer."Country/Region Code";
+              Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+              Berichtstabelle.User := USERID;
+              //*******************************************************************************************************
+              //           Prfung, ob Bestcker oder H„ndler und ob berhaupt eine Branche hinterlegt ist
+              //*******************************************************************************************************
+              Cont_rel.RESET;
+              Cont_rel.SETFILTER("No.",'%1',Customer."No.");
+              Cont_rel.SETFILTER("Business Relation Code",'%1','DEB');
+              IF Cont_rel.FINDFIRST THEN BEGIN
+                Branche.RESET;
+                Branche.SETFILTER("Contact No.",'%1',Cont_rel."Contact No.");
+                IF Branche.FINDFIRST THEN BEGIN
+                  Branche.SETFILTER("Industry Group Code",'%1|%2','BESTšCKER','HŽNDLER');
+                  IF Branche.FINDFIRST THEN BEGIN
+                    Berichtstabelle."Feld 13" := Branche."Industry Group Code";
+                  END;
+                END ELSE
+                  Berichtstabelle."Feld 13" := 'Branchen fehlen!'
+              END;
+              Berichtstabelle.INSERT;
             END;
+            REPEAT
+              //*******************************************************************************************************
+              //                                      Angebotszeilen schreiben
+              //*******************************************************************************************************
+              Berichtstabelle.INIT;
+              Berichtstabelle.Tabelle := 'ARCH_BELEGZEILE';
+              Berichtstabelle.Index := ArchSalesLine."Document No.";
+              Berichtstabelle."Belegnr." := ArchSalesLine."Document No.";
+              Berichtstabelle."Zeilennr." := ArchSalesLine."Line No.";
+              Berichtstabelle."Feld 3" := ArchSalesLine."Artikelnr. 2";
+              Berichtstabelle."Feld 4" := ArchSalesLine.Quantity;
+              Berichtstabelle."Feld 5" := ArchSalesLine."Unit Price";
+              IF Item.GET(ArchSalesLine."No.") THEN BEGIN
+                IF Item.Registrierbar THEN
+                  Berichtstabelle."Feld 6" := 'R   ' + Item.Herstellerkurzname
+                ELSE
+                  Berichtstabelle."Feld 6" := Item.Herstellerkurzname;
+              END;
+              IF ArchSalesHeader."Currency Code" = '' THEN
+                Berichtstabelle."Feld 7" := '°'
+              ELSE
+                Berichtstabelle."Feld 7" := ArchSalesHeader."Currency Code";
+              Berichtstabelle."Feld 8" := ArchSalesLine."Kampagnennr.";
+              Berichtstabelle."Feld 10" := FORMAT(ArchSalesLine.Amount);
+              Berichtstabelle."Feld 11" := ArchSalesLine."System Projektinfos";
+              Berichtstabelle."Feld 12" := FORMAT(ROUND(ArchSalesLine."Profit %",0.01));
+              Berichtstabelle."Feld 13" := FORMAT(ArchSalesLine."DC-Preis (EKW)");
+              IF Quotedaten.GET(ArchSalesLine."Quotenr.") THEN
+                Berichtstabelle."Feld 14" := FORMAT(Quotedaten.Quotepreis);
+              Berichtstabelle."Feld 15" := ArchSalesLine.LZ_Text;
+              Berichtstabelle."Feld 16" := ArchSalesLine.Endkunde;
+              Berichtstabelle."Feld 19" := ArchSalesLine."No.";
+              Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+              Berichtstabelle.User := USERID;
+              Berichtstabelle.INSERT;
+            UNTIL ArchSalesLine.NEXT = 0;
+          END;
           //*******************************************************************************************************
           //  Nachtr„glich alle anderen Daten schreiben, wenn auch wirklich arch. Angebotszeilen vorhanden sind
           //*******************************************************************************************************
-          IF arch_belegzeilen_vorhanden THEN
-            BEGIN
-              //Arch. Angebotskopf
+          IF arch_belegzeilen_vorhanden THEN BEGIN
+            //Arch. Angebotskopf
+            Berichtstabelle.INIT;
+            Berichtstabelle.Tabelle := 'ARCH_BELEGKOPF';
+            Berichtstabelle.Index := ArchSalesHeader."Sell-to Customer No.";
+            Berichtstabelle.Datum := ArchSalesHeader."Document Date";
+            Berichtstabelle."Belegnr." := ArchSalesHeader."No.";
+            IF ArchSalesHeader."Currency Code" = '' THEN
+              Berichtstabelle."Feld 2" := '°'
+            ELSE
+              Berichtstabelle."Feld 2" :=  ArchSalesHeader."Currency Code";
+            //Berichtstabelle."Feld 3" := ArchSalesHeader.Angebotsstatus;
+            ArchSalesHeader.CALCFIELDS(Amount);
+            Berichtstabelle."Feld 4" := ArchSalesHeader.Amount;
+            Berichtstabelle."Feld 6" := ArchSalesHeader."Betreuer Innendienst";
+            Berichtstabelle."Feld 7" := ArchSalesHeader."Salesperson Code";
+            Berichtstabelle."Feld 8" := ArchSalesHeader.Teams;
+            Berichtstabelle."Feld 9" := ArchSalesHeader."Territory Code";
+            Berichtstabelle."Feld 10" := ArchSalesHeader.Kontaktperson;
+            Berichtstabelle."Feld 12" := FORMAT(ArchSalesHeader.Status);
+            Berichtstabelle."Feld 19" := ArchSalesHeader.Erledigtstatus;
+            Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+            Berichtstabelle.User := USERID;
+            Berichtstabelle.INSERT;
+            //Projektdaten
+            IF Campaign.GET(ArchSalesHeader."Campaign No.") THEN BEGIN
               Berichtstabelle.INIT;
-                Berichtstabelle.Tabelle := 'ARCH_BELEGKOPF';
-                Berichtstabelle.Index := ArchSalesHeader."Sell-to Customer No.";
-                Berichtstabelle.Datum := ArchSalesHeader."Document Date";
-                Berichtstabelle."Belegnr." := ArchSalesHeader."No.";
-                IF ArchSalesHeader."Currency Code" = '' THEN
-                  Berichtstabelle."Feld 2" := '°'
-                ELSE
-                  Berichtstabelle."Feld 2" :=  ArchSalesHeader."Currency Code";
-      //          Berichtstabelle."Feld 3" := ArchSalesHeader.Angebotsstatus;
-                ArchSalesHeader.CALCFIELDS(Amount);
-                Berichtstabelle."Feld 4" := ArchSalesHeader.Amount;
-                Berichtstabelle."Feld 6" := ArchSalesHeader."Betreuer Innendienst";
-                Berichtstabelle."Feld 7" := ArchSalesHeader."Salesperson Code";
-                Berichtstabelle."Feld 8" := ArchSalesHeader.Teams;
-                Berichtstabelle."Feld 9" := ArchSalesHeader."Territory Code";
-                Berichtstabelle."Feld 10" := ArchSalesHeader.Kontaktperson;
-                Berichtstabelle."Feld 12" := FORMAT(ArchSalesHeader.Status);
-                Berichtstabelle."Feld 19" := ArchSalesHeader.Erledigtstatus;
-                Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-                Berichtstabelle.User := USERID;
+              Berichtstabelle.Tabelle := 'ARCH_PROJEKT';
+              Berichtstabelle.Index := ArchSalesHeader."No.";
+              Berichtstabelle."Belegnr." := Campaign."No.";
+              Berichtstabelle."Feld 1" := Campaign.Description;
+              Berichtstabelle."Feld 4" := Campaign.Projektvolumen;
+              Berichtstabelle."Feld 5" := Campaign.Projektwert;
+              Berichtstabelle."Feld 8" := Campaign.Projektstatus;
+              Berichtstabelle."Feld 9" := Campaign.Projektklasse;
+              Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+              Berichtstabelle.User := USERID;
               Berichtstabelle.INSERT;
-              //Projektdaten
-              IF Campaign.GET(ArchSalesHeader."Campaign No.") THEN
-                BEGIN
-                  Berichtstabelle.INIT;
-                    Berichtstabelle.Tabelle := 'ARCH_PROJEKT';
-                    Berichtstabelle.Index := ArchSalesHeader."No.";
-                    Berichtstabelle."Belegnr." := Campaign."No.";
-                    Berichtstabelle."Feld 1" := Campaign.Description;
-                    Berichtstabelle."Feld 4" := Campaign.Projektvolumen;
-                    Berichtstabelle."Feld 5" := Campaign.Projektwert;
-                    Berichtstabelle."Feld 8" := Campaign.Projektstatus;
-                    Berichtstabelle."Feld 9" := Campaign.Projektklasse;
-                    Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-                    Berichtstabelle.User := USERID;
-                  Berichtstabelle.INSERT;
-               END;
-              //Aufgaben
-              ToDo.RESET;
-              ToDo.SETFILTER(ToDo."System To-do Type",'%1',ToDo."System To-do Type" :: Organizer);
-              ToDo.SETFILTER("Arch. Belegnr.",'%1',ArchSalesHeader."No.");
-              IF ToDo.FINDFIRST THEN
-                BEGIN
-                  Berichtstabelle.INIT;
-                    Berichtstabelle.Tabelle := 'ARCH_AUFGABE';
-                    Berichtstabelle.Index := ArchSalesHeader."No.";
-                    Berichtstabelle."Belegnr." := ToDo."No.";
-                    Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-                    Berichtstabelle.User := USERID;
-                  Berichtstabelle.INSERT;
-                  //Bemerkung
-                  Comment.RESET;
-                  Comment.SETFILTER("Table Name",'%1',Comment."Table Name" :: "To-do");
-                  Comment.SETFILTER("No.",'%1',ToDo."No.");
-                  IF Comment.FINDFIRST THEN
-                    REPEAT
-                      Berichtstabelle.INIT;
-                        Berichtstabelle.Tabelle := 'ARCH_BEMERKUNG';
-                        Berichtstabelle.Index := ToDo."No.";
-                        Berichtstabelle."Belegnr." := Comment."No.";
-                        Berichtstabelle.Datum := Comment.Date;
-                        Berichtstabelle."Zeilennr." := Comment."Line No.";
-                        Berichtstabelle."Feld 1" := Comment.Comment;
-                        IF Comment.Date <> 0D THEN
-                          Berichtstabelle."Feld 10" := 'Bemerkung vom: ';
-                        Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-                        Berichtstabelle.User := USERID;
-                      Berichtstabelle.INSERT;
-                    UNTIL Comment.NEXT = 0;
-                END;
             END;
+            //Aufgaben
+            ToDo.RESET;
+            ToDo.SETFILTER("System To-do Type",'%1',ToDo."System To-do Type" :: Organizer);
+            ToDo.SETFILTER("Arch. Belegnr.",'%1',ArchSalesHeader."No.");
+            IF ToDo.FINDFIRST THEN BEGIN
+              Berichtstabelle.INIT;
+              Berichtstabelle.Tabelle := 'ARCH_AUFGABE';
+              Berichtstabelle.Index := ArchSalesHeader."No.";
+              Berichtstabelle."Belegnr." := ToDo."No.";
+              Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+              Berichtstabelle.User := USERID;
+              Berichtstabelle.INSERT;
+              //Bemerkung
+              Comment.RESET;
+              Comment.SETFILTER("Table Name",'%1',Comment."Table Name" :: "To-do");
+              Comment.SETFILTER("No.",'%1',ToDo."No.");
+              IF Comment.FINDFIRST THEN
+                REPEAT
+                  Berichtstabelle.INIT;
+                  Berichtstabelle.Tabelle := 'ARCH_BEMERKUNG';
+                  Berichtstabelle.Index := ToDo."No.";
+                  Berichtstabelle."Belegnr." := Comment."No.";
+                  Berichtstabelle.Datum := Comment.Date;
+                  Berichtstabelle."Zeilennr." := Comment."Line No.";
+                  Berichtstabelle."Feld 1" := Comment.Comment;
+                  IF Comment.Date <> 0D THEN
+                    Berichtstabelle."Feld 10" := 'Bemerkung vom: ';
+                  Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                  Berichtstabelle.User := USERID;
+                  Berichtstabelle.INSERT;
+                UNTIL Comment.NEXT = 0;
+            END;
+          END;
         UNTIL ArchSalesHeader.NEXT = 0;
     END;
 
@@ -1023,7 +1202,6 @@ OBJECT Report 50051 Meeting - akt. & arch. Ang.
     BEGIN
       IF Date = 0D THEN
         EXIT(Date);
-
       CASE datefilter OF
         datefilter::LW:
           BEGIN
@@ -1124,21 +1302,18 @@ OBJECT Report 50051 Meeting - akt. & arch. Ang.
     EVENT ReportForNav@5000::OnPreSection@5012(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
     BEGIN
       CASE DataItemId OF
-        'Belegzeile': CASE SectionId OF
-          'Body7': OnPreSectionBelegzeile_Body7(Belegzeile);
-          'Body8': OnPreSectionBelegzeile_Body8(Belegzeile);
-          'Body10': OnPreSectionBelegzeile_Body10(Belegzeile);
+        'CopySalesLine': CASE SectionId OF
+          'Body7': OnPreSectionBelegzeile_Body7(Berichtstabelle_SalesLine);
+          'Body8': OnPreSectionBelegzeile_Body8(Berichtstabelle_SalesLine);
+          'Body10': OnPreSectionBelegzeile_Body10(Berichtstabelle_SalesLine);
         END;
-        'NewPage': CASE SectionId OF
-          'Header11': OnPreSectionNewPage_Header11(NewPage);
+        'CopyArchCustomer': CASE SectionId OF
+          'Header12': OnPreSectionArch_Debitor_Header12(Berichtstabelle_Customer);
         END;
-        'Arch_Debitor': CASE SectionId OF
-          'Header12': OnPreSectionArch_Debitor_Header12(Arch_Debitor);
-        END;
-        'Arch_Belegzeile': CASE SectionId OF
-          'Body18': OnPreSectionArch_Belegzeile_Body18(Arch_Belegzeile);
-          'Body19': OnPreSectionArch_Belegzeile_Body19(Arch_Belegzeile);
-          'Body21': OnPreSectionArch_Belegzeile_Body21(Arch_Belegzeile);
+        'CopyArchSalesLine': CASE SectionId OF
+          'Body18': OnPreSectionArch_Belegzeile_Body18(Berichtstabelle_SalesLine);
+          'Body19': OnPreSectionArch_Belegzeile_Body19(Berichtstabelle_SalesLine);
+          'Body21': OnPreSectionArch_Belegzeile_Body21(Berichtstabelle_SalesLine);
         END;
       END;
     END;
@@ -1233,13 +1408,21 @@ OBJECT Report 50051 Meeting - akt. & arch. Ang.
     END;
 
     BEGIN
+    {
+      #############################################
+      20.04.18 ST - Umstellung auf Berichtstabelle Temporary YES
+      Es kann beim Neu Generieren des Layouts (Run > Open Designer) zu Probleme beim Speichern kommen, diese dann einfach ignorieren und das die
+      ReportForNav::OnPreSection Aufrufe durch die jeweiligen DataItems ausgetauscht werden, das fhrt dann zu Problemen beim Compilieren
+      Workaround: Die šbergabe Parameter mssen auf die jeweiligen Berichtstabellen Variablen umgestellt werden
+      z.B. 'Body18': OnPreSectionArch_Belegzeile_Body18(Berichtstabelle_SalesLine);
+    }
     END.
   }
   RDLDATA
   {
     <?xml version="1.0" encoding="utf-8"?>
 <Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
-  <Description>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</Description>
+  <Description>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</Description>
   <AutoRefresh>0</AutoRefresh>
   <DataSources>
     <DataSource Name="DataSource">
@@ -1248,7 +1431,7 @@ OBJECT Report 50051 Meeting - akt. & arch. Ang.
         <ConnectString />
       </ConnectionProperties>
       <rd:SecurityType>None</rd:SecurityType>
-      <rd:DataSourceID>741aefb1-f8b8-4998-ad60-b415b8ff3137</rd:DataSourceID>
+      <rd:DataSourceID>c1db58db-f398-49aa-9424-f62b3b6c36b0</rd:DataSourceID>
     </DataSource>
   </DataSources>
   <ReportSections>
@@ -1264,7 +1447,7 @@ OBJECT Report 50051 Meeting - akt. & arch. Ang.
     </ReportSection>
   </ReportSections>
   <rd:ReportUnitType>Invalid</rd:ReportUnitType>
-  <rd:ReportID>1f30d2d0-127e-485e-881f-d97fe89179eb</rd:ReportID>
+  <rd:ReportID>f0927528-923b-4873-90b4-1aaf6b84810b</rd:ReportID>
   <DataSets>
     <DataSet Name="DataSet_Result">
       <Fields>
