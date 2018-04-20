@@ -1,0 +1,1572 @@
+OBJECT Report 50051 Meeting - akt. & arch. Ang.
+{
+  OBJECT-PROPERTIES
+  {
+    Date=30.11.17;
+    Time=10:30:41;
+    Modified=Yes;
+    Version List=FORNAV2.0.0.1189/1189;
+  }
+  PROPERTIES
+  {
+    OnInitReport=BEGIN
+                   ReportForNav:= ReportForNav.Report(CurrReport.OBJECTID,CurrReport.LANGUAGE,SERIALNUMBER,USERID,COMPANYNAME);ReportForNav.Init;
+                 END;
+
+    OnPreReport=BEGIN
+                  //*******************************************************************************************************
+                  //                    Sicherheitsabfrage ob Temp Tabelle auch Berichtstabelle ist
+                  //*******************************************************************************************************
+                  IF Berichtstabelle.TABLECAPTION <> 'Berichtstabelle' THEN
+                    ERROR('Eine Sicherheitssperre verhindert die Ausfhrung dieses Berichtes.'+
+                          'Stellen Sie sicher, dass die TABLECAPTION der Berichtstabelle auch auf Berichtstabelle lautet.');
+                  Berichtstabelle.RESET;
+                  IF Berichtstabelle.ISEMPTY = FALSE THEN BEGIN
+                    REPEAT
+                      Berichtstabelle.RESET;
+                      IF Berichtstabelle.ISEMPTY = FALSE THEN BEGIN
+                        SLEEP(500);
+                        counter += 1;
+                      END;
+                      IF counter MOD 30 = 0 THEN BEGIN
+                        Berichtstabelle.FINDFIRST;
+                        IF CONFIRM('Die Berichtstabelle ist seit %1 durch Anwender %2 gesperrt. Wollen Sie die Anwendung abbrechen?',
+                        TRUE,Berichtstabelle.Uhrzeit,Berichtstabelle.User,counter,TRUE) THEN
+                          ERROR('');
+                      END;
+                    UNTIL Berichtstabelle.ISEMPTY = TRUE;
+                  END;
+
+                  IF datefilter = datefilter::LW THEN BEGIN
+                    Startdatum := TOPAS_Funktionen.CalcDateByFormula(WORKDATE,TRUE,datefilter);
+                    Enddatum := TOPAS_Funktionen.CalcDateByFormula(WORKDATE,FALSE,datefilter);
+                  END;
+
+                  IF nur_archivierte THEN
+                    Arch_Angebote_listen
+                  ELSE BEGIN
+                    Akt_Angebote_listen;
+                    Arch_Angebote_listen;
+                  END;
+
+                  //*******************************************************************************************************
+                  //         Temp Datensatz erzeugt, damit die Berichtsansicht eine neue Seite fr arch. Angebote
+                  //              ”ffnet und auf dieser neuen Seite der Header nicht zweimal angedruckt wird
+                  //*******************************************************************************************************
+
+                  Berichtstabelle_temp.RESET;
+                  Berichtstabelle_temp.SETFILTER(Berichtstabelle_temp.Tabelle,'%1','ARCH_DEBITOR');
+                  IF Berichtstabelle_temp.FINDFIRST THEN BEGIN
+                    Berichtstabelle.INIT;
+                    Berichtstabelle.Tabelle := 'TEMP';
+                    Berichtstabelle.Index := 'XXXX';
+                    Berichtstabelle.INSERT;
+                  END;
+                  ;ReportForNav.OpenDesigner:=ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
+                END;
+
+    OnPostReport=BEGIN
+                   IF Berichtstabelle.TABLECAPTION = 'Berichtstabelle' THEN
+                     Berichtstabelle.DELETEALL;
+                   ;ReportForNav.Post;
+                 END;
+
+  }
+  DATASET
+  {
+    { 1   ;    ;DataItem;Debitor             ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(DEBITOR));
+               OnPreDataItem=BEGIN
+                               IF sort = sort :: Nr THEN
+                                 Debitor.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               IF sort = sort :: Name THEN
+                                 Debitor.SETCURRENTKEY("Feld 10",Datum,Index);
+                             END;
+                              }
+
+    { 2   ;1   ;Column  ;TODAY_0_4           ;
+               SourceExpr=FORMAT(TODAY,0,4) }
+
+    { 3   ;1   ;Column  ;USERID              ;
+               SourceExpr=USERID }
+
+    { 4   ;1   ;Column  ;Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Teams;
+               SourceExpr='Verk„ufercode: '+verk„ufer+' Betreuer Innendienst: ' + betreuer + ' Teams: ' + teams + ' Gebietscode: ' + gebietscode + '  Belegdatum: ' + FORMAT(Startdatum) + '..' + FORMAT(Enddatum) +  ' Status: ' + FORMAT(status) + 'Erledigt: ' + FORMAT(erledigt) }
+
+    { 5   ;1   ;Column  ;ReportForNavPageNo  ;
+               SourceExpr=FORMAT(ReportForNav.PageNo) }
+
+    { 6   ;1   ;DataItem;Belegkopf           ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(BELEGKOPF));
+               DataItemLink=Index=FIELD(Index) }
+
+    { 7   ;2   ;Column  ;Feld19_Debitor      ;
+               SourceExpr=Debitor."Feld 19" }
+
+    { 8   ;2   ;Column  ;Feld13_Debitor      ;
+               SourceExpr=Debitor."Feld 13" }
+
+    { 9   ;2   ;Column  ;Feld9_Belegkopf     ;
+               SourceExpr="Feld 9" }
+
+    { 10  ;2   ;Column  ;Feld6_Debitor       ;
+               SourceExpr=Debitor."Feld 6" }
+
+    { 11  ;2   ;Column  ;Index_Belegkopf     ;
+               SourceExpr=Index }
+
+    { 12  ;2   ;Column  ;Feld10_Debitor      ;
+               SourceExpr=Debitor."Feld 10" }
+
+    { 13  ;2   ;Column  ;Feld12_Debitor      ;
+               SourceExpr=Debitor."Feld 12" }
+
+    { 14  ;2   ;Column  ;Feld7_Belegkopf     ;
+               SourceExpr="Feld 7" }
+
+    { 15  ;2   ;Column  ;Feld6_Belegkopf     ;
+               SourceExpr="Feld 6" }
+
+    { 16  ;2   ;Column  ;Feld2_Belegkopf     ;
+               SourceExpr="Feld 2" }
+
+    { 17  ;2   ;Column  ;Feld12_Belegkopf    ;
+               SourceExpr="Feld 12" }
+
+    { 18  ;2   ;Column  ;Feld10_Belegkopf    ;
+               SourceExpr="Feld 10" }
+
+    { 19  ;2   ;Column  ;Belegnr_Belegkopf   ;
+               SourceExpr="Belegnr." }
+
+    { 20  ;2   ;Column  ;Feld3_Belegkopf     ;
+               SourceExpr="Feld 3" }
+
+    { 21  ;2   ;Column  ;Feld4_Belegkopf     ;
+               SourceExpr="Feld 4" }
+
+    { 22  ;2   ;Column  ;Datum_Belegkopf     ;
+               SourceExpr=Datum }
+
+    { 23  ;2   ;DataItem;Projekte            ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(PROJEKT));
+               DataItemLink=Index=FIELD(Belegnr.) }
+
+    { 24  ;3   ;Column  ;Feld4_Projekte      ;
+               SourceExpr="Feld 4" }
+
+    { 25  ;3   ;Column  ;Feld9_Projekte      ;
+               SourceExpr="Feld 9" }
+
+    { 26  ;3   ;Column  ;Feld1_Projekte      ;
+               SourceExpr="Feld 1" }
+
+    { 27  ;3   ;Column  ;Feld5_Projekte      ;
+               SourceExpr="Feld 5" }
+
+    { 28  ;3   ;Column  ;Feld8_Projekte      ;
+               SourceExpr="Feld 8" }
+
+    { 29  ;3   ;Column  ;Belegnr_Projekte    ;
+               SourceExpr="Belegnr." }
+
+    { 30  ;2   ;DataItem;Aufgaben            ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(AUFGABE));
+               DataItemLink=Index=FIELD(Belegnr.) }
+
+    { 31  ;3   ;DataItem;Bemerkung           ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(BEMERKUNG));
+               DataItemLink=Belegnr.=FIELD(Belegnr.) }
+
+    { 32  ;4   ;Column  ;Feld10_Bemerkung    ;
+               SourceExpr="Feld 10" }
+
+    { 33  ;4   ;Column  ;Feld1_Bemerkung     ;
+               SourceExpr="Feld 1" }
+
+    { 34  ;4   ;Column  ;Datum_Bemerkung     ;
+               SourceExpr=Datum }
+
+    { 35  ;2   ;DataItem;Belegzeile          ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(BELEGZEILE));
+               DataItemLink=Index=FIELD(Belegnr.) }
+
+    { 36  ;3   ;Column  ;Feld16_Belegzeile   ;
+               SourceExpr="Feld 16" }
+
+    { 37  ;3   ;Column  ;Feld11_Belegzeile   ;
+               SourceExpr="Feld 11" }
+
+    { 38  ;3   ;Column  ;Feld8_Belegzeile    ;
+               SourceExpr="Feld 8" }
+
+    { 39  ;3   ;Column  ;Feld14_Belegzeile   ;
+               SourceExpr="Feld 14" }
+
+    { 40  ;3   ;Column  ;Feld13_Belegzeile   ;
+               SourceExpr="Feld 13" }
+
+    { 41  ;3   ;Column  ;Feld7_Belegzeile    ;
+               SourceExpr="Feld 7" }
+
+    { 42  ;3   ;Column  ;Feld10_Belegzeile   ;
+               SourceExpr="Feld 10" }
+
+    { 43  ;3   ;Column  ;Feld6_Belegzeile    ;
+               SourceExpr="Feld 6" }
+
+    { 44  ;3   ;Column  ;Feld3_Belegzeile    ;
+               SourceExpr="Feld 3" }
+
+    { 45  ;3   ;Column  ;Feld4_Belegzeile    ;
+               DecimalPlaces=0:0;
+               SourceExpr="Feld 4" }
+
+    { 46  ;3   ;Column  ;Feld5_Belegzeile    ;
+               DecimalPlaces=0:3;
+               SourceExpr="Feld 5" }
+
+    { 47  ;3   ;Column  ;Feld12_Belegzeile   ;
+               DecimalPlaces=0:2;
+               SourceExpr="Feld 12" }
+
+    { 48  ;3   ;Column  ;Feld15_Belegzeile   ;
+               SourceExpr="Feld 15" }
+
+    { 49  ;3   ;Column  ;ItemDescription__ItemDescription2;
+               SourceExpr=Item.Description + ' ' + Item."Description 2" }
+
+    { 50  ;    ;DataItem;NewPage             ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(TEMP)) }
+
+    { 51  ;    ;DataItem;Arch_Debitor        ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(ARCH_DEBITOR));
+               OnPreDataItem=BEGIN
+                               IF sort = sort :: Nr THEN
+                                 Arch_Debitor.SETCURRENTKEY(Tabelle,Index,"Belegnr.","Zeilennr.");
+                               IF sort = sort :: Name THEN
+                                 Arch_Debitor.SETCURRENTKEY("Feld 10",Datum,Index);
+                             END;
+                              }
+
+    { 52  ;1   ;Column  ;TODAY_0_42          ;
+               SourceExpr=FORMAT(TODAY,0,4) }
+
+    { 53  ;1   ;Column  ;USERID2             ;
+               SourceExpr=USERID }
+
+    { 54  ;1   ;Column  ;Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Team2;
+               SourceExpr='Verk„ufercode: '+verk„ufer+' Betreuer Innendienst: ' + betreuer + ' Teams: ' + teams + ' Gebietscode: ' + gebietscode + '  Belegdatum: ' + FORMAT(Startdatum) + '..' + FORMAT(Enddatum) +  ' Status: ' + FORMAT(status) }
+
+    { 55  ;1   ;Column  ;ReportForNavPageNo2 ;
+               SourceExpr=FORMAT(ReportForNav.PageNo) }
+
+    { 56  ;1   ;DataItem;Arch_Belegkopf      ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(ARCH_BELEGKOPF));
+               DataItemLink=Index=FIELD(Index) }
+
+    { 57  ;2   ;Column  ;Feld19_Arch_Debitor ;
+               SourceExpr=Arch_Debitor."Feld 19" }
+
+    { 58  ;2   ;Column  ;Feld13_Arch_Debitor ;
+               SourceExpr=Arch_Debitor."Feld 13" }
+
+    { 59  ;2   ;Column  ;Feld9_Arch_Belegkopf;
+               SourceExpr="Feld 9" }
+
+    { 60  ;2   ;Column  ;Feld6_Arch_Debitor  ;
+               SourceExpr=Arch_Debitor."Feld 6" }
+
+    { 61  ;2   ;Column  ;Index_Arch_Belegkopf;
+               SourceExpr=Index }
+
+    { 62  ;2   ;Column  ;Feld10_Arch_Debitor ;
+               SourceExpr=Arch_Debitor."Feld 10" }
+
+    { 63  ;2   ;Column  ;Feld12_Arch_Debitor ;
+               SourceExpr=Arch_Debitor."Feld 12" }
+
+    { 64  ;2   ;Column  ;Feld7_Arch_Belegkopf;
+               SourceExpr="Feld 7" }
+
+    { 65  ;2   ;Column  ;Feld6_Arch_Belegkopf;
+               SourceExpr="Feld 6" }
+
+    { 66  ;2   ;Column  ;Feld2_Arch_Belegkopf;
+               SourceExpr="Feld 2" }
+
+    { 67  ;2   ;Column  ;Feld10_Arch_Belegkopf;
+               SourceExpr="Feld 10" }
+
+    { 68  ;2   ;Column  ;Belegnr_Arch_Belegkopf;
+               SourceExpr="Belegnr." }
+
+    { 69  ;2   ;Column  ;Feld19_Arch_Belegkopf;
+               SourceExpr="Feld 19" }
+
+    { 70  ;2   ;Column  ;Feld4_Arch_Belegkopf;
+               SourceExpr="Feld 4" }
+
+    { 71  ;2   ;Column  ;Datum_Arch_Belegkopf;
+               SourceExpr=Datum }
+
+    { 72  ;2   ;DataItem;Arch_Projekte       ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(ARCH_PROJEKT));
+               DataItemLink=Index=FIELD(Belegnr.) }
+
+    { 73  ;3   ;Column  ;Feld4_Arch_Projekte ;
+               SourceExpr="Feld 4" }
+
+    { 74  ;3   ;Column  ;Feld9_Arch_Projekte ;
+               SourceExpr="Feld 9" }
+
+    { 75  ;3   ;Column  ;Feld1_Arch_Projekte ;
+               SourceExpr="Feld 1" }
+
+    { 76  ;3   ;Column  ;Feld5_Arch_Projekte ;
+               SourceExpr="Feld 5" }
+
+    { 77  ;3   ;Column  ;Feld8_Arch_Projekte ;
+               SourceExpr="Feld 8" }
+
+    { 78  ;3   ;Column  ;Belegnr_Arch_Projekte;
+               SourceExpr="Belegnr." }
+
+    { 79  ;2   ;DataItem;Arch_Aufgaben       ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(ARCH_AUFGABE));
+               DataItemLink=Index=FIELD(Belegnr.) }
+
+    { 80  ;3   ;DataItem;Arch_Bemerkung      ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(ARCH_BEMERKUNG));
+               DataItemLink=Belegnr.=FIELD(Belegnr.) }
+
+    { 81  ;4   ;Column  ;Feld10_Arch_Bemerkung;
+               SourceExpr="Feld 10" }
+
+    { 82  ;4   ;Column  ;Feld1_Arch_Bemerkung;
+               SourceExpr="Feld 1" }
+
+    { 83  ;4   ;Column  ;Datum_Arch_Bemerkung;
+               SourceExpr=Datum }
+
+    { 84  ;2   ;DataItem;Arch_Belegzeile     ;
+               DataItemTable=Table50037;
+               DataItemTableView=SORTING(Tabelle,Index,Belegnr.,Zeilennr.)
+                                 WHERE(Tabelle=FILTER(ARCH_BELEGZEILE));
+               DataItemLink=Index=FIELD(Belegnr.) }
+
+    { 85  ;3   ;Column  ;Feld16_Arch_Belegzeile;
+               SourceExpr="Feld 16" }
+
+    { 86  ;3   ;Column  ;Feld11_Arch_Belegzeile;
+               SourceExpr="Feld 11" }
+
+    { 87  ;3   ;Column  ;Feld8_Arch_Belegzeile;
+               SourceExpr="Feld 8" }
+
+    { 88  ;3   ;Column  ;Feld14_Arch_Belegzeile;
+               SourceExpr="Feld 14" }
+
+    { 89  ;3   ;Column  ;Feld13_Arch_Belegzeile;
+               SourceExpr="Feld 13" }
+
+    { 90  ;3   ;Column  ;Feld7_Arch_Belegzeile;
+               SourceExpr="Feld 7" }
+
+    { 91  ;3   ;Column  ;Feld10_Arch_Belegzeile;
+               SourceExpr="Feld 10" }
+
+    { 92  ;3   ;Column  ;Feld6_Arch_Belegzeile;
+               SourceExpr="Feld 6" }
+
+    { 93  ;3   ;Column  ;Feld3_Arch_Belegzeile;
+               SourceExpr="Feld 3" }
+
+    { 94  ;3   ;Column  ;Feld4_Arch_Belegzeile;
+               DecimalPlaces=0:0;
+               SourceExpr="Feld 4" }
+
+    { 95  ;3   ;Column  ;Feld5_Arch_Belegzeile;
+               DecimalPlaces=0:3;
+               SourceExpr="Feld 5" }
+
+    { 96  ;3   ;Column  ;Feld12_Arch_Belegzeile;
+               DecimalPlaces=0:2;
+               SourceExpr="Feld 12" }
+
+    { 97  ;3   ;Column  ;Feld15_Arch_Belegzeile;
+               SourceExpr="Feld 15" }
+
+    { 98  ;3   ;Column  ;ItemDescription__ItemDescription22;
+               SourceExpr=Item.Description + ' ' + Item."Description 2" }
+
+  }
+  REQUESTPAGE
+  {
+    PROPERTIES
+    {
+      SaveValues=Yes;
+    }
+    CONTROLS
+    {
+      { 1900000001;0;Container;
+                  ContainerType=ContentArea }
+
+      { 1900000002;1;Group  ;
+                  CaptionML=[CSY=Moznosti;
+                             DAN=Indstillinger;
+                             DEU=Optionen;
+                             ENU=Options;
+                             FIN=Vaihtoehdot;
+                             ISL=Valkostir;
+                             NLD=Opties;
+                             NOR=Alternativer;
+                             SVE=Alternativ;
+                             ITS=Opzioni;
+                             NLB=Opties] }
+
+      { 1140002;2;Field     ;
+                  CaptionML=DEU=Belegdatum von;
+                  SourceExpr=Startdatum }
+
+      { 1140000;2;Field     ;
+                  CaptionML=DEU=bis;
+                  SourceExpr=Enddatum }
+
+      { 1140003;2;Field     ;
+                  CaptionML=DEU=Betreuer Innendienst;
+                  SourceExpr=betreuer;
+                  TableRelation=Salesperson/Purchaser }
+
+      { 1140006;2;Field     ;
+                  CaptionML=DEU=Verk„ufercode;
+                  SourceExpr=verk„ufer;
+                  TableRelation=Salesperson/Purchaser }
+
+      { 1140009;2;Field     ;
+                  CaptionML=DEU=Teams;
+                  SourceExpr=teams;
+                  TableRelation=Team }
+
+      { 1140011;2;Field     ;
+                  CaptionML=DEU=Gebietscode;
+                  SourceExpr=gebietscode;
+                  TableRelation=Territory }
+
+      { 1000000000;2;Field  ;
+                  CaptionML=DEU=Verk. an L„ndercode;
+                  SourceExpr=land;
+                  TableRelation=Country/Region }
+
+      { 1140015;2;Field     ;
+                  CaptionML=DEU=Herstellercode;
+                  SourceExpr=hersteller;
+                  TableRelation=Manufacturer }
+
+      { 1140014;2;Field     ;
+                  CaptionML=DEU=Status;
+                  SourceExpr=status }
+
+      { 1140021;2;Field     ;
+                  CaptionML=DEU=Erledigtstatus;
+                  SourceExpr=erledigt;
+                  TableRelation=Optionstabelle.Code WHERE (Tabellen ID=CONST(36),
+                                                           Feld ID=CONST(50212)) }
+
+      { 1140018;2;Field     ;
+                  CaptionML=DEU=Berichtssortierung;
+                  OptionCaptionML=DEU=Debitornr.,Debitorname;
+                  SourceExpr=sort }
+
+      { 1140024;2;Field     ;
+                  CaptionML=DEU=Nur archivierte;
+                  SourceExpr=nur_archivierte }
+
+      { 1000000001;2;Field  ;
+                  CaptionML=DEU=Autom. Datumsfilter;
+                  OptionCaptionML=DEU=Normal,,Letzte Woche;
+                  SourceExpr=datefilter }
+
+      { 5000;2   ;Field     ;
+                  Name=ForNavOpenDesigner;
+                  CaptionML=ENU=Open Designer;
+                  SourceExpr=ReportForNavOpenDesigner;
+                  Visible=ReportForNavAllowDesign }
+
+    }
+  }
+  LABELS
+  {
+  }
+  CODE
+  {
+    VAR
+      Berichtstabelle@1140000 : Record 50037;
+      Berichtstabelle_temp@1140022 : Record 50037;
+      Customer@1140012 : Record 18;
+      Campaign@1140018 : Record 5071;
+      Comment@1140020 : Record 5061;
+      ToDo@1140019 : Record 5080;
+      Item@1140016 : Record 27;
+      Quotedaten@1140017 : Record 50014;
+      Cont_rel@1140013 : Record 5054;
+      Branche@1140014 : Record 5058;
+      SalesHeader@1140009 : Record 36;
+      ArchSalesHeader@1140024 : Record 5107;
+      SalesLine@1140010 : Record 37;
+      ArchSalesLine@1140025 : Record 5108;
+      VerkTab@1140001 : Record 13;
+      TOPAS_Funktionen@1000000002 : Codeunit 50006;
+      Startdatum@1140005 : Date;
+      Enddatum@1140004 : Date;
+      hersteller@1140011 : Code[40];
+      betreuer@1140003 : Code[40];
+      verk„ufer@1140002 : Code[40];
+      teams@1140006 : Code[40];
+      gebietscode@1140007 : Code[40];
+      land@1000000000 : Code[40];
+      erledigt@1140027 : Code[40];
+      status@1140008 : ' ,Offen,Freigegeben,Genehmigung ausstehend,Vorauszahlung ausstehend';
+      belegzeilen_vorhanden@1140015 : Boolean;
+      arch_belegzeilen_vorhanden@1140026 : Boolean;
+      counter@1140021 : Integer;
+      sort@1140023 : 'Nr,Name';
+      datefilter@1000000001 : 'N,LD,LW,LM';
+      nur_archivierte@1140028 : Boolean;
+      Endkunde_temp@1140029 : Text[50];
+      System_Projektinfo_temp@1140030 : Text[50];
+      Belegnr_temp@1140031 : Code[20];
+      ReportForNav@5000 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
+      ReportForNavClient@5003 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
+      ReportForNavDialog@5001 : Dialog;
+      ReportForNavOpenDesigner@5002 : Boolean;
+      ReportForNavAllowDesign@5004 : Boolean INDATASET;
+
+    LOCAL PROCEDURE OnPreSectionBelegzeile_Body7@5010(VAR Belegzeile@1000000000 : Record 50037);
+    BEGIN
+      WITH Belegzeile DO BEGIN
+        ReportForNav.ShowOutput(("Feld 16" <> '') AND (("Feld 16" <> Endkunde_temp) OR ("Belegnr." <> Belegnr_temp)));
+        Endkunde_temp := "Feld 16";
+        Belegnr_temp  := "Belegnr.";
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionBelegzeile_Body8@5011(VAR Belegzeile@1000000000 : Record 50037);
+    BEGIN
+      WITH Belegzeile DO BEGIN
+        ReportForNav.ShowOutput(("Feld 11" <> '') AND (("Feld 11" <> System_Projektinfo_temp) OR ("Belegnr." <> Belegnr_temp )));
+        System_Projektinfo_temp := "Feld 11";
+        Belegnr_temp  := "Belegnr.";
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionBelegzeile_Body10@5012(VAR Belegzeile@1000000000 : Record 50037);
+    BEGIN
+      WITH Belegzeile DO BEGIN
+        IF Item.GET("Feld 19") THEN
+          ReportForNav.ShowOutput(Item.Herstellerkurzname ='FER')
+        ELSE
+          ReportForNav.ShowOutput(FALSE);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionNewPage_Header11@5013(VAR NewPage@1000000000 : Record 50037);
+    BEGIN
+      WITH NewPage DO BEGIN
+        ReportForNav.NewPageWithoutTransportTotals;
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionArch_Debitor_Header12@5014(VAR Arch_Debitor@1000000000 : Record 50037);
+    BEGIN
+      WITH Arch_Debitor DO BEGIN
+        //ReportForNav.NewPageWithoutTransportTotals;
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionArch_Belegzeile_Body18@5015(VAR Arch_Belegzeile@1000000000 : Record 50037);
+    BEGIN
+      WITH Arch_Belegzeile DO BEGIN
+        ReportForNav.ShowOutput(("Feld 16" <> '') AND (("Feld 16" <> Endkunde_temp) OR ("Belegnr." <> Belegnr_temp)));
+        Endkunde_temp := "Feld 16";
+        Belegnr_temp  := "Belegnr.";
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionArch_Belegzeile_Body19@5016(VAR Arch_Belegzeile@1000000000 : Record 50037);
+    BEGIN
+      WITH Arch_Belegzeile DO BEGIN
+        ReportForNav.ShowOutput(("Feld 11" <> '') AND (("Feld 11" <> System_Projektinfo_temp) OR ("Belegnr." <> Belegnr_temp )));
+        System_Projektinfo_temp := "Feld 11";
+        Belegnr_temp  := "Belegnr.";
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionArch_Belegzeile_Body21@5017(VAR Arch_Belegzeile@1000000000 : Record 50037);
+    BEGIN
+      WITH Arch_Belegzeile DO BEGIN
+        IF Item.GET("Feld 19") THEN
+          ReportForNav.ShowOutput(Item.Herstellerkurzname ='FER')
+        ELSE
+            ReportForNav.ShowOutput(FALSE);
+      END;
+    END;
+
+    PROCEDURE Akt_Angebote_listen@1140000();
+    BEGIN
+      //*******************************************************************************************************
+      //                                 Akt. Angebote werden durchsucht
+      //*******************************************************************************************************
+      SalesHeader.RESET;
+      IF (Startdatum<>0D) AND (Enddatum=0D) THEN
+        SalesHeader.SETFILTER(SalesHeader."Document Date",'>=%1',Startdatum);
+      IF (Startdatum<>0D) AND (Enddatum<>0D) THEN
+        SalesHeader.SETFILTER(SalesHeader."Document Date",'>=%1&<=%2',Startdatum,Enddatum);
+      IF (Startdatum=0D) AND (Enddatum<>0D) THEN
+        SalesHeader.SETFILTER("Document Date",'<=%1',Enddatum);
+      SalesHeader.SETFILTER("Betreuer Innendienst",betreuer);
+      SalesHeader.SETFILTER("Salesperson Code",verk„ufer);
+      SalesHeader.SETFILTER(Teams,teams);
+      SalesHeader.SETFILTER("Territory Code",gebietscode);
+      SalesHeader.SETFILTER("Sell-to Country/Region Code",land);
+      SalesHeader.SETFILTER("Document Type",'%1',SalesHeader."Document Type" :: Quote);
+      IF SalesHeader.FINDFIRST THEN
+        REPEAT
+          belegzeilen_vorhanden := FALSE;
+          SalesLine.RESET;
+          SalesLine.SETFILTER(SalesLine."Document No.",SalesHeader."No.");
+          SalesLine.SETFILTER(SalesLine.Type,'%1',SalesLine.Type :: Item);
+          SalesLine.SETFILTER(SalesLine."Manufacturer Code",hersteller);
+          IF SalesLine.FINDFIRST THEN
+            BEGIN
+              belegzeilen_vorhanden := TRUE;
+              Berichtstabelle_temp.RESET;
+              Berichtstabelle_temp.SETFILTER(Tabelle,'%1','DEBITOR');
+              Berichtstabelle_temp.SETFILTER(Index,'%1',SalesHeader."Sell-to Customer No.");
+              IF NOT Berichtstabelle_temp.FINDFIRST THEN
+                BEGIN
+                  //*******************************************************************************************************
+                  //                                     Debitor Daten schreiben
+                  //*******************************************************************************************************
+                  Berichtstabelle.INIT;
+                    Berichtstabelle.Tabelle := 'DEBITOR';
+                    Berichtstabelle.Index := SalesHeader."Sell-to Customer No.";
+                    Customer.GET(SalesHeader."Sell-to Customer No.");
+                    Berichtstabelle."Feld 6" := Customer."Post Code";
+                    Berichtstabelle."Feld 10" := Customer.Name;
+                    Berichtstabelle."Feld 12" := Customer.City;
+                    Berichtstabelle."Feld 19" := Customer."Country/Region Code";
+                    Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                    Berichtstabelle.User := USERID;
+                    //*******************************************************************************************************
+                    //           Prfung, ob Bestcker oder H„ndler und ob berhaupt eine Branche hinterlegt ist
+                    //*******************************************************************************************************
+                    Cont_rel.RESET;
+                    Cont_rel.SETFILTER(Cont_rel."No.",'%1',Customer."No.");
+                    Cont_rel.SETFILTER(Cont_rel."Business Relation Code",'%1','DEB');
+                    IF Cont_rel.FINDFIRST THEN
+                      BEGIN
+                        Branche.RESET;
+                        Branche.SETFILTER(Branche."Contact No.",'%1',Cont_rel."Contact No.");
+                        IF Branche.FINDFIRST THEN
+                          BEGIN
+                            Branche.SETFILTER(Branche."Industry Group Code",'%1|%2','BESTšCKER','HŽNDLER');
+                            IF Branche.FINDFIRST THEN
+                              BEGIN
+                                Berichtstabelle."Feld 13" := Branche."Industry Group Code";
+                              END;
+                         END
+                       ELSE
+                         Berichtstabelle."Feld 13" := 'Branchen fehlen!'
+                      END;
+                  Berichtstabelle.INSERT;
+                END;
+              REPEAT
+                //*******************************************************************************************************
+                //                                      Angebotszeilen schreiben
+                //*******************************************************************************************************
+                Berichtstabelle.INIT;
+                  Berichtstabelle.Tabelle := 'BELEGZEILE';
+                  Berichtstabelle.Index := SalesLine."Document No.";
+                  Berichtstabelle."Belegnr." := SalesLine."Document No.";
+                  Berichtstabelle."Zeilennr." := SalesLine."Line No.";
+                  Berichtstabelle."Feld 3" := SalesLine."Artikelnr. 2";
+                  Berichtstabelle."Feld 4" := SalesLine.Quantity;
+                  Berichtstabelle."Feld 5" := SalesLine."Unit Price";
+                  IF Item.GET(SalesLine."No.") THEN
+                    BEGIN
+                      IF Item.Registrierbar THEN
+                        Berichtstabelle."Feld 6" := 'R   ' + Item.Herstellerkurzname
+                      ELSE
+                        Berichtstabelle."Feld 6" := Item.Herstellerkurzname;
+                    END;
+                  IF SalesHeader."Currency Code" = '' THEN
+                    Berichtstabelle."Feld 7" := '°'
+                  ELSE
+                    Berichtstabelle."Feld 7" := SalesHeader."Currency Code";
+                  Berichtstabelle."Feld 8" := SalesLine."Kampagnennr.";
+                  Berichtstabelle."Feld 10" := FORMAT(SalesLine.Amount);
+                  Berichtstabelle."Feld 11" := SalesLine."System Projektinfos";
+                  Berichtstabelle."Feld 12" := FORMAT(ROUND(SalesLine."Profit %",0.01));
+                  Berichtstabelle."Feld 13" := FORMAT(SalesLine."DC-Preis (EKW)");
+                  IF Quotedaten.GET(SalesLine."Quotenr.") THEN
+                    Berichtstabelle."Feld 14" := FORMAT(Quotedaten.Quotepreis);
+                  Berichtstabelle."Feld 15" := SalesLine.LZ_Text;
+                  Berichtstabelle."Feld 16" := SalesLine.Endkunde;
+                  Berichtstabelle."Feld 19" := SalesLine."No.";
+                  Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                  Berichtstabelle.User := USERID;
+                Berichtstabelle.INSERT;
+              UNTIL SalesLine.NEXT = 0;
+            END;
+          //*******************************************************************************************************
+          //     Nachtr„glich alle anderen Daten schreiben, wenn auch wirklich Angebotszeilen vorhanden sind
+          //*******************************************************************************************************
+          IF belegzeilen_vorhanden THEN
+            BEGIN
+              //Angebotskopf
+              Berichtstabelle.INIT;
+                Berichtstabelle.Tabelle := 'BELEGKOPF';
+                Berichtstabelle.Index := SalesHeader."Sell-to Customer No.";
+                Berichtstabelle.Datum := SalesHeader."Document Date";
+                Berichtstabelle."Belegnr." := SalesHeader."No.";
+                IF SalesHeader."Currency Code" = '' THEN
+                  Berichtstabelle."Feld 2" := '°'
+                ELSE
+                  Berichtstabelle."Feld 2" :=  SalesHeader."Currency Code";
+       //         Berichtstabelle."Feld 3" := SalesHeader.Angebotsstatus;
+                SalesHeader.CALCFIELDS(Amount);
+                Berichtstabelle."Feld 4" := SalesHeader.Amount;
+                Berichtstabelle."Feld 6" := SalesHeader."Betreuer Innendienst";
+                Berichtstabelle."Feld 7" := SalesHeader."Salesperson Code";
+                Berichtstabelle."Feld 8" := SalesHeader.Teams;
+                Berichtstabelle."Feld 9" := SalesHeader."Territory Code";
+                Berichtstabelle."Feld 10" := SalesHeader.Kontaktperson;
+                Berichtstabelle."Feld 12" := FORMAT(SalesHeader.Status);
+                Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                Berichtstabelle.User := USERID;
+              Berichtstabelle.INSERT;
+              //Projektdaten
+              IF Campaign.GET(SalesHeader."Campaign No.") THEN
+                BEGIN
+                  Berichtstabelle.INIT;
+                    Berichtstabelle.Tabelle := 'PROJEKT';
+                    Berichtstabelle.Index := SalesHeader."No.";
+                    Berichtstabelle."Belegnr." := Campaign."No.";
+                    Berichtstabelle."Feld 1" := Campaign.Description;
+                    Berichtstabelle."Feld 4" := Campaign.Projektvolumen;
+                    Berichtstabelle."Feld 5" := Campaign.Projektwert;
+                    Berichtstabelle."Feld 8" := Campaign.Projektstatus;
+                    Berichtstabelle."Feld 9" := Campaign.Projektklasse;
+                    Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                    Berichtstabelle.User := USERID;
+                  Berichtstabelle.INSERT;
+               END;
+              //Aufgaben
+              ToDo.RESET;
+              ToDo.SETFILTER(ToDo."System To-do Type",'%1',ToDo."System To-do Type" :: Organizer);
+              ToDo.SETFILTER("Belegnr.",'%1',SalesHeader."No.");
+              IF ToDo.FINDFIRST THEN
+                BEGIN
+                  Berichtstabelle.INIT;
+                    Berichtstabelle.Tabelle := 'AUFGABE';
+                    Berichtstabelle.Index := SalesHeader."No.";
+                    Berichtstabelle."Belegnr." := ToDo."No.";
+                    Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                    Berichtstabelle.User := USERID;
+                  Berichtstabelle.INSERT;
+                  //Bemerkung
+                  Comment.RESET;
+                  Comment.SETFILTER("Table Name",'%1',Comment."Table Name" :: "To-do");
+                  Comment.SETFILTER("No.",'%1',ToDo."No.");
+                  IF Comment.FINDFIRST THEN
+                    REPEAT
+                      Berichtstabelle.INIT;
+                        Berichtstabelle.Tabelle := 'BEMERKUNG';
+                        Berichtstabelle.Index := ToDo."No.";
+                        Berichtstabelle."Belegnr." := Comment."No.";
+                        Berichtstabelle.Datum := Comment.Date;
+                        Berichtstabelle."Zeilennr." := Comment."Line No.";
+                        Berichtstabelle."Feld 1" := Comment.Comment;
+                        IF Comment.Date <> 0D THEN
+                          Berichtstabelle."Feld 10" := 'Bemerkung vom: ';
+                        Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                        Berichtstabelle.User := USERID;
+                      Berichtstabelle.INSERT;
+                    UNTIL Comment.NEXT = 0;
+                END;
+            END;
+        UNTIL SalesHeader.NEXT = 0;
+    END;
+
+    PROCEDURE Arch_Angebote_listen@1140001();
+    BEGIN
+      //*******************************************************************************************************
+      //                                Archivierte Angebote werden durchsucht
+      //*******************************************************************************************************
+      ArchSalesHeader.RESET;
+      IF (Startdatum<>0D) AND (Enddatum=0D) THEN
+        ArchSalesHeader.SETFILTER(ArchSalesHeader."Document Date",'>=%1',Startdatum);
+      IF (Startdatum<>0D) AND (Enddatum<>0D) THEN
+        ArchSalesHeader.SETFILTER(ArchSalesHeader."Document Date",'>=%1&<=%2',Startdatum,Enddatum);
+      IF (Startdatum=0D) AND (Enddatum<>0D) THEN
+        ArchSalesHeader.SETFILTER(ArchSalesHeader."Document Date",'<=%1',Enddatum);
+      ArchSalesHeader.SETFILTER("Betreuer Innendienst",betreuer);
+      ArchSalesHeader.SETFILTER("Salesperson Code",verk„ufer);
+      ArchSalesHeader.SETFILTER(Teams,teams);
+      ArchSalesHeader.SETFILTER("Territory Code",gebietscode);
+      ArchSalesHeader.SETFILTER("Sell-to Country/Region Code",land);
+      ArchSalesHeader.SETFILTER(Erledigtstatus,erledigt);
+      ArchSalesHeader.SETFILTER("Document Type",'%1',ArchSalesHeader."Document Type" :: Quote);
+      //Neue Zeile w/ doppelter Version
+      ArchSalesHeader.SETFILTER(ArchSalesHeader."Version No.",'%1',1);
+
+      IF ArchSalesHeader.FINDFIRST THEN
+        REPEAT
+          arch_belegzeilen_vorhanden := FALSE;
+          ArchSalesLine.RESET;
+          ArchSalesLine.SETFILTER(ArchSalesLine."Document No.",ArchSalesHeader."No.");
+          ArchSalesLine.SETFILTER(ArchSalesLine.Type,'%1',ArchSalesLine.Type :: Item);
+          ArchSalesLine.SETFILTER(ArchSalesLine."Manufacturer Code",hersteller);
+          // Neue Zeile w/ dopplter Version
+          ArchSalesLine.SETFILTER(ArchSalesLine."Version No.",'%1',1);
+          IF ArchSalesLine.FINDFIRST THEN
+            BEGIN
+              arch_belegzeilen_vorhanden := TRUE;
+              Berichtstabelle_temp.RESET;
+              Berichtstabelle_temp.SETFILTER(Tabelle,'%1','ARCH_DEBITOR');
+              Berichtstabelle_temp.SETFILTER(Index,'%1',ArchSalesHeader."Sell-to Customer No.");
+              IF NOT Berichtstabelle_temp.FINDFIRST THEN
+                BEGIN
+                  //*******************************************************************************************************
+                  //                                     Debitor Daten schreiben
+                  //*******************************************************************************************************
+                  Berichtstabelle.INIT;
+                    Berichtstabelle.Tabelle := 'ARCH_DEBITOR';
+                    Berichtstabelle.Index := ArchSalesHeader."Sell-to Customer No.";
+                    Customer.GET(ArchSalesHeader."Sell-to Customer No.");
+                    Berichtstabelle."Feld 6" := Customer."Post Code";
+                    Berichtstabelle."Feld 10" := Customer.Name;
+                    Berichtstabelle."Feld 12" := Customer.City;
+                    Berichtstabelle."Feld 19" := Customer."Country/Region Code";
+                    Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                    Berichtstabelle.User := USERID;
+                    //*******************************************************************************************************
+                    //           Prfung, ob Bestcker oder H„ndler und ob berhaupt eine Branche hinterlegt ist
+                    //*******************************************************************************************************
+                    Cont_rel.RESET;
+                    Cont_rel.SETFILTER(Cont_rel."No.",'%1',Customer."No.");
+                    Cont_rel.SETFILTER(Cont_rel."Business Relation Code",'%1','DEB');
+                    IF Cont_rel.FINDFIRST THEN
+                      BEGIN
+                        Branche.RESET;
+                        Branche.SETFILTER(Branche."Contact No.",'%1',Cont_rel."Contact No.");
+                        IF Branche.FINDFIRST THEN
+                          BEGIN
+                            Branche.SETFILTER(Branche."Industry Group Code",'%1|%2','BESTšCKER','HŽNDLER');
+                            IF Branche.FINDFIRST THEN
+                              BEGIN
+                                Berichtstabelle."Feld 13" := Branche."Industry Group Code";
+                              END;
+                         END
+                       ELSE
+                         Berichtstabelle."Feld 13" := 'Branchen fehlen!'
+                      END;
+                  Berichtstabelle.INSERT;
+                END;
+              REPEAT
+                //*******************************************************************************************************
+                //                                      Angebotszeilen schreiben
+                //*******************************************************************************************************
+                Berichtstabelle.INIT;
+                  Berichtstabelle.Tabelle := 'ARCH_BELEGZEILE';
+                  Berichtstabelle.Index := ArchSalesLine."Document No.";
+                  Berichtstabelle."Belegnr." := ArchSalesLine."Document No.";
+                  Berichtstabelle."Zeilennr." := ArchSalesLine."Line No.";
+                  Berichtstabelle."Feld 3" := ArchSalesLine."Artikelnr. 2";
+                  Berichtstabelle."Feld 4" := ArchSalesLine.Quantity;
+                  Berichtstabelle."Feld 5" := ArchSalesLine."Unit Price";
+                  IF Item.GET(ArchSalesLine."No.") THEN
+                    BEGIN
+                      IF Item.Registrierbar THEN
+                        Berichtstabelle."Feld 6" := 'R   ' + Item.Herstellerkurzname
+                      ELSE
+                        Berichtstabelle."Feld 6" := Item.Herstellerkurzname;
+                    END;
+                  IF ArchSalesHeader."Currency Code" = '' THEN
+                    Berichtstabelle."Feld 7" := '°'
+                  ELSE
+                    Berichtstabelle."Feld 7" := ArchSalesHeader."Currency Code";
+                  Berichtstabelle."Feld 8" := ArchSalesLine."Kampagnennr.";
+                  Berichtstabelle."Feld 10" := FORMAT(ArchSalesLine.Amount);
+                  Berichtstabelle."Feld 11" := ArchSalesLine."System Projektinfos";
+                  Berichtstabelle."Feld 12" := FORMAT(ROUND(ArchSalesLine."Profit %",0.01));
+                  Berichtstabelle."Feld 13" := FORMAT(ArchSalesLine."DC-Preis (EKW)");
+                  IF Quotedaten.GET(ArchSalesLine."Quotenr.") THEN
+                    Berichtstabelle."Feld 14" := FORMAT(Quotedaten.Quotepreis);
+                  Berichtstabelle."Feld 15" := ArchSalesLine.LZ_Text;
+                  Berichtstabelle."Feld 16" := ArchSalesLine.Endkunde;
+                  Berichtstabelle."Feld 19" := ArchSalesLine."No.";
+                  Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                  Berichtstabelle.User := USERID;
+                Berichtstabelle.INSERT;
+              UNTIL ArchSalesLine.NEXT = 0;
+            END;
+          //*******************************************************************************************************
+          //  Nachtr„glich alle anderen Daten schreiben, wenn auch wirklich arch. Angebotszeilen vorhanden sind
+          //*******************************************************************************************************
+          IF arch_belegzeilen_vorhanden THEN
+            BEGIN
+              //Arch. Angebotskopf
+              Berichtstabelle.INIT;
+                Berichtstabelle.Tabelle := 'ARCH_BELEGKOPF';
+                Berichtstabelle.Index := ArchSalesHeader."Sell-to Customer No.";
+                Berichtstabelle.Datum := ArchSalesHeader."Document Date";
+                Berichtstabelle."Belegnr." := ArchSalesHeader."No.";
+                IF ArchSalesHeader."Currency Code" = '' THEN
+                  Berichtstabelle."Feld 2" := '°'
+                ELSE
+                  Berichtstabelle."Feld 2" :=  ArchSalesHeader."Currency Code";
+      //          Berichtstabelle."Feld 3" := ArchSalesHeader.Angebotsstatus;
+                ArchSalesHeader.CALCFIELDS(Amount);
+                Berichtstabelle."Feld 4" := ArchSalesHeader.Amount;
+                Berichtstabelle."Feld 6" := ArchSalesHeader."Betreuer Innendienst";
+                Berichtstabelle."Feld 7" := ArchSalesHeader."Salesperson Code";
+                Berichtstabelle."Feld 8" := ArchSalesHeader.Teams;
+                Berichtstabelle."Feld 9" := ArchSalesHeader."Territory Code";
+                Berichtstabelle."Feld 10" := ArchSalesHeader.Kontaktperson;
+                Berichtstabelle."Feld 12" := FORMAT(ArchSalesHeader.Status);
+                Berichtstabelle."Feld 19" := ArchSalesHeader.Erledigtstatus;
+                Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                Berichtstabelle.User := USERID;
+              Berichtstabelle.INSERT;
+              //Projektdaten
+              IF Campaign.GET(ArchSalesHeader."Campaign No.") THEN
+                BEGIN
+                  Berichtstabelle.INIT;
+                    Berichtstabelle.Tabelle := 'ARCH_PROJEKT';
+                    Berichtstabelle.Index := ArchSalesHeader."No.";
+                    Berichtstabelle."Belegnr." := Campaign."No.";
+                    Berichtstabelle."Feld 1" := Campaign.Description;
+                    Berichtstabelle."Feld 4" := Campaign.Projektvolumen;
+                    Berichtstabelle."Feld 5" := Campaign.Projektwert;
+                    Berichtstabelle."Feld 8" := Campaign.Projektstatus;
+                    Berichtstabelle."Feld 9" := Campaign.Projektklasse;
+                    Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                    Berichtstabelle.User := USERID;
+                  Berichtstabelle.INSERT;
+               END;
+              //Aufgaben
+              ToDo.RESET;
+              ToDo.SETFILTER(ToDo."System To-do Type",'%1',ToDo."System To-do Type" :: Organizer);
+              ToDo.SETFILTER("Arch. Belegnr.",'%1',ArchSalesHeader."No.");
+              IF ToDo.FINDFIRST THEN
+                BEGIN
+                  Berichtstabelle.INIT;
+                    Berichtstabelle.Tabelle := 'ARCH_AUFGABE';
+                    Berichtstabelle.Index := ArchSalesHeader."No.";
+                    Berichtstabelle."Belegnr." := ToDo."No.";
+                    Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                    Berichtstabelle.User := USERID;
+                  Berichtstabelle.INSERT;
+                  //Bemerkung
+                  Comment.RESET;
+                  Comment.SETFILTER("Table Name",'%1',Comment."Table Name" :: "To-do");
+                  Comment.SETFILTER("No.",'%1',ToDo."No.");
+                  IF Comment.FINDFIRST THEN
+                    REPEAT
+                      Berichtstabelle.INIT;
+                        Berichtstabelle.Tabelle := 'ARCH_BEMERKUNG';
+                        Berichtstabelle.Index := ToDo."No.";
+                        Berichtstabelle."Belegnr." := Comment."No.";
+                        Berichtstabelle.Datum := Comment.Date;
+                        Berichtstabelle."Zeilennr." := Comment."Line No.";
+                        Berichtstabelle."Feld 1" := Comment.Comment;
+                        IF Comment.Date <> 0D THEN
+                          Berichtstabelle."Feld 10" := 'Bemerkung vom: ';
+                        Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+                        Berichtstabelle.User := USERID;
+                      Berichtstabelle.INSERT;
+                    UNTIL Comment.NEXT = 0;
+                END;
+            END;
+        UNTIL ArchSalesHeader.NEXT = 0;
+    END;
+
+    LOCAL PROCEDURE CalcDateByFormula@39(Date@1000 : Date;CalcStartDate@1001 : Boolean;Period@1000000000 : Option) : Date;
+    VAR
+      Modificator@1002 : Text[1];
+    BEGIN
+      IF Date = 0D THEN
+        EXIT(Date);
+
+      CASE datefilter OF
+        datefilter::LW:
+          BEGIN
+            IF CalcStartDate THEN
+                Modificator := '-';
+              EXIT(CALCDATE(STRSUBSTNO('<%1C%2>',Modificator,'W-1W'),Date));
+          END;
+      END;
+      EXIT(Date);
+    END;
+
+    EVENT ReportForNav@5000::OnInit@5002();
+    VAR
+      ReportLayoutSelection@1000 : Record 9651;
+      CustomReportLayout@1001 : Record 9650;
+      CustomLayoutID@1002 : Variant;
+      InStream@1004 : InStream;
+      EmptyLayout@1003 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+      ReportForNav.OData := GETURL(CLIENTTYPE::OData, COMPANYNAME, OBJECTTYPE::Page, 7702);
+      IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN
+        CustomLayoutID := ReportLayoutSelection.GetTempLayoutSelected
+      ELSE
+        IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN
+          CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+
+      IF (FORMAT(CustomLayoutID) <> EmptyLayout) AND CustomReportLayout.GET(CustomLayoutID) THEN BEGIN
+        CustomReportLayout.TESTFIELD(Type,CustomReportLayout.Type::RDLC);
+        CustomReportLayout.CALCFIELDS(Layout);
+        CustomReportLayout.Layout.CREATEINSTREAM(InStream,TEXTENCODING::UTF8);
+        ReportForNav.IsCustomLayout := TRUE;
+      END ELSE
+        REPORT.RDLCLAYOUT(ReportForNav.ReportID,InStream);
+
+      ReportForNav.LoadRdlc(InStream);
+      IF COPYSTR(LOWERCASE(GETURL(CLIENTTYPE::Current, COMPANYNAME, OBJECTTYPE::Codeunit, 1)), 1, 14) = 'dynamicsnav://' THEN BEGIN
+        ReportForNav.CheckClientAddIn();
+        ReportForNavClient := ReportForNavClient.Report(ReportForNav.Definition);
+        ReportForNavAllowDesign := ReportForNavClient.HasDesigner AND NOT ReportForNav.ParameterMode;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnSave@5010(Base64Layout@1000 : Text);
+    VAR
+      CustomReportLayout@1002 : Record 9650;
+      ReportLayoutSelection@1003 : Record 9651;
+      LayoutId@1004 : Variant;
+      TempBlob@1007 : Record 99008535;
+      OutStream@1006 : OutStream;
+      Bstr@1005 : BigText;
+      EmptyLayout@1001 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+      IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN BEGIN
+        IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN BEGIN
+          LayoutId := ReportLayoutSelection.GetTempLayoutSelected;
+        END ELSE BEGIN
+          IF ReportLayoutSelection.GET(ReportForNav.ReportID, COMPANYNAME) THEN BEGIN
+          LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+          END;
+        END;
+      END ELSE BEGIN
+        IF CONFIRM('Default custom layout not found. Create one?') THEN;
+      END;
+      IF FORMAT(LayoutId) <> EmptyLayout THEN BEGIN
+        TempBlob.Blob.CREATEOUTSTREAM(OutStream);
+        Bstr.ADDTEXT(Base64Layout);
+        Bstr.WRITE(OutStream);
+        CustomReportLayout.GET(LayoutId);
+        CustomReportLayout.ImportLayoutBlob(TempBlob, 'RDL');
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnParameters@5008(Parameters@1000 : Text);
+    BEGIN
+      ReportForNav.Parameters := REPORT.RUNREQUESTPAGE(ReportForNav.ReportID, Parameters);
+    END;
+
+    EVENT ReportForNav@5000::OnPreview@5009(Parameters@1000 : Text;FileName@1005 : Text);
+    VAR
+      PdfFile@1002 : File;
+      InStream@1003 : InStream;
+      OutStream@1004 : OutStream;
+    BEGIN
+      COMMIT;
+      PdfFile.CREATETEMPFILE;
+      PdfFile.CREATEOUTSTREAM(OutStream);
+      REPORT.SAVEAS(ReportForNav.ReportID, Parameters, REPORTFORMAT::Pdf, OutStream);
+      PdfFile.CREATEINSTREAM(InStream);
+      ReportForNavClient.ShowDesigner;
+      IF ReportForNav.IsValidPdf(PdfFile.NAME) THEN DOWNLOADFROMSTREAM(InStream, '', '', '', FileName);
+      PdfFile.CLOSE;
+    END;
+
+    EVENT ReportForNav@5000::OnPreSection@5012(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+      CASE DataItemId OF
+        'Belegzeile': CASE SectionId OF
+          'Body7': OnPreSectionBelegzeile_Body7(Belegzeile);
+          'Body8': OnPreSectionBelegzeile_Body8(Belegzeile);
+          'Body10': OnPreSectionBelegzeile_Body10(Belegzeile);
+        END;
+        'NewPage': CASE SectionId OF
+          'Header11': OnPreSectionNewPage_Header11(NewPage);
+        END;
+        'Arch_Debitor': CASE SectionId OF
+          'Header12': OnPreSectionArch_Debitor_Header12(Arch_Debitor);
+        END;
+        'Arch_Belegzeile': CASE SectionId OF
+          'Body18': OnPreSectionArch_Belegzeile_Body18(Arch_Belegzeile);
+          'Body19': OnPreSectionArch_Belegzeile_Body19(Arch_Belegzeile);
+          'Body21': OnPreSectionArch_Belegzeile_Body21(Arch_Belegzeile);
+        END;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPostSection@50013(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+    END;
+
+    EVENT ReportForNav@5000::OnClientOperation@5008(Args@1000 : DotNet "'mscorlib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Array");
+    VAR
+      op@1001 : Text;
+      FileMgmt@1002 : Codeunit 419;
+      Process@1006 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.Process" RUNONCLIENT;
+      PathObj@1005 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Path" RUNONCLIENT;
+      FileVersionInfo@1003 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.FileVersionInfo" RUNONCLIENT;
+      DirectoryHelper@1004 : DotNet "'mscorlib'.System.IO.Directory" RUNONCLIENT;
+    BEGIN
+      op := Args.GetValue(0);
+      CASE op OF
+        'TempPath': ReportForNav.Result := PathObj.GetTempPath();
+        'FileExists': ReportForNav.Result := FileMgmt.ClientFileExists(Args.GetValue(1));
+        'DirectoryExists': ReportForNav.Result := FileMgmt.ClientDirectoryExists(Args.GetValue(1));
+        'ProcessLocation': ReportForNav.Result := Process.GetCurrentProcess().MainModule.FileName;
+        'FileVersion': ReportForNav.Result := FileVersionInfo.GetVersionInfo(Args.GetValue(1)).FileVersion;
+        'DeleteFile': FileMgmt.DeleteClientFile(Args.GetValue(1));
+        'DeleteDirectory': IF STRLEN(Args.GetValue(1)) > 20 THEN
+          IF FileMgmt.ClientDirectoryExists(Args.GetValue(1)) THEN
+            DirectoryHelper.Delete(FORMAT(Args.GetValue(1)), TRUE);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnCheckForNavClientVersion@5007();
+    BEGIN
+      ReportForNavClient := ReportForNavClient.Report();
+      IF ReportForNav.MyFileVersion <> ReportForNavClient.MyFileVersion THEN
+        ERROR('You have version %1 of the Reports ForNAV assembly here:\\%2\\Please close your NAV client and update it to version %3.',
+              ReportForNavClient.MyFileVersion, ReportForNavClient.MyFileName, ReportForNav.MyFileVersion);
+    END;
+
+    EVENT ReportForNav@5000::OnSelectPrinter@5006();
+    BEGIN
+      ReportForNav.PrinterSettings.PageSettings := ReportForNavClient.SelectPrinter(ReportForNav.PrinterSettings.PrinterName,ReportForNav.PrinterSettings.ShowPrinterDialog,ReportForNav.PrinterSettings.PageSettings);
+    END;
+
+    EVENT ReportForNav@5000::OnPrint@5005(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream");
+    VAR
+      ClientFileName@1000000001 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      ReportForNavClient.Print(ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnDesign@5007(Data@1001 : Text);
+    BEGIN
+      ReportForNavClient.Data := Data;
+      WHILE ReportForNavClient.DesignReport DO BEGIN
+        ReportForNav.HandleRequest(ReportForNavClient.GetRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnView@5008(ClientFileName@1000000000 : Text;Parameters@1000000001 : Text;ServerFileName@1000000002 : Text);
+    VAR
+      ServerFile@1000000003 : File;
+      ServerInStream@1000000004 : InStream;
+    BEGIN
+      ServerFile.OPEN(ServerFileName);
+      ServerFile.CREATEINSTREAM(ServerInStream);
+      DOWNLOADFROMSTREAM(ServerInStream,'','','',ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnMessage@5009(Operation@1000000000 : Text;Parameter@1000000001 : Text;ParameterNo@1000000002 : Integer);
+    BEGIN
+      CASE Operation OF
+        'Open'    : ReportForNavDialog.OPEN(Parameter);
+        'Update'  : ReportForNavDialog.UPDATE(ParameterNo,Parameter);
+        'Close'   : ReportForNavDialog.CLOSE();
+        'Message' : MESSAGE(Parameter);
+        'Error'   : ERROR(Parameter);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPrintPreview@5011(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream";Preview@1000000001 : Boolean);
+    VAR
+      ClientFileName@1000000002 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      WHILE ReportForNavClient.PrintPreviewDialog(ClientFileName,ReportForNav.PrinterSettings.PrinterName,Preview) DO BEGIN
+        ReportForNav.HandlePrintPreviewRequest(ReportForNavClient.GetPrintPreviewRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    BEGIN
+    END.
+  }
+  RDLDATA
+  {
+    <?xml version="1.0" encoding="utf-8"?>
+<Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
+  <Description>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</Description>
+  <AutoRefresh>0</AutoRefresh>
+  <DataSources>
+    <DataSource Name="DataSource">
+      <ConnectionProperties>
+        <DataProvider>SQL</DataProvider>
+        <ConnectString />
+      </ConnectionProperties>
+      <rd:SecurityType>None</rd:SecurityType>
+      <rd:DataSourceID>741aefb1-f8b8-4998-ad60-b415b8ff3137</rd:DataSourceID>
+    </DataSource>
+  </DataSources>
+  <ReportSections>
+    <ReportSection>
+      <Body>
+        <Height>2in</Height>
+        <Style />
+      </Body>
+      <Width>6.5in</Width>
+      <Page>
+        <Style />
+      </Page>
+    </ReportSection>
+  </ReportSections>
+  <rd:ReportUnitType>Invalid</rd:ReportUnitType>
+  <rd:ReportID>1f30d2d0-127e-485e-881f-d97fe89179eb</rd:ReportID>
+  <DataSets>
+    <DataSet Name="DataSet_Result">
+      <Fields>
+        <Field Name="TODAY_0_4">
+          <DataField>TODAY_0_4</DataField>
+        </Field>
+        <Field Name="USERID">
+          <DataField>USERID</DataField>
+        </Field>
+        <Field Name="Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Teams">
+          <DataField>Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Teams</DataField>
+        </Field>
+        <Field Name="ReportForNavPageNo">
+          <DataField>ReportForNavPageNo</DataField>
+        </Field>
+        <Field Name="Feld19_Debitor">
+          <DataField>Feld19_Debitor</DataField>
+        </Field>
+        <Field Name="Feld13_Debitor">
+          <DataField>Feld13_Debitor</DataField>
+        </Field>
+        <Field Name="Feld9_Belegkopf">
+          <DataField>Feld9_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld6_Debitor">
+          <DataField>Feld6_Debitor</DataField>
+        </Field>
+        <Field Name="Index_Belegkopf">
+          <DataField>Index_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld10_Debitor">
+          <DataField>Feld10_Debitor</DataField>
+        </Field>
+        <Field Name="Feld12_Debitor">
+          <DataField>Feld12_Debitor</DataField>
+        </Field>
+        <Field Name="Feld7_Belegkopf">
+          <DataField>Feld7_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld6_Belegkopf">
+          <DataField>Feld6_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld2_Belegkopf">
+          <DataField>Feld2_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld12_Belegkopf">
+          <DataField>Feld12_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld10_Belegkopf">
+          <DataField>Feld10_Belegkopf</DataField>
+        </Field>
+        <Field Name="Belegnr_Belegkopf">
+          <DataField>Belegnr_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld3_Belegkopf">
+          <DataField>Feld3_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld4_Belegkopf">
+          <DataField>Feld4_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld4_BelegkopfFormat">
+          <DataField>Feld4_BelegkopfFormat</DataField>
+        </Field>
+        <Field Name="Datum_Belegkopf">
+          <DataField>Datum_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld4_Projekte">
+          <DataField>Feld4_Projekte</DataField>
+        </Field>
+        <Field Name="Feld4_ProjekteFormat">
+          <DataField>Feld4_ProjekteFormat</DataField>
+        </Field>
+        <Field Name="Feld9_Projekte">
+          <DataField>Feld9_Projekte</DataField>
+        </Field>
+        <Field Name="Feld1_Projekte">
+          <DataField>Feld1_Projekte</DataField>
+        </Field>
+        <Field Name="Feld5_Projekte">
+          <DataField>Feld5_Projekte</DataField>
+        </Field>
+        <Field Name="Feld5_ProjekteFormat">
+          <DataField>Feld5_ProjekteFormat</DataField>
+        </Field>
+        <Field Name="Feld8_Projekte">
+          <DataField>Feld8_Projekte</DataField>
+        </Field>
+        <Field Name="Belegnr_Projekte">
+          <DataField>Belegnr_Projekte</DataField>
+        </Field>
+        <Field Name="Feld10_Bemerkung">
+          <DataField>Feld10_Bemerkung</DataField>
+        </Field>
+        <Field Name="Feld1_Bemerkung">
+          <DataField>Feld1_Bemerkung</DataField>
+        </Field>
+        <Field Name="Datum_Bemerkung">
+          <DataField>Datum_Bemerkung</DataField>
+        </Field>
+        <Field Name="Feld16_Belegzeile">
+          <DataField>Feld16_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld11_Belegzeile">
+          <DataField>Feld11_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld8_Belegzeile">
+          <DataField>Feld8_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld14_Belegzeile">
+          <DataField>Feld14_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld13_Belegzeile">
+          <DataField>Feld13_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld7_Belegzeile">
+          <DataField>Feld7_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld10_Belegzeile">
+          <DataField>Feld10_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld6_Belegzeile">
+          <DataField>Feld6_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld3_Belegzeile">
+          <DataField>Feld3_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld4_Belegzeile">
+          <DataField>Feld4_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld4_BelegzeileFormat">
+          <DataField>Feld4_BelegzeileFormat</DataField>
+        </Field>
+        <Field Name="Feld5_Belegzeile">
+          <DataField>Feld5_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld5_BelegzeileFormat">
+          <DataField>Feld5_BelegzeileFormat</DataField>
+        </Field>
+        <Field Name="Feld12_Belegzeile">
+          <DataField>Feld12_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld15_Belegzeile">
+          <DataField>Feld15_Belegzeile</DataField>
+        </Field>
+        <Field Name="ItemDescription__ItemDescription2">
+          <DataField>ItemDescription__ItemDescription2</DataField>
+        </Field>
+        <Field Name="TODAY_0_42">
+          <DataField>TODAY_0_42</DataField>
+        </Field>
+        <Field Name="USERID2">
+          <DataField>USERID2</DataField>
+        </Field>
+        <Field Name="Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Team2">
+          <DataField>Verkaufercode__verkaufer_BetreuerInnendienst__betreuer_Team2</DataField>
+        </Field>
+        <Field Name="ReportForNavPageNo2">
+          <DataField>ReportForNavPageNo2</DataField>
+        </Field>
+        <Field Name="Feld19_Arch_Debitor">
+          <DataField>Feld19_Arch_Debitor</DataField>
+        </Field>
+        <Field Name="Feld13_Arch_Debitor">
+          <DataField>Feld13_Arch_Debitor</DataField>
+        </Field>
+        <Field Name="Feld9_Arch_Belegkopf">
+          <DataField>Feld9_Arch_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld6_Arch_Debitor">
+          <DataField>Feld6_Arch_Debitor</DataField>
+        </Field>
+        <Field Name="Index_Arch_Belegkopf">
+          <DataField>Index_Arch_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld10_Arch_Debitor">
+          <DataField>Feld10_Arch_Debitor</DataField>
+        </Field>
+        <Field Name="Feld12_Arch_Debitor">
+          <DataField>Feld12_Arch_Debitor</DataField>
+        </Field>
+        <Field Name="Feld7_Arch_Belegkopf">
+          <DataField>Feld7_Arch_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld6_Arch_Belegkopf">
+          <DataField>Feld6_Arch_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld2_Arch_Belegkopf">
+          <DataField>Feld2_Arch_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld10_Arch_Belegkopf">
+          <DataField>Feld10_Arch_Belegkopf</DataField>
+        </Field>
+        <Field Name="Belegnr_Arch_Belegkopf">
+          <DataField>Belegnr_Arch_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld19_Arch_Belegkopf">
+          <DataField>Feld19_Arch_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld4_Arch_Belegkopf">
+          <DataField>Feld4_Arch_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld4_Arch_BelegkopfFormat">
+          <DataField>Feld4_Arch_BelegkopfFormat</DataField>
+        </Field>
+        <Field Name="Datum_Arch_Belegkopf">
+          <DataField>Datum_Arch_Belegkopf</DataField>
+        </Field>
+        <Field Name="Feld4_Arch_Projekte">
+          <DataField>Feld4_Arch_Projekte</DataField>
+        </Field>
+        <Field Name="Feld4_Arch_ProjekteFormat">
+          <DataField>Feld4_Arch_ProjekteFormat</DataField>
+        </Field>
+        <Field Name="Feld9_Arch_Projekte">
+          <DataField>Feld9_Arch_Projekte</DataField>
+        </Field>
+        <Field Name="Feld1_Arch_Projekte">
+          <DataField>Feld1_Arch_Projekte</DataField>
+        </Field>
+        <Field Name="Feld5_Arch_Projekte">
+          <DataField>Feld5_Arch_Projekte</DataField>
+        </Field>
+        <Field Name="Feld5_Arch_ProjekteFormat">
+          <DataField>Feld5_Arch_ProjekteFormat</DataField>
+        </Field>
+        <Field Name="Feld8_Arch_Projekte">
+          <DataField>Feld8_Arch_Projekte</DataField>
+        </Field>
+        <Field Name="Belegnr_Arch_Projekte">
+          <DataField>Belegnr_Arch_Projekte</DataField>
+        </Field>
+        <Field Name="Feld10_Arch_Bemerkung">
+          <DataField>Feld10_Arch_Bemerkung</DataField>
+        </Field>
+        <Field Name="Feld1_Arch_Bemerkung">
+          <DataField>Feld1_Arch_Bemerkung</DataField>
+        </Field>
+        <Field Name="Datum_Arch_Bemerkung">
+          <DataField>Datum_Arch_Bemerkung</DataField>
+        </Field>
+        <Field Name="Feld16_Arch_Belegzeile">
+          <DataField>Feld16_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld11_Arch_Belegzeile">
+          <DataField>Feld11_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld8_Arch_Belegzeile">
+          <DataField>Feld8_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld14_Arch_Belegzeile">
+          <DataField>Feld14_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld13_Arch_Belegzeile">
+          <DataField>Feld13_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld7_Arch_Belegzeile">
+          <DataField>Feld7_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld10_Arch_Belegzeile">
+          <DataField>Feld10_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld6_Arch_Belegzeile">
+          <DataField>Feld6_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld3_Arch_Belegzeile">
+          <DataField>Feld3_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld4_Arch_Belegzeile">
+          <DataField>Feld4_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld4_Arch_BelegzeileFormat">
+          <DataField>Feld4_Arch_BelegzeileFormat</DataField>
+        </Field>
+        <Field Name="Feld5_Arch_Belegzeile">
+          <DataField>Feld5_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld5_Arch_BelegzeileFormat">
+          <DataField>Feld5_Arch_BelegzeileFormat</DataField>
+        </Field>
+        <Field Name="Feld12_Arch_Belegzeile">
+          <DataField>Feld12_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="Feld15_Arch_Belegzeile">
+          <DataField>Feld15_Arch_Belegzeile</DataField>
+        </Field>
+        <Field Name="ItemDescription__ItemDescription22">
+          <DataField>ItemDescription__ItemDescription22</DataField>
+        </Field>
+      </Fields>
+      <Query>
+        <DataSourceName>DataSource</DataSourceName>
+        <CommandText />
+      </Query>
+      <rd:DataSetInfo>
+        <rd:DataSetName>DataSet</rd:DataSetName>
+        <rd:SchemaPath>Report.xsd</rd:SchemaPath>
+        <rd:TableName>Result</rd:TableName>
+      </rd:DataSetInfo>
+    </DataSet>
+  </DataSets>
+</Report>
+    END_OF_RDLDATA
+  }
+}
+
