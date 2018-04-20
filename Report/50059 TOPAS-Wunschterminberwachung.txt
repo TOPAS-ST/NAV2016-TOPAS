@@ -1,0 +1,839 @@
+OBJECT Report 50059 TOPAS-Wunschterminberwachung
+{
+  OBJECT-PROPERTIES
+  {
+    Date=09.06.17;
+    Time=14:05:52;
+    Modified=Yes;
+    Version List=Topas Bericht,FORNAV2.0.0.1189/1189;
+  }
+  PROPERTIES
+  {
+    OnInitReport=BEGIN
+                   ReportForNav:= ReportForNav.Report(CurrReport.OBJECTID,CurrReport.LANGUAGE,SERIALNUMBER,USERID,COMPANYNAME);ReportForNav.Init;
+                 END;
+
+    OnPreReport=BEGIN
+                  DebFilter := "Sales Header".GETFILTERS;
+                  VerkZeileFilter := "Sales Line".GETFILTERS;
+                  PeriodeText := "Sales Line".GETFILTER("Promised Delivery Date");
+                  ;ReportForNav.OpenDesigner:=ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
+                END;
+
+    OnPostReport=BEGIN
+                   ReportForNav.Post;
+                 END;
+
+  }
+  DATASET
+  {
+    { 1   ;    ;DataItem;                    ;
+               DataItemTable=Table13;
+               PrintOnlyIfDetail=Yes }
+
+    { 2   ;1   ;DataItem;                    ;
+               DataItemTable=Table36;
+               PrintOnlyIfDetail=Yes;
+               OnPreDataItem=BEGIN
+                               //ReportForNav.GetDataItem('SalesHeader').NewPagePerRecord := NurEinProSeiteDrucken;
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  deb := "Sales Header"."Sell-to Customer Name";
+                                  debnr :="Sales Header"."Sell-to Customer No.";
+                                END;
+
+               ReqFilterFields=Order Date,Location Code;
+               DataItemLink=Betreuer Innendienst=FIELD(Code) }
+
+    { 3   ;2   ;Column  ;Code_Salesperson_Purchaser;
+               SourceExpr="Salesperson/Purchaser".Code }
+
+    { 4   ;2   ;Column  ;USERID              ;
+               SourceExpr=USERID }
+
+    { 5   ;2   ;Column  ;ReportForNavPageNo  ;
+               SourceExpr=ReportForNav.PageNo }
+
+    { 6   ;2   ;Column  ;TODAY_0_4           ;
+               SourceExpr=FORMAT(TODAY,0,4) }
+
+    { 7   ;2   ;Column  ;SalesHeaderTABLENAME___DebFilter;
+               SourceExpr="Sales Header".TABLENAME + ': ' + DebFilter }
+
+    { 8   ;2   ;Column  ;STRSUBSTNO_Auftragszeile_Pct1_VerkZeileFilter;
+               SourceExpr=STRSUBSTNO('Auftragszeile: %1',VerkZeileFilter) }
+
+    { 9   ;2   ;DataItem;                    ;
+               DataItemTable=Table37;
+               DataItemTableView=SORTING(Document Type,Bill-to Customer No.,Currency Code)
+                                 WHERE(Document Type=CONST(Order),
+                                       Outstanding Quantity=FILTER(<>0),
+                                       Unit Cost (LCY)=FILTER(<>0));
+               PrintOnlyIfDetail=Yes;
+               ReqFilterHeadingML=DEU=Verkaufszeile;
+               OnAfterGetRecord=BEGIN
+                                  NeuerAuftrag := "Sales Line"."Document No." <> AuftragKopf."No.";
+                                  IF NeuerAuftrag THEN
+                                    AuftragKopf.GET(1,"Sales Line"."Document No.");
+                                  IF "Sales Line"."Promised Delivery Date" <= WORKDATE THEN
+                                    RckstandMenge := "Sales Line"."Outstanding Quantity"
+                                  ELSE
+                                    RckstandMenge := 0;
+                                  AuftragBetrag := ROUND("Sales Line"."Outstanding Quantity" * Amount / Quantity);
+                                  AuftragBetragMW := AuftragBetrag;
+                                  {
+                                  //Auskommentiert am 15.05.08 A
+                                  IF AuftragKopf."Currency Code" <> '' THEN BEGIN
+                                    IF AuftragKopf."Currency Factor" <> 0 THEN
+                                      AuftragBetragMW :=
+                                        ROUND(
+                                          W„hrungWechKurs.UmrechnenBetrFWInMW(
+                                            WORKDATE,AuftragKopf.W„hrungscode,
+                                            AuftragBetragMW,AuftragKopf.W„hrungsfaktor));
+                                    IF Betr„geDruckInMW THEN BEGIN
+                                      "VK-Preis" :=
+                                        ROUND(W„hrungWechKurs.UmrechnenBetrFWInMW(
+                                            WORKDATE,AuftragKopf.W„hrungscode,
+                                            "VK-Preis",AuftragKopf.W„hrungsfaktor));
+                                      AuftragBetrag := AuftragBetragMW;
+                                    END;
+                                  END;
+                                  }
+                                  //Auskommentiert am 15.05.08 E
+                                  W„hrungscode2 := AuftragKopf."Currency Code";
+                                  IF Betr„geDruckInMW THEN
+                                    W„hrungscode2 := '';
+                                  W„hrungSummenPuffer.UpdateTotal(
+                                    W„hrungscode2,
+                                    AuftragBetrag,
+                                    Z„hler1,
+                                    Z„hler1);
+                                  marge := 0;
+                                  IF ("Sales Line"."Unit Cost" <> 0) AND ("Sales Line"."Unit Price" <> 0) THEN
+                                    marge := (("Unit Price"-"Unit Cost") / "Unit Price" * 100)
+                                  ELSE
+                                    marge := 999;
+                                  IF "Currency Code" = '' THEN
+                                    waehrung := 'EUR'
+                                  ELSE
+                                    waehrung:="Currency Code";
+                                  vk_mw := 0;
+                                  IF ("Sales Header"."Currency Factor" <> 0) AND ("Unit Price" <> 0) THEN
+                                    vk_mw := ("Unit Price" / "Sales Header"."Currency Factor")
+                                  ELSE
+                                    vk_mw := "Unit Price";
+                                END;
+
+               ReqFilterFields=Promised Delivery Date,Unit Cost (LCY),No.,Manufacturer Code;
+               DataItemLink=Sell-to Customer No.=FIELD(Sell-to Customer No.),
+                            Document No.=FIELD(No.) }
+
+    { 10  ;3   ;DataItem;                    ;
+               DataItemTable=Table27;
+               PrintOnlyIfDetail=No;
+               OnPreDataItem=BEGIN
+                               Item.CALCFIELDS(Item.Inventory);
+                             END;
+
+               ReqFilterFields=Location Filter;
+               DataItemLink=No.=FIELD(No.) }
+
+    { 11  ;4   ;Column  ;TerritoryCode_SalesHeader;
+               SourceExpr="Sales Header"."Territory Code" }
+
+    { 12  ;4   ;Column  ;SalespersonCode_SalesHeader;
+               SourceExpr="Sales Header"."Salesperson Code" }
+
+    { 13  ;4   ;Column  ;BetreuerInnendienst_SalesHeader;
+               SourceExpr="Sales Header"."Betreuer Innendienst" }
+
+    { 14  ;4   ;Column  ;debnr               ;
+               SourceExpr=debnr }
+
+    { 15  ;4   ;Column  ;deb                 ;
+               SourceExpr=deb }
+
+    { 16  ;4   ;Column  ;Inventory_Item      ;
+               SourceExpr=Inventory;
+               AutoCalcField=Yes }
+
+    { 17  ;4   ;Column  ;No_SalesHeader      ;
+               SourceExpr="Sales Header"."No." }
+
+    { 18  ;4   ;Column  ;OrderDate_SalesHeader;
+               SourceExpr="Sales Header"."Order Date" }
+
+    { 19  ;4   ;Column  ;Sell_toCustomerNo_SalesLine;
+               SourceExpr="Sales Line"."Sell-to Customer No." }
+
+    { 20  ;4   ;Column  ;RequestedDeliveryDate_SalesLine;
+               SourceExpr="Sales Line"."Requested Delivery Date" }
+
+    { 21  ;4   ;Column  ;CurrencyFactor_SalesHeader;
+               SourceExpr="Sales Header"."Currency Factor" }
+
+    { 22  ;4   ;Column  ;waehrung            ;
+               SourceExpr=waehrung }
+
+    { 23  ;4   ;Column  ;UnitCost_LCY_SalesLine;
+               SourceExpr="Sales Line"."Unit Cost (LCY)" }
+
+    { 24  ;4   ;Column  ;marge               ;
+               SourceExpr=marge }
+
+    { 25  ;4   ;Column  ;AuftragBetrag       ;
+               SourceExpr=AuftragBetrag;
+               AutoFormatType=1 }
+
+    { 26  ;4   ;Column  ;UnitPrice_SalesLine ;
+               SourceExpr="Sales Line"."Unit Price";
+               AutoFormatType=2 }
+
+    { 27  ;4   ;Column  ;OutstandingQuantity_SalesLine;
+               SourceExpr="Sales Line"."Outstanding Quantity" }
+
+    { 28  ;4   ;Column  ;Quantity_SalesLine  ;
+               SourceExpr="Sales Line".Quantity }
+
+    { 29  ;4   ;Column  ;PromisedDeliveryDate_SalesLine;
+               SourceExpr="Sales Line"."Promised Delivery Date" }
+
+    { 30  ;4   ;Column  ;Artikelnr2_SalesLine;
+               SourceExpr="Sales Line"."Artikelnr. 2" }
+
+    { 31  ;3   ;DataItem;                    ;
+               DataItemTable=Table50014;
+               PrintOnlyIfDetail=No;
+               DataItemLink=Quotenr.=FIELD(Quotenr.) }
+
+    { 32  ;4   ;Column  ;QuotenrHersteller_Quotedaten;
+               SourceExpr="Quotenr. Hersteller" }
+
+    { 33  ;2   ;DataItem;                    ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=FILTER(1..));
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN
+                                    OK := W„hrungSummenPuffer.FIND('-')
+                                  ELSE
+                                    OK := W„hrungSummenPuffer.NEXT <> 0;
+                                  IF NOT OK THEN
+                                    CurrReport.BREAK;
+                                  W„hrungSummenPuffer2.UpdateTotal(
+                                    W„hrungSummenPuffer."Currency Code",
+                                    W„hrungSummenPuffer."Total Amount",
+                                    Z„hler1,
+                                    Z„hler1);
+                                  IF W„hrungSummenPuffer."Currency Code" = '' THEN
+                                    waehrung2 := 'EUR'
+                                  ELSE
+                                    waehrung2 := W„hrungSummenPuffer."Currency Code";
+                                END;
+
+               OnPostDataItem=BEGIN
+                                W„hrungSummenPuffer.DELETEALL;
+                              END;
+                               }
+
+    { 34  ;1   ;DataItem;Integer2            ;
+               DataItemTable=Table2000000026;
+               DataItemTableView=SORTING(Number)
+                                 WHERE(Number=FILTER(1..));
+               OnAfterGetRecord=BEGIN
+                                  IF Number = 1 THEN
+                                    OK := W„hrungSummenPuffer2.FIND('-')
+                                  ELSE
+                                    OK := W„hrungSummenPuffer2.NEXT <> 0;
+                                  IF NOT OK THEN
+                                    CurrReport.BREAK;
+                                  IF W„hrungSummenPuffer2."Currency Code" = '' THEN
+                                    waehrung3 := 'EUR'
+                                  ELSE
+                                    waehrung3 := W„hrungSummenPuffer2."Currency Code";
+                                END;
+
+               OnPostDataItem=BEGIN
+                                W„hrungSummenPuffer2.DELETEALL;
+                              END;
+                               }
+
+    { 35  ;2   ;Column  ;waehrung22          ;
+               SourceExpr=waehrung2 }
+
+    { 36  ;2   ;Column  ;TotalAmount_WahrungSummenPuffer2;
+               SourceExpr=W„hrungSummenPuffer2."Total Amount";
+               AutoFormatType=1;
+               AutoFormatExpr=W„hrungSummenPuffer."Currency Code" }
+
+    { 37  ;2   ;Column  ;waehrung3           ;
+               SourceExpr=waehrung3 }
+
+  }
+  REQUESTPAGE
+  {
+    PROPERTIES
+    {
+      SaveValues=Yes;
+    }
+    CONTROLS
+    {
+      { 1900000001;0;Container;
+                  ContainerType=ContentArea }
+
+      { 1900000002;1;Group  ;
+                  CaptionML=[CSY=Moznosti;
+                             DAN=Indstillinger;
+                             DEU=Optionen;
+                             ENU=Options;
+                             FIN=Vaihtoehdot;
+                             ISL=Valkostir;
+                             NLD=Opties;
+                             NOR=Alternativer;
+                             SVE=Alternativ;
+                             ITS=Opzioni;
+                             NLB=Opties] }
+
+      { 1   ;2   ;Field     ;
+                  CaptionML=DEU=Betr„ge in MW anzeigen;
+                  SourceExpr=Betr„geDruckInMW }
+
+      { 2   ;2   ;Field     ;
+                  CaptionML=DEU=Neue Seite pro Debitor;
+                  SourceExpr=NurEinProSeiteDrucken }
+
+      { 5000;2   ;Field     ;
+                  Name=ForNavOpenDesigner;
+                  CaptionML=ENU=Open Designer;
+                  SourceExpr=ReportForNavOpenDesigner;
+                  Visible=ReportForNavAllowDesign }
+
+    }
+  }
+  LABELS
+  {
+  }
+  CODE
+  {
+    VAR
+      vk_mw@1140000 : Decimal;
+      marge@1140001 : Decimal;
+      W„hrungWechKurs@1140002 : Record 330;
+      W„hrungSummenPuffer@1140003 : TEMPORARY Record 332;
+      W„hrungSummenPuffer2@1140004 : TEMPORARY Record 332;
+      AuftragKopf@1140005 : Record 36;
+      DebFilter@1140006 : Text[250];
+      VerkZeileFilter@1140007 : Text[250];
+      AuftragBetrag@1140008 : Decimal;
+      AuftragBetragMW@1140009 : Decimal;
+      Betr„geDruckInMW@1140010 : Boolean;
+      PeriodeText@1140011 : Text[30];
+      NurEinProSeiteDrucken@1140012 : Boolean;
+      RckstandMenge@1140013 : Decimal;
+      NeuerAuftrag@1140014 : Boolean;
+      OK@1140015 : Boolean;
+      Z„hler1@1140016 : Integer;
+      W„hrungscode2@1140017 : Code[10];
+      waehrung@1140018 : Code[10];
+      waehrung2@1140019 : Code[10];
+      waehrung3@1140020 : Code[10];
+      deb@1140021 : Text[60];
+      debnr@1140022 : Code[20];
+      v_quote@1140023 : Integer;
+      ReportForNav@5000 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
+      ReportForNavClient@5003 : DotNet "'ForNav.Reports.2.0.0.1189, Version=2.0.0.1189, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
+      ReportForNavDialog@5001 : Dialog;
+      ReportForNavOpenDesigner@5002 : Boolean;
+      ReportForNavAllowDesign@5004 : Boolean INDATASET;
+
+    LOCAL PROCEDURE OnPreSectionSalesHeader_Header2@5056(VAR "Sales Header"@1000000000 : Record 36);
+    BEGIN
+      WITH "Sales Header" DO BEGIN
+        ReportForNav.ShowOutput(Betr„geDruckInMW);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionSalesHeader_Header3@5057(VAR "Sales Header"@1000000000 : Record 36);
+    BEGIN
+      WITH "Sales Header" DO BEGIN
+        ReportForNav.ShowOutput((ReportForNav.PageNo = 1) AND (DebFilter <> ''));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionSalesHeader_Header4@5058(VAR "Sales Header"@1000000000 : Record 36);
+    BEGIN
+      WITH "Sales Header" DO BEGIN
+        ReportForNav.ShowOutput((ReportForNav.PageNo = 1) AND (VerkZeileFilter <> ''));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionItem_Header7@5059(VAR Item@1000000000 : Record 27);
+    BEGIN
+      WITH Item DO BEGIN
+        //ReportForNav.ShowOutput((Verkaufszeile.Lieferdatum>Verkaufszeile.Wunschtermin) AND
+        //(debnr=Verkaufszeile."Verk. an Deb.-Nr.") AND (Verkaufszeile.Restauftragsmenge > 0));
+        {//Auskommentiert am 08.02.2012-ST
+        IF ("Sales Header"."Order Date" > WORKDATE - 8 ) THEN BEGIN
+          ReportForNav.ShowOutput(("Sales Line"."Promised Delivery Date" > "Sales Line"."Requested Delivery Date")
+          AND ("Sales Line"."Promised Delivery Date" <> 31122055D) AND ("Sales Line"."Requested Delivery Date" <> 31122054D));
+        END ELSE BEGIN
+        }
+        IF "Sales Line"."Requested Delivery Date" = (31122054D) THEN BEGIN
+          ReportForNav.ShowOutput(("Sales Line"."Promised Delivery Date" > WORKDATE)
+          AND (debnr = "Sales Line"."Sell-to Customer No.")
+          AND ("Sales Line"."Outstanding Quantity" > 0));
+        END ELSE BEGIN
+          ReportForNav.ShowOutput(("Sales Line"."Promised Delivery Date" > "Sales Line"."Requested Delivery Date")
+          AND (debnr = "Sales Line"."Sell-to Customer No.")
+          AND ("Sales Line"."Outstanding Quantity" > 0));
+        END;
+        //  END;
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionItem_Body8@5060(VAR Item@1000000000 : Record 27);
+    BEGIN
+      WITH Item DO BEGIN
+        {//Auskommentiert am 08.02.2012-ST
+        IF ("Sales Header"."Order Date" > WORKDATE - 8 ) THEN
+          BEGIN
+            ReportForNav.ShowOutput(("Sales Line"."Promised Delivery Date" > "Sales Line"."Requested Delivery Date")
+            AND ("Sales Line"."Promised Delivery Date" <> 31122055D) AND ("Sales Line"."Requested Delivery Date" <> 31122054D));
+          END
+        ELSE
+          BEGIN
+        }
+        IF "Sales Line"."Requested Delivery Date" = (31122054D) THEN BEGIN
+          ReportForNav.ShowOutput(("Sales Line"."Promised Delivery Date" > WORKDATE) AND ("Sales Line"."Outstanding Quantity" > 0));
+          //ReportForNav.ShowOutput(("Sales Line"."Promised Delivery Date" > WORKDATE + 30) AND ("Sales Line"."Outstanding Quantity" > 0));
+        END ELSE BEGIN
+          ReportForNav.ShowOutput(("Sales Line"."Promised Delivery Date" > "Sales Line"."Requested Delivery Date")
+          AND ("Sales Line"."Outstanding Quantity" > 0));
+        END;
+        //  END
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionQuotedaten_Body9@5061(VAR Quotedaten@1000000000 : Record 50014);
+    BEGIN
+      WITH Quotedaten DO BEGIN
+        // wird nicht mehr angezeigt
+        v_quote := 0;
+        ReportForNav.ShowOutput(("Quotenr. Hersteller" <> '') AND
+        ("Sales Line"."Promised Delivery Date" > "Sales Line"."Requested Delivery Date") AND (v_quote = 1));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionInteger2_Body10@5062(VAR Integer2@1000000000 : Record 2000000026);
+    BEGIN
+      WITH Integer2 DO BEGIN
+        ReportForNav.ShowOutput(Betr„geDruckInMW);
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionInteger2_Body11@5063(VAR Integer2@1000000000 : Record 2000000026);
+    BEGIN
+      WITH Integer2 DO BEGIN
+        ReportForNav.ShowOutput(NOT Betr„geDruckInMW);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnInit@5002();
+    VAR
+      ReportLayoutSelection@1000 : Record 9651;
+      CustomReportLayout@1001 : Record 9650;
+      CustomLayoutID@1002 : Variant;
+      InStream@1004 : InStream;
+      EmptyLayout@1003 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+      ReportForNav.OData := GETURL(CLIENTTYPE::OData, COMPANYNAME, OBJECTTYPE::Page, 7702);
+      IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN
+        CustomLayoutID := ReportLayoutSelection.GetTempLayoutSelected
+      ELSE
+        IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN
+          CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+
+      IF (FORMAT(CustomLayoutID) <> EmptyLayout) AND CustomReportLayout.GET(CustomLayoutID) THEN BEGIN
+        CustomReportLayout.TESTFIELD(Type,CustomReportLayout.Type::RDLC);
+        CustomReportLayout.CALCFIELDS(Layout);
+        CustomReportLayout.Layout.CREATEINSTREAM(InStream,TEXTENCODING::UTF8);
+        ReportForNav.IsCustomLayout := TRUE;
+      END ELSE
+        REPORT.RDLCLAYOUT(ReportForNav.ReportID,InStream);
+
+      ReportForNav.LoadRdlc(InStream);
+      IF COPYSTR(LOWERCASE(GETURL(CLIENTTYPE::Current, COMPANYNAME, OBJECTTYPE::Codeunit, 1)), 1, 14) = 'dynamicsnav://' THEN BEGIN
+        ReportForNav.CheckClientAddIn();
+        ReportForNavClient := ReportForNavClient.Report(ReportForNav.Definition);
+        ReportForNavAllowDesign := ReportForNavClient.HasDesigner AND NOT ReportForNav.ParameterMode;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnSave@5010(Base64Layout@1000 : Text);
+    VAR
+      CustomReportLayout@1002 : Record 9650;
+      ReportLayoutSelection@1003 : Record 9651;
+      LayoutId@1004 : Variant;
+      TempBlob@1007 : Record 99008535;
+      OutStream@1006 : OutStream;
+      Bstr@1005 : BigText;
+      EmptyLayout@1001 : Text;
+    BEGIN
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+      IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN BEGIN
+        IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN BEGIN
+          LayoutId := ReportLayoutSelection.GetTempLayoutSelected;
+        END ELSE BEGIN
+          IF ReportLayoutSelection.GET(ReportForNav.ReportID, COMPANYNAME) THEN BEGIN
+          LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+          END;
+        END;
+      END ELSE BEGIN
+        IF CONFIRM('Default custom layout not found. Create one?') THEN;
+      END;
+      IF FORMAT(LayoutId) <> EmptyLayout THEN BEGIN
+        TempBlob.Blob.CREATEOUTSTREAM(OutStream);
+        Bstr.ADDTEXT(Base64Layout);
+        Bstr.WRITE(OutStream);
+        CustomReportLayout.GET(LayoutId);
+        CustomReportLayout.ImportLayoutBlob(TempBlob, 'RDL');
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnParameters@5008(Parameters@1000 : Text);
+    BEGIN
+      ReportForNav.Parameters := REPORT.RUNREQUESTPAGE(ReportForNav.ReportID, Parameters);
+    END;
+
+    EVENT ReportForNav@5000::OnPreview@5009(Parameters@1000 : Text;FileName@1005 : Text);
+    VAR
+      PdfFile@1002 : File;
+      InStream@1003 : InStream;
+      OutStream@1004 : OutStream;
+    BEGIN
+      COMMIT;
+      PdfFile.CREATETEMPFILE;
+      PdfFile.CREATEOUTSTREAM(OutStream);
+      REPORT.SAVEAS(ReportForNav.ReportID, Parameters, REPORTFORMAT::Pdf, OutStream);
+      PdfFile.CREATEINSTREAM(InStream);
+      ReportForNavClient.ShowDesigner;
+      IF ReportForNav.IsValidPdf(PdfFile.NAME) THEN DOWNLOADFROMSTREAM(InStream, '', '', '', FileName);
+      PdfFile.CLOSE;
+    END;
+
+    EVENT ReportForNav@5000::OnPreSection@5012(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+      CASE DataItemId OF
+        'SalesHeader': CASE SectionId OF
+          'Header2': OnPreSectionSalesHeader_Header2("Sales Header");
+          'Header3': OnPreSectionSalesHeader_Header3("Sales Header");
+          'Header4': OnPreSectionSalesHeader_Header4("Sales Header");
+        END;
+        'Item': CASE SectionId OF
+          'Header7': OnPreSectionItem_Header7(Item);
+          'Body8': OnPreSectionItem_Body8(Item);
+        END;
+        'Quotedaten': CASE SectionId OF
+          'Body9': OnPreSectionQuotedaten_Body9(Quotedaten);
+        END;
+        'Integer2': CASE SectionId OF
+          'Body10': OnPreSectionInteger2_Body10(Integer2);
+          'Body11': OnPreSectionInteger2_Body11(Integer2);
+        END;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPostSection@50013(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+    END;
+
+    EVENT ReportForNav@5000::OnClientOperation@5008(Args@1000 : DotNet "'mscorlib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Array");
+    VAR
+      op@1001 : Text;
+      FileMgmt@1002 : Codeunit 419;
+      Process@1006 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.Process" RUNONCLIENT;
+      PathObj@1005 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Path" RUNONCLIENT;
+      FileVersionInfo@1003 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.FileVersionInfo" RUNONCLIENT;
+      DirectoryHelper@1004 : DotNet "'mscorlib'.System.IO.Directory" RUNONCLIENT;
+    BEGIN
+      op := Args.GetValue(0);
+      CASE op OF
+        'TempPath': ReportForNav.Result := PathObj.GetTempPath();
+        'FileExists': ReportForNav.Result := FileMgmt.ClientFileExists(Args.GetValue(1));
+        'DirectoryExists': ReportForNav.Result := FileMgmt.ClientDirectoryExists(Args.GetValue(1));
+        'ProcessLocation': ReportForNav.Result := Process.GetCurrentProcess().MainModule.FileName;
+        'FileVersion': ReportForNav.Result := FileVersionInfo.GetVersionInfo(Args.GetValue(1)).FileVersion;
+        'DeleteFile': FileMgmt.DeleteClientFile(Args.GetValue(1));
+        'DeleteDirectory': IF STRLEN(Args.GetValue(1)) > 20 THEN
+          IF FileMgmt.ClientDirectoryExists(Args.GetValue(1)) THEN
+            DirectoryHelper.Delete(FORMAT(Args.GetValue(1)), TRUE);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnCheckForNavClientVersion@5007();
+    BEGIN
+      ReportForNavClient := ReportForNavClient.Report();
+      IF ReportForNav.MyFileVersion <> ReportForNavClient.MyFileVersion THEN
+        ERROR('You have version %1 of the Reports ForNAV assembly here:\\%2\\Please close your NAV client and update it to version %3.',
+              ReportForNavClient.MyFileVersion, ReportForNavClient.MyFileName, ReportForNav.MyFileVersion);
+    END;
+
+    EVENT ReportForNav@5000::OnSelectPrinter@5006();
+    BEGIN
+      ReportForNav.PrinterSettings.PageSettings := ReportForNavClient.SelectPrinter(ReportForNav.PrinterSettings.PrinterName,ReportForNav.PrinterSettings.ShowPrinterDialog,ReportForNav.PrinterSettings.PageSettings);
+    END;
+
+    EVENT ReportForNav@5000::OnPrint@5005(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream");
+    VAR
+      ClientFileName@1000000001 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      ReportForNavClient.Print(ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnDesign@5007(Data@1001 : Text);
+    BEGIN
+      ReportForNavClient.Data := Data;
+      WHILE ReportForNavClient.DesignReport DO BEGIN
+        ReportForNav.HandleRequest(ReportForNavClient.GetRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnView@5008(ClientFileName@1000000000 : Text;Parameters@1000000001 : Text;ServerFileName@1000000002 : Text);
+    VAR
+      ServerFile@1000000003 : File;
+      ServerInStream@1000000004 : InStream;
+    BEGIN
+      ServerFile.OPEN(ServerFileName);
+      ServerFile.CREATEINSTREAM(ServerInStream);
+      DOWNLOADFROMSTREAM(ServerInStream,'','','',ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnMessage@5009(Operation@1000000000 : Text;Parameter@1000000001 : Text;ParameterNo@1000000002 : Integer);
+    BEGIN
+      CASE Operation OF
+        'Open'    : ReportForNavDialog.OPEN(Parameter);
+        'Update'  : ReportForNavDialog.UPDATE(ParameterNo,Parameter);
+        'Close'   : ReportForNavDialog.CLOSE();
+        'Message' : MESSAGE(Parameter);
+        'Error'   : ERROR(Parameter);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPrintPreview@5011(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream";Preview@1000000001 : Boolean);
+    VAR
+      ClientFileName@1000000002 : Text[255];
+    BEGIN
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      WHILE ReportForNavClient.PrintPreviewDialog(ClientFileName,ReportForNav.PrinterSettings.PrinterName,Preview) DO BEGIN
+        ReportForNav.HandlePrintPreviewRequest(ReportForNavClient.GetPrintPreviewRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnTotals@5004(DataItemId@1000000000 : Text;Operation@1000000001 : Text;GroupTotalFieldNo@1000000002 : Integer);
+    VAR
+      CurrRecRef@1000000003 : RecordRef;
+      NextRecRef@1000000004 : RecordRef;
+      CurrKeyRef@1000000005 : KeyRef;
+      NextKeyRef@1000000006 : KeyRef;
+      FieldIndex@1000000007 : Integer;
+      GroupFieldIndex@1000000008 : Integer;
+    BEGIN
+      // Do not change (Autogenerated by Reports ForNAV) - Instead change the Create Totals, Total Fields or Group Total Fields properties on the Data item in the ForNAV designer
+      CASE DataItemId OF
+        'SalesHeader': WITH "Sales Header" DO CASE Operation OF
+           'Add': BEGIN
+                ReportForNav.AddTotal(DataItemId,0,AuftragBetragMW);
+              END;
+           'Restore': BEGIN
+                 AuftragBetragMW := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
+              END;
+        END;  'SalesLine': WITH "Sales Line" DO CASE Operation OF
+           'Add': BEGIN
+                ReportForNav.AddTotal(DataItemId,0,AuftragBetragMW);
+                ReportForNav.AddTotal(DataItemId,1,AuftragBetrag);
+              END;
+           'Restore': BEGIN
+                 AuftragBetragMW := ReportForNav.RestoreTotal(DataItemId,0,GroupTotalFieldNo);
+                 AuftragBetrag := ReportForNav.RestoreTotal(DataItemId,1,GroupTotalFieldNo);
+              END;
+        END;
+      END;
+    END;
+
+    BEGIN
+    END.
+  }
+  RDLDATA
+  {
+    <?xml version="1.0" encoding="utf-8"?>
+<Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
+  <Description>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</Description>
+  <AutoRefresh>0</AutoRefresh>
+  <DataSources>
+    <DataSource Name="DataSource">
+      <ConnectionProperties>
+        <DataProvider>SQL</DataProvider>
+        <ConnectString />
+      </ConnectionProperties>
+      <rd:SecurityType>None</rd:SecurityType>
+      <rd:DataSourceID>ca36407d-8984-4e7b-848c-dc9daff44e95</rd:DataSourceID>
+    </DataSource>
+  </DataSources>
+  <ReportSections>
+    <ReportSection>
+      <Body>
+        <Height>2in</Height>
+        <Style />
+      </Body>
+      <Width>6.5in</Width>
+      <Page>
+        <Style />
+      </Page>
+    </ReportSection>
+  </ReportSections>
+  <rd:ReportUnitType>Invalid</rd:ReportUnitType>
+  <rd:ReportID>32ff942f-c9a3-427c-921f-a5fdb0802445</rd:ReportID>
+  <DataSets>
+    <DataSet Name="DataSet_Result">
+      <Fields>
+        <Field Name="Code_Salesperson_Purchaser">
+          <DataField>Code_Salesperson_Purchaser</DataField>
+        </Field>
+        <Field Name="USERID">
+          <DataField>USERID</DataField>
+        </Field>
+        <Field Name="ReportForNavPageNo">
+          <DataField>ReportForNavPageNo</DataField>
+        </Field>
+        <Field Name="TODAY_0_4">
+          <DataField>TODAY_0_4</DataField>
+        </Field>
+        <Field Name="SalesHeaderTABLENAME___DebFilter">
+          <DataField>SalesHeaderTABLENAME___DebFilter</DataField>
+        </Field>
+        <Field Name="STRSUBSTNO_Auftragszeile_Pct1_VerkZeileFilter">
+          <DataField>STRSUBSTNO_Auftragszeile_Pct1_VerkZeileFilter</DataField>
+        </Field>
+        <Field Name="TerritoryCode_SalesHeader">
+          <DataField>TerritoryCode_SalesHeader</DataField>
+        </Field>
+        <Field Name="SalespersonCode_SalesHeader">
+          <DataField>SalespersonCode_SalesHeader</DataField>
+        </Field>
+        <Field Name="BetreuerInnendienst_SalesHeader">
+          <DataField>BetreuerInnendienst_SalesHeader</DataField>
+        </Field>
+        <Field Name="debnr">
+          <DataField>debnr</DataField>
+        </Field>
+        <Field Name="deb">
+          <DataField>deb</DataField>
+        </Field>
+        <Field Name="Inventory_Item">
+          <DataField>Inventory_Item</DataField>
+        </Field>
+        <Field Name="Inventory_ItemFormat">
+          <DataField>Inventory_ItemFormat</DataField>
+        </Field>
+        <Field Name="No_SalesHeader">
+          <DataField>No_SalesHeader</DataField>
+        </Field>
+        <Field Name="OrderDate_SalesHeader">
+          <DataField>OrderDate_SalesHeader</DataField>
+        </Field>
+        <Field Name="Sell_toCustomerNo_SalesLine">
+          <DataField>Sell_toCustomerNo_SalesLine</DataField>
+        </Field>
+        <Field Name="RequestedDeliveryDate_SalesLine">
+          <DataField>RequestedDeliveryDate_SalesLine</DataField>
+        </Field>
+        <Field Name="CurrencyFactor_SalesHeader">
+          <DataField>CurrencyFactor_SalesHeader</DataField>
+        </Field>
+        <Field Name="CurrencyFactor_SalesHeaderFormat">
+          <DataField>CurrencyFactor_SalesHeaderFormat</DataField>
+        </Field>
+        <Field Name="waehrung">
+          <DataField>waehrung</DataField>
+        </Field>
+        <Field Name="UnitCost_LCY_SalesLine">
+          <DataField>UnitCost_LCY_SalesLine</DataField>
+        </Field>
+        <Field Name="UnitCost_LCY_SalesLineFormat">
+          <DataField>UnitCost_LCY_SalesLineFormat</DataField>
+        </Field>
+        <Field Name="marge">
+          <DataField>marge</DataField>
+        </Field>
+        <Field Name="margeFormat">
+          <DataField>margeFormat</DataField>
+        </Field>
+        <Field Name="AuftragBetrag">
+          <DataField>AuftragBetrag</DataField>
+        </Field>
+        <Field Name="AuftragBetragFormat">
+          <DataField>AuftragBetragFormat</DataField>
+        </Field>
+        <Field Name="UnitPrice_SalesLine">
+          <DataField>UnitPrice_SalesLine</DataField>
+        </Field>
+        <Field Name="UnitPrice_SalesLineFormat">
+          <DataField>UnitPrice_SalesLineFormat</DataField>
+        </Field>
+        <Field Name="OutstandingQuantity_SalesLine">
+          <DataField>OutstandingQuantity_SalesLine</DataField>
+        </Field>
+        <Field Name="OutstandingQuantity_SalesLineFormat">
+          <DataField>OutstandingQuantity_SalesLineFormat</DataField>
+        </Field>
+        <Field Name="Quantity_SalesLine">
+          <DataField>Quantity_SalesLine</DataField>
+        </Field>
+        <Field Name="Quantity_SalesLineFormat">
+          <DataField>Quantity_SalesLineFormat</DataField>
+        </Field>
+        <Field Name="PromisedDeliveryDate_SalesLine">
+          <DataField>PromisedDeliveryDate_SalesLine</DataField>
+        </Field>
+        <Field Name="Artikelnr2_SalesLine">
+          <DataField>Artikelnr2_SalesLine</DataField>
+        </Field>
+        <Field Name="QuotenrHersteller_Quotedaten">
+          <DataField>QuotenrHersteller_Quotedaten</DataField>
+        </Field>
+        <Field Name="waehrung22">
+          <DataField>waehrung22</DataField>
+        </Field>
+        <Field Name="TotalAmount_WahrungSummenPuffer2">
+          <DataField>TotalAmount_WahrungSummenPuffer2</DataField>
+        </Field>
+        <Field Name="TotalAmount_WahrungSummenPuffer2Format">
+          <DataField>TotalAmount_WahrungSummenPuffer2Format</DataField>
+        </Field>
+        <Field Name="waehrung3">
+          <DataField>waehrung3</DataField>
+        </Field>
+      </Fields>
+      <Query>
+        <DataSourceName>DataSource</DataSourceName>
+        <CommandText />
+      </Query>
+      <rd:DataSetInfo>
+        <rd:DataSetName>DataSet</rd:DataSetName>
+        <rd:SchemaPath>Report.xsd</rd:SchemaPath>
+        <rd:TableName>Result</rd:TableName>
+      </rd:DataSetInfo>
+    </DataSet>
+  </DataSets>
+</Report>
+    END_OF_RDLDATA
+  }
+}
+
