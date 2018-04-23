@@ -2,8 +2,8 @@ OBJECT Codeunit 50008 TOPAS Service Modul
 {
   OBJECT-PROPERTIES
   {
-    Date=04.04.18;
-    Time=09:36:05;
+    Date=11.04.18;
+    Time=10:58:12;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -37,6 +37,7 @@ OBJECT Codeunit 50008 TOPAS Service Modul
       Text52005@1000000017 : TextConst 'DEU=Bitte hinterlegen Sie die Laufzeit fr Artikel %1 in der Optionstabelle (Feld Code), damit der Service-Preis fr Artikel %2 richtig ermittelt werden kann.';
       Text52006@1000000018 : TextConst 'DEU=Bitte hinterlegen Sie den MSRP-Preis als Vk-Preis im Artikel %1, damit der Vk-Preis fr die %2 automatisch berechnet werden kann. Vergewissern Sie sich auch, dass das Arbeitsdatum innerhalb des Start- und Enddatums des Vk-Preises liegt.\Oder setzen Sie den Haken "%3" im Artikel.';
       Text52007@1000000019 : TextConst 'DEU=Bitte hinterlegen Sie fr Artikel %1 in der Service Preistabelle sowohl den ACTS Euro und/oder den ACTS USD MSRP.';
+      Text37_000@1000000024 : TextConst 'DEU=M”chten Sie wirklich alle Service Kalkulationen im Beleg mit dem Kurs vom %1 neu rechnen lassen?\Hinweis: Sie berschreiben damit auch manuell festgelegte VK-Preise. Zudem wird bei allen Positionen, sowohl fr Systemartikel als auch Service Kalkulationen, der %2 aktualisiert.';
       Text39_000@1000000021 : TextConst 'DEU=Diese Funktion ist nur fr Artikel mit Kennzeichnung %1 gestattet.';
       Text39_001@1000000022 : TextConst 'DEU=Die Einkaufszeile wurde aktualisiert. Der EK-Preis betr„gt nun %1.';
       Text39_002@1000000023 : TextConst 'DEU=Diese Bestellzeile wurde noch nicht mit Service Einzelpositionen verknpft oder der W„hrungscode stimmt nicht mit dem Service Einkaufsw„hrungscode berein.';
@@ -1323,8 +1324,10 @@ OBJECT Codeunit 50008 TOPAS Service Modul
       END;
     END;
 
-    PROCEDURE Gen_Service_VK@1140007("SUP Artikelnr"@1140001 : Code[20];"Basis Artikelnr"@1140013 : Code[20];Laufzeit@1140008 : Integer;Belegnr@1140007 : Code[20];Zeilennr@1140006 : Integer;Fremderworben@1140014 : Boolean;Basisger„t@1140011 : Boolean;Runden@1140000 : Boolean;Kalk_Prozentsatz@1140015 : Decimal;W„hrung@1140022 : Code[10]) : Decimal;
+    PROCEDURE Gen_Service_VK@1140007("SUP Artikelnr"@1140001 : Code[20];"Basis Artikelnr"@1140013 : Code[20];Laufzeit@1140008 : Integer;Belegnr@1140007 : Code[20];Zeilennr@1140006 : Integer;Fremderworben@1140014 : Boolean;Basisger„t@1140011 : Boolean;Runden@1140000 : Boolean;Kalk_Prozentsatz@1140015 : Decimal;MSRP_W„hrung@1140022 : Code[10];W„hrungsfaktor@1000000003 : Decimal;Beleg_W„hrung@1000000004 : Code[10]) : Decimal;
     VAR
+      Currency@1000000002 : Record 4;
+      CurrExchRate@1000000001 : Record 330;
       Opt_proz@1140003 : Record 50001;
       Opt_laufzeit@1140009 : Record 50001;
       Item@1000000000 : Record 27;
@@ -1403,8 +1406,16 @@ OBJECT Codeunit 50008 TOPAS Service Modul
             v_prozentsatz := 100 - Kalk_Prozentsatz;
 
           Item.GET("Basis Artikelnr");
-          BesterVkPreis := FindMSRP("Basis Artikelnr",WORKDATE,W„hrung,
+          BesterVkPreis := FindMSRP("Basis Artikelnr",WORKDATE,MSRP_W„hrung,
                                   Item."Base Unit of Measure","SUP Artikelnr");
+
+          //05.04.18 ST - EKW MSRP wird ggf. in MW umgerechnet
+          IF (Beleg_W„hrung = '') AND (MSRP_W„hrung <> '') THEN BEGIN
+            Currency.GET(MSRP_W„hrung);
+            Currency.TESTFIELD("Amount Rounding Precision");
+            BesterVkPreis := ROUND(CurrExchRate.ExchangeAmtFCYToLCY(WORKDATE,MSRP_W„hrung,BesterVkPreis,W„hrungsfaktor),Currency."Unit-Amount Rounding Precision");
+          END;
+
           IF BesterVkPreis <> 0 THEN BEGIN
             Opt_laufzeit.RESET;
             Opt_laufzeit.SETRANGE("Tabellen ID",50024);
@@ -1618,7 +1629,7 @@ OBJECT Codeunit 50008 TOPAS Service Modul
       i@1140000 : Integer;
     BEGIN
       //***************************************************************************************************
-      //        TOPAS 01.03.11 ST - ™ffnet die Champ Kalkulation fr den ausgew„hlten Service Artikel
+      //        TOPAS 01.03.11 ST - ™ffnet die Service Kalkulation fr den ausgew„hlten Service Artikel
       //        TOPAS 21.10.13 ST - Anpassung um Splicecom Lizenz Aufstellung
       //***************************************************************************************************
       WITH SalesLine DO BEGIN
@@ -1675,6 +1686,104 @@ OBJECT Codeunit 50008 TOPAS Service Modul
         EXIT(service_dc);
       END ELSE
         MESSAGE(Text39_002);
+    END;
+
+    PROCEDURE RefreshAllServiceSalesPriceCalculations@1000000003(DocNo@1140000 : Code[20]);
+    VAR
+      Artikel@1140004 : Record 27;
+      SalesHeader@1000000006 : Record 36;
+      SalesLine@1140001 : Record 37;
+      ServiceTab@1140006 : Record 50024;
+      ServRelaDoc@1140005 : Record 50027;
+      Currency@1000000000 : Record 4;
+      CurrExchRate@1000000003 : Record 330;
+      TOPAS_API@1000000004 : Codeunit 50001;
+      CurrencyDate@1000000001 : Date;
+      single_service_price_new@1140002 : Decimal;
+      total_service_price_new@1140003 : Decimal;
+      ek_w„h_faktor@1000000002 : Decimal;
+      Window@1140007 : Dialog;
+      v_ablaufdatum@1140009 : Date;
+      v_laufzeit@1000000005 : Integer;
+    BEGIN
+      //***************************************************************************************************
+      //          06.04.18 ST - Aktualisiert die VK-Preise aller noch austehenden Service Artikel
+      //                 im Beleg und fr die in der Kalkulation hinterlegten Artikel
+      //***************************************************************************************************
+
+      IF DocNo = '' THEN EXIT;
+
+      SalesLine.RESET;
+      SalesLine.SETFILTER("Document No.",'%1',DocNo);
+      SalesLine.SETFILTER(Type,'%1',SalesLine.Type::Item);
+      SalesLine.SETFILTER("Outstanding Quantity",'>%1',0);
+      SalesLine.SETFILTER("Manufacturer Code",'%1|%2|%3|%4|%5|%6','53','57','59','98','5710','5720');
+      IF SalesLine.FINDFIRST THEN BEGIN
+        SalesHeader.GET(SalesLine."Document Type",DocNo);
+        CurrencyDate := SalesHeader."Document Date";
+        IF NOT CONFIRM(Text37_000,FALSE,CurrencyDate,SalesLine.FIELDCAPTION(Einkaufsw„hrungsfaktor)) THEN EXIT;
+        ek_w„h_faktor := CurrExchRate.ExchangeRate(CurrencyDate,SalesLine.Einkaufsw„hrungscode);
+        REPEAT
+          single_service_price_new := 0;
+          total_service_price_new := 0;
+          SalesLine.VALIDATE(Einkaufsw„hrungsfaktor,ek_w„h_faktor);
+          SalesLine.MODIFY(TRUE);
+          Artikel.GET(SalesLine."No.");
+          IF Artikel."Software Upgrade Protection" = TRUE THEN BEGIN
+            ServRelaDoc.RESET;
+            ServRelaDoc.SETCURRENTKEY(Art,"Nr.","Zeilennr.",Gruppierung);
+            ServRelaDoc.SETFILTER(Art,'%1',ServRelaDoc.Art::"SUP-AU");
+            ServRelaDoc.SETFILTER("Nr.",'%1',DocNo);
+            ServRelaDoc.SETFILTER("Zeilennr.",'%1',SalesLine."Line No.");
+            IF ServRelaDoc.FINDFIRST THEN
+              REPEAT
+
+                WITH ServRelaDoc DO BEGIN
+                  IF ("Laufzeit ab Buchungsdatum") AND (Startdatum <> 0D) THEN VALIDATE(Startdatum,WORKDATE);
+                  IF "Wartungsvertragsnr." <> '' THEN BEGIN
+                    IF Ablaufdatum = 0D THEN BEGIN
+                      v_ablaufdatum := Ablaufdatum_generieren("SUP Artikelnr.","Wartungsvertragsnr.");
+                      IF v_ablaufdatum <> 0D THEN BEGIN
+                        IF Laufzeit <> FORMAT(TOPAS_API.CalculateTimeDiff('M',WORKDATE,v_ablaufdatum)) + 'M' THEN BEGIN
+                          VALIDATE(Laufzeit,FORMAT(TOPAS_API.CalculateTimeDiff('M',WORKDATE,v_ablaufdatum)) + 'M');
+                          MODIFY(TRUE);
+                        END;
+                      END;
+                    END;
+                  END;
+
+                  EVALUATE(v_laufzeit,COPYSTR(Laufzeit,1,STRPOS(Laufzeit,'M')-1));
+                  single_service_price_new := Gen_Service_VK("SUP Artikelnr.","Ger„te Artikelnr.",v_laufzeit,"Belegnr.","Belegzeilennr.",
+                                              Fremderwerb,Basisger„t,FALSE,"Rabatt/Marge",SalesLine.Einkaufsw„hrungscode,SalesLine.Einkaufsw„hrungsfaktor,SalesLine."Currency Code");
+
+                  // Service Kalkulation wird neu berechnet
+                  total_service_price_new := total_service_price_new + (single_service_price_new * "Menge kalk.");
+                  "Service VK-Preis einzeln" := single_service_price_new;
+                  "Service VK-Preis Zeilenbetrag" := single_service_price_new * "Menge kalk.";
+                  "Service W„hrungsfaktor" := ek_w„h_faktor;
+                  MODIFY;
+                END;
+
+              UNTIL ServRelaDoc.NEXT = 0;
+
+            //***************************************************************************************************************
+            // Vergleicht Gesamt VK-Preis aus Kalkulation und Beleg VK-Preis, fhrt bei Abweichung eine Aktualisierung durch
+            //***************************************************************************************************************
+
+            total_service_price_new := ROUND(total_service_price_new,1);
+            IF (SalesLine."Unit Price" <> total_service_price_new) AND (total_service_price_new <> 0) AND (Artikel."Software Upgrade Protection" = TRUE) THEN BEGIN
+              SalesLine.VALIDATE(SalesLine."Unit Price",total_service_price_new);
+              SalesLine.MODIFY;
+
+              Window.OPEN('#1################################\\'+
+                          'Fortschritt @2@@@@@@@@');
+              Window.UPDATE(1,'Der Service VK-Preis wird neu errechnet...');
+              Window.UPDATE(2,9999);
+              Window.CLOSE;
+            END;
+          END;
+        UNTIL SalesLine.NEXT = 0;
+      END;
     END;
 
     BEGIN
