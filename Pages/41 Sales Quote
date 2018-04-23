@@ -2,17 +2,18 @@ OBJECT Page 41 Sales Quote
 {
   OBJECT-PROPERTIES
   {
-    Date=04.12.17;
-    Time=15:51:34;
+    Date=13.04.18;
+    Time=11:05:48;
     Modified=Yes;
-    Version List=NAVW19.00.00.47042,TOP1.01;
+    Version List=NAVW19.00.00.47042,TOP1.04;
   }
   PROPERTIES
   {
     CaptionML=[DEU=Verkaufsangebot;
                ENU=Sales Quote];
     SourceTable=Table36;
-    SourceTableView=WHERE(Document Type=FILTER(Quote));
+    SourceTableView=ORDER(Ascending)
+                    WHERE(Document Type=FILTER(Quote));
     PageType=Document;
     RefreshOnActivate=Yes;
     PromotedActionCategoriesML=[DEU=Neu,Verarbeiten,Melden,Genehmigen,Sonstiges;
@@ -43,6 +44,8 @@ OBJECT Page 41 Sales Quote
                        //TOPAS 30.08.12 ST
                        IF xRec."No." <> "No." THEN
                          vkpreis_nicht_pruefen := FALSE;
+                       //TOPAS 03.01.18 ST - Gesamtbetrag
+                       CALCFIELDS(Amount);
                        //TOPAS Ende
                      END;
 
@@ -60,7 +63,7 @@ OBJECT Page 41 Sales Quote
                        ERROR('Der Erledigtstatus des Angebotes wurde nicht gesetzt!');
 
                      //TOPAS 15.06.10 ST
-                     IF (Status = Status :: Open) AND (Erledigtstatus <> 'FEHLERHAFT') THEN
+                     IF (Status = Status::Open) AND (Erledigtstatus <> 'FEHLERHAFT') THEN
                        ERROR('Nur Angebote mit dem Status freigegeben k”nnen archiviert werden.');
                      //TOPAS Ende
 
@@ -94,8 +97,7 @@ OBJECT Page 41 Sales Quote
                                  Quotedaten.SETRANGE("Quotenr.",SalesLine."Quotenr.");
                                  IF Quotedaten.FINDFIRST THEN BEGIN
                                    IF SalesLine."DC-Preis (EKW)" <> Quotedaten.Quotepreis THEN BEGIN
-                                     MESSAGE('Der DC-Preis von %1\im Beleg %2 in der Zeile %3\weicht vom Quotepreis %4 ab !!',
-                                     SalesLine."DC-Preis (EKW)",SalesLine."Document No.",SalesLine."Line No.",Quotedaten.Quotepreis);
+                                     MESSAGE(Text50005,SalesLine."DC-Preis (EKW)",SalesLine."Document No.",SalesLine."Line No.",Quotedaten.Quotepreis);
                                    END;
                                  END;
                                END;
@@ -289,6 +291,7 @@ OBJECT Page 41 Sales Quote
                                  selection@1000000009 : Integer;
                                BEGIN
                                  //29.11.17 ST - PDF + EMail erstellen
+                                 CheckPrintOK;
                                  TOPAS_Funktionen.PrintSalesDocToPDFwithEmail(Rec);
                                  //TOPAS Ende
                                END;
@@ -298,6 +301,9 @@ OBJECT Page 41 Sales Quote
                                  ENU=Email];
                       Image=Email;
                       OnAction=BEGIN
+                                 //TOPAS 10.03.17 ST
+                                 CheckPrintOK;
+                                 //TOPAS Ende
                                  DocPrint.EmailSalesHeader(Rec);
                                END;
                                 }
@@ -560,6 +566,18 @@ OBJECT Page 41 Sales Quote
                                  //TOPAS Ende
                                END;
                                 }
+      { 1000000029;2 ;Action    ;
+                      Name=RefreshServiceSalesPrices;
+                      CaptionML=DEU=&Servicepreise aktualisieren;
+                      Promoted=Yes;
+                      Image=Recalculate;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 //TOPAS + 11.04.18 ST - Alle Service VK-Preise inkl. Service Kalkulationen k”nnen mit dem Kurs zum Belegdatum neu gerechnet werden
+                                 TOPASServiceModul.RefreshAllServiceSalesPriceCalculations("No.");
+                                 //TOPAS -
+                               END;
+                                }
     }
   }
   CONTROLS
@@ -686,6 +704,9 @@ OBJECT Page 41 Sales Quote
     { 103 ;2   ;Field     ;
                 SourceExpr="Campaign No.";
                 QuickEntry=FALSE }
+
+    { 1000000027;2;Field  ;
+                SourceExpr=Amount }
 
     { 170 ;2   ;Field     ;
                 SourceExpr="Opportunity No.";
@@ -837,7 +858,7 @@ OBJECT Page 41 Sales Quote
                 SourceExpr="VAT Bus. Posting Group" }
 
     { 1000000013;2;Field  ;
-                Name=vkpreis_nicht_pruefen;
+                Name=vkpreis_nicht_pruefen_;
                 CaptionML=DEU=VK-Preis mit 0 OK;
                 SourceExpr=vkpreis_nicht_pruefen }
 
@@ -1091,26 +1112,25 @@ OBJECT Page 41 Sales Quote
       OpenApprovalEntriesExist@1013 : Boolean;
       ShowWorkflowStatus@1009 : Boolean;
       "***TOPAS_VAR***"@1000000001 : Integer;
-      Item@1000000010 : Record 27;
-      SalesHeader@1000000018 : Record 36;
       SalesLine@1000000003 : Record 37;
       ToDo@1000000002 : Record 5080;
       Log@1000000005 : Record 405;
       Quotedaten@1000000004 : Record 50014;
       TOPAS_API@1000000019 : Codeunit 50001;
       TOPAS_Funktionen@1000000016 : Codeunit 50006;
+      TOPASServiceModul@1000000010 : Codeunit 50008;
       ClipboardHandler@1000000017 : Codeunit 50013;
       vkpreis_nicht_pruefen@1000000000 : Boolean;
       AnzAufgaben@1000000008 : Integer;
       angelegt_von@1000000007 : Code[20];
       angelegt_am@1000000006 : DateTime;
-      salesamount@1000000009 : Decimal;
       Text50000@1000000012 : TextConst 'DEU=In Zeilennr. %1 wurde %2 %3 eingetragen.';
       Text50001@1000000015 : TextConst 'DEU=M”chten Sie jetzt die Angebotskarte schlieáen? Sie kehren dann automatisch zur vorherigen Karte zurck.';
       Text50002@1000000014 : TextConst 'DEU=Der Angebotswert von %1 wurde unterscrhitten.';
       Text50003@1000000011 : TextConst 'DEU=Sind Sie sich wirklich sicher, dass Sie mit %1: %2 anbieten wollen?';
       currency_style@1000000013 : Text;
       Text50004@1000000020 : TextConst 'DEU=PDF,PDF + E-Mail';
+      Text50005@1000000009 : TextConst 'DEU=Der DC-Preis von %1\im Beleg %2 in der Zeile %3\weicht vom Quotepreis %4 ab!';
 
     LOCAL PROCEDURE UpdateAllowed@1() : Boolean;
     BEGIN
@@ -1221,21 +1241,24 @@ OBJECT Page 41 Sales Quote
     PROCEDURE CheckPrintOK@1140000();
     BEGIN
       //TOPAS 10.03.17 ST - Prft, ob das Angebot gedruckt werden kann
-      IF Rec."Salesperson Code" = 'MULTI' THEN ERROR('Der Verk„ufercode ist nicht ausgew„hlt!');
-      IF Rec."Betreuer Innendienst" = 'MULTI' THEN ERROR('Der Betreuer Innendienstcode ist nicht ausgew„hlt!');
-      IF Rec.Teams = 'MULTI' THEN ERROR('Das Team ist nicht ausgew„hlt!');
-      IF Rec.Status <> Rec.Status::Released THEN ERROR('Angebot ist nicht Freigegeben !!');
-      IF Rec.Kontaktperson='' THEN ERROR('Die Kontaktperson ist nicht ausgew„hlt!');
+      IF "Salesperson Code" = 'MULTI' THEN ERROR('Der Verk„ufercode ist nicht ausgew„hlt!');
+      IF "Betreuer Innendienst" = 'MULTI' THEN ERROR('Der Betreuer Innendienstcode ist nicht ausgew„hlt!');
+      IF Teams = 'MULTI' THEN ERROR('Das Team ist nicht ausgew„hlt!');
+      IF Status <> Status::Released THEN ERROR('Angebot ist nicht Freigegeben !!');
+      IF Kontaktperson='' THEN ERROR('Die Kontaktperson ist nicht ausgew„hlt!');
     END;
 
     LOCAL PROCEDURE CheckDocReleaseOK@1000000012();
+    VAR
+      Item@1000000001 : Record 27;
+      sales_amount@1000000000 : Decimal;
     BEGIN
       //TOPAS 10.03.17 ST - Prft, ob das Angebot freigegeben werden kann
-      IF Rec."Salesperson Code" = 'MULTI' THEN ERROR('Der Verk„ufercode ist nicht ausgew„hlt!');
-      IF Rec."Betreuer Innendienst" = 'MULTI' THEN ERROR('Der Betreuer Innendienstcode ist nicht ausgew„hlt!');
-      IF Rec.Teams = 'MULTI' THEN ERROR('Das Team ist nicht ausgew„hlt!');
+      IF "Salesperson Code" = 'MULTI' THEN ERROR('Der Verk„ufercode ist nicht ausgew„hlt!');
+      IF "Betreuer Innendienst" = 'MULTI' THEN ERROR('Der Betreuer Innendienstcode ist nicht ausgew„hlt!');
+      IF Teams = 'MULTI' THEN ERROR('Das Team ist nicht ausgew„hlt!');
 
-      salesamount := 0;
+      sales_amount := 0;
       SalesLine.RESET;
       Item.RESET;
       SalesLine.SETRANGE("Document No.","No.");
@@ -1249,13 +1272,13 @@ OBJECT Page 41 Sales Quote
           IF (Item.GET(SalesLine."No.")) AND (Item."Kein VK notwendig" = FALSE) AND (vkpreis_nicht_pruefen = FALSE)
           AND ( SalesLine."Unit Price" = 0) THEN
             ERROR(Text50000,SalesLine."Line No.",'kein',SalesLine.FIELDCAPTION("Unit Price"));
-          salesamount += (SalesLine."Unit Price" * SalesLine.Quantity);
+          sales_amount += (SalesLine."Unit Price" * SalesLine.Quantity);
         UNTIL SalesLine.NEXT = 0;
 
         CASE "Currency Code" OF
           //Warnhinweis wenn Angebotswert von 50 Euro oder 500 $ unterschritten wird
-          '' : IF salesamount < 50 THEN MESSAGE(Text50002,'50 °');
-          'USD' : IF salesamount < 500 THEN MESSAGE(Text50002,'500 $');
+          '' : IF sales_amount < 50 THEN MESSAGE(Text50002,'50 °');
+          'USD' : IF sales_amount < 500 THEN MESSAGE(Text50002,'500 $');
         END;
 
       END;
@@ -1264,13 +1287,13 @@ OBJECT Page 41 Sales Quote
       //16.09.11 ST - Prfung auf Serviceartikel und Vorhandensein einer entsprechenden Kalkulation
       //*******************************************************************************************************
 
-      Rec.CheckServiceCalcCreated("No.","Document Type");
+      CheckServiceCalcCreated("No.","Document Type");
 
       //*******************************************************************************************************
       //26.10.11 ST - Prft OmniVision Artikel und NDA Vorhandensein beim Kunden
       //*******************************************************************************************************
 
-      Rec.CheckOVTNDA("No.","Document Type","No.");
+      CheckOVTNDA("No.","Document Type","No.");
 
       //Zahlungsbedingung BBL Hinweis
       IF "Payment Terms Code" = 'BBL' THEN
@@ -1286,6 +1309,9 @@ OBJECT Page 41 Sales Quote
       3       TOP1.00   02.06.17    ST    ActionItem "Aufgaben anzeigen" eingbaut, Reiter Status jetzt TOPAS, + Felder Text1, Text2 und Kontaktperson (kopie)
       4       TOP1.00   15.06.17    ST    ActionItems "Projektnr. berprfen" und "Projektnr. „ndern" bernommen
       5       TOP1.01   30.11.17    ST    Neue Aktionen "Angebotsnr. kopieren" und "PDF + E-Mail (GroupWise)" hinzugefgt
+      6       TOP1.02   04.01.18    ST    Feld Betrag hinzugefgt und die Berechnung
+      7       TOP1.03   12.02.18    ST    SourceTableView ORDER auf ASCENDING gestellt, damit vor und zurck Navigation wieder wie vorgesehen funktionieren
+      8       TOP1.04   11.04.18    ST    Neue Aktion "Servicepreise aktualisieren" hinzugefgt
     }
     END.
   }
