@@ -2,8 +2,8 @@ OBJECT Codeunit 50001 TOPAS API
 {
   OBJECT-PROPERTIES
   {
-    Date=07.08.17;
-    Time=18:00:54;
+    Date=27.02.18;
+    Time=14:49:21;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -367,7 +367,7 @@ OBJECT Codeunit 50001 TOPAS API
       //run := gw.Execute('ItemSetAllDayEvent(1)',sResult); //ganzt„giges Ereignis
       //run := gw.Execute('ItemSetDate("X00";6;10;2017;00;00;6;10;2017;00;00)',sResult); //Example for Start- and Endtime
       run := gw.Execute('ItemSetDate("X00";' + FORMAT(DATE2DMY(datefrom,1)) + ';' + FORMAT(DATE2DMY(datefrom,2)) + ';' + FORMAT(DATE2DMY(datefrom,3)) + ';00;00;' +
-                        FORMAT(DATE2DMY(dateto,1)) + ';' + FORMAT(DATE2DMY(dateto,2)) + ';' + FORMAT(DATE2DMY(dateto,3)) + ';00;00)', sResult);
+                        FORMAT(DATE2DMY(dateto,1)) + ';' + FORMAT(DATE2DMY(dateto,2)) + ';' + FORMAT(DATE2DMY(dateto,3)) + ';00;24)', sResult);
       //run := gw.Execute('TimeSetStartTimeMode()',sResult); //zeigt den Startzeit Dialog an
       run := gw.Execute('ItemSetText("X00";10;"' + body + '")',sResult);
 
@@ -427,21 +427,6 @@ OBJECT Codeunit 50001 TOPAS API
       EXIT(werktage);
     END;
 
-    PROCEDURE CalcNextWorkday@1140024(Step@1140003 : Integer;StartDate@1140001 : Date) : Date;
-    VAR
-      DateRec@1140002 : Record 2000000007;
-      workdate@1140000 : Date;
-    BEGIN
-      WITH DateRec DO BEGIN
-        SETRANGE("Period Type","Period Type" :: Date);
-        SETRANGE("Period No.",1,5);
-        "Period Start" := StartDate;
-        FIND('=<');
-        NEXT(Step);
-        EXIT("Period Start");
-      END;
-    END;
-
     PROCEDURE SearchMailsAndOpen@1140000(gwAccID@1140012 : Text[30];password@1140011 : Text[30];search@1140003 : Text[80]) : Boolean;
     VAR
       gwApplication@1140002 : Automation "{E775D180-D9FB-11CE-B6F9-00608C84E1C4} 1.0:{761C954A-BAFD-11CE-B6F9-00608C84E1C4}:'GroupWare type library'.Application2";
@@ -467,26 +452,21 @@ OBJECT Codeunit 50001 TOPAS API
       //gwmessages:=gwFolder.FindMessages(searchstring);
       //Findet alle Message Typen und sucht auch mit mehreren String, funktioniert wie die normale GroupWise Suche
       gwmessages := gwAccount.AllMessages.Find(searchstring);
-      IF gwmessages.Count > 0 THEN
-        BEGIN
-          IF gwmessages.Count = 1 THEN
-            BEGIN
-              themessage := gwmessages.Item(1);
+      IF gwmessages.Count > 0 THEN BEGIN
+        IF gwmessages.Count = 1 THEN BEGIN
+          themessage := gwmessages.Item(1);
+          OpenMail(themessage.MessageID);
+        END;
+        IF gwmessages.Count >= 2 THEN BEGIN
+          IF CONFIRM('Die Suche ergab mehr als 2 Treffer (%1). Sollen die ersten beiden Treffern angezeigt werden?',
+          TRUE,gwmessages.Count) THEN BEGIN
+            FOR i := 1 TO 2 DO BEGIN
+              themessage := gwmessages.Item(i);
               OpenMail(themessage.MessageID);
             END;
-          IF gwmessages.Count >= 2 THEN
-            BEGIN
-              IF CONFIRM('Die Suche ergab mehr als 2 Treffer (%1). Sollen die ersten beiden Treffern angezeigt werden?',
-              TRUE,gwmessages.Count) THEN
-                BEGIN
-                  FOR i := 1 TO 2 DO BEGIN
-                    themessage := gwmessages.Item(i);
-                    OpenMail(themessage.MessageID);
-                  END;
-                END;
-            END;
-        END
-      ELSE
+          END;
+        END;
+      END ELSE
         MESSAGE('Es konnten keine Mails zu dieser Suchanfrage gefunden werden.');
 
       IF NOT ISCLEAR(gwApplication) THEN
@@ -620,65 +600,14 @@ OBJECT Codeunit 50001 TOPAS API
       //CDO Version Ende
     END;
 
-    PROCEDURE SendMailWithFile@1140012(gwAccID@1140012 : Text[30];password@1140011 : Text[30];to_addr@1140015 : Text;search@1140003 : Text[80];filter1@1140013 : Text[80];AttPath@1140023 : Text[250];expired@1140024 : Boolean) : Boolean;
+    PROCEDURE SendMailWithFile@1140012(gwAccID@1140012 : Text[30];password@1140011 : Text[30];from_addr@1000000000 : Text;to_addr@1140015 : Text;subject@1140013 : Text;body@1000000001 : Text;AttPath@1140023 : Text) : Boolean;
     VAR
-      WSHScript@1140019 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{72C24DD5-D70A-438B-8A42-98424B88AFB8}:'Windows Script Host Object Model'.WshShell";
-      Files@1140018 : File;
+      WSHScript@1000000002 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{72C24DD5-D70A-438B-8A42-98424B88AFB8}:'Windows Script Host Object Model'.WshShell";
       filename@1140017 : Text[1024];
     BEGIN
-      //GroupWise Version Beginn
-      {
-      IF ISCLEAR(WSHScript) THEN
-        CREATE(WSHScript, FALSE, TRUE);
-
-      //Files.TEXTMODE := TRUE;
-      filename := 'R:\Scripte\GroupWise\GWStastic.vbs';
-      //Files.CREATE(filename);
-
-      CREATE(wshFile,FALSE,TRUE);
-      wshFileText := wshFile.CreateTextFile(filename);
-
-      wshFileText.WriteLine('Set gwSession = CreateObject("NovellGroupWareSession")');
-      wshFileText.WriteLine('Set gwAccount = gwSession.multilogin("'+gwAccID+'","","'+password+'",1)');
-
-      wshFileText.WriteLine('Set gwAppt = gwAccount.workfolder.Messages.Add("GW.MESSAGE.MAIL")');   //Als Message
-
-      IF expired = TRUE THEN BEGIN
-        wshFileText.WriteLine('gwAppt.Subject = "Monatsjob Navision - ausgelaufene Wartungsvertraege"');
-        wshFileText.WriteLine('gwappt.BodyText = '+
-        '"Automatisch von Navision generiert - anbei eine Uebersicht der ausgelaufenen Wartungsvertraege." & chr(10) & "'+
-        'Zeitraum: '+filter1+'"');
-      END ELSE BEGIN
-        wshFileText.WriteLine('gwAppt.Subject = "Monatsjob Navision - demnaechst auslaufende Wartungsvertraege"');
-        wshFileText.WriteLine('gwappt.BodyText = '+
-        '"Automatisch von Navision generiert - anbei eine Uebersicht der demnaechst auslaufenden Wartungsvertraege." & chr(10) & "'+
-        'Zeitraum: '+filter1+'"');
-      END;
-      wshFileText.WriteLine('gwAppt.Recipients.Add("'+to_addr1+'")');
-      IF to_addr2 <> '' THEN
-        wshFileText.WriteLine('gwAppt.Recipients.Add("'+to_addr2+'")');
-      IF to_addr3 <> '' THEN
-        wshFileText.WriteLine('gwAppt.Recipients.Add("'+to_addr3+'")');
-      IF to_addr4 <> '' THEN
-        wshFileText.WriteLine('gwAppt.Recipients.Add("'+to_addr4+'")');
-
-      wshFileText.WriteLine('gwAppt.Attachments.Add("'+AttPath+'")');
-      wshFileText.WriteLine('gwAppt.Send');
-
-      wshFileText.Close;
-      CLEAR(wshFileText);
-
-      WSHScript.Exec('C:\WINDOWS\system32\wscript.exe ' + filename);
-
-      SLEEP(1000);
-
-      MESSAGE('50094 Versand abgeschlossen');
-      }
-      //GroupWise Version Ende
-
       //CDO Version Beginn
       IF ISCLEAR(WSHScript) THEN
-        CREATE(WSHScript, FALSE, TRUE);
+      CREATE(WSHScript,FALSE,TRUE);
 
       filename := 'R:\Scripte\GroupWise\GWStastic.vbs';
 
@@ -687,18 +616,9 @@ OBJECT Codeunit 50001 TOPAS API
 
       wshFileText.WriteLine('Set objMessage = CreateObject("CDO.Message")');
 
-      IF expired = TRUE THEN BEGIN
-        wshFileText.WriteLine('objMessage.Subject = "Monatsjob Navision - ausgelaufene Wartungsvertraege"');
-        wshFileText.WriteLine('objMessage.TextBody = '+
-        '"Automatisch von Navision generiert - anbei eine Uebersicht der ausgelaufenen Wartungsvertraege." & chr(10) & "'+
-        'Zeitraum: ' + filter1 + '"');
-      END ELSE BEGIN
-        wshFileText.WriteLine('objMessage.Subject = "Monatsjob Navision - demnaechst auslaufende Wartungsvertraege"');
-        wshFileText.WriteLine('objMessage.TextBody = '+
-        '"Automatisch von Navision generiert - anbei eine Uebersicht der demnaechst auslaufenden Wartungsvertraege." & chr(10) & "'+
-        'Zeitraum: ' + filter1 + '"');
-      END;
-      wshFileText.WriteLine('objMessage.From = "Administrativ@topas.de"');
+      wshFileText.WriteLine('objMessage.Subject = "' + subject + '"');
+      wshFileText.WriteLine('objMessage.TextBody = "'+ body + '"');
+      wshFileText.WriteLine('objMessage.From = "' + from_addr + '"');
       wshFileText.WriteLine('objMessage.To = "' + to_addr + '"');
       wshFileText.WriteLine('objMessage.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/sendusing") = 2');
       wshFileText.WriteLine('objMessage.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/smtpserver") = "oes-gw"');
@@ -716,7 +636,62 @@ OBJECT Codeunit 50001 TOPAS API
 
       SLEEP(1000);
 
-      MESSAGE('50094 Versand abgeschlossen');
+      EXIT(TRUE);
+
+      //CDO Version Ende
+    END;
+
+    PROCEDURE SendMailWithFile2@1000000016(gwAccID@1140012 : Text[30];password@1140011 : Text[30];from_addr@1000000000 : Text;to_addr@1140015 : Text;subject@1140013 : Text;body@1000000001 : Text;AttPath@1140023 : Text[250]) : Boolean;
+    VAR
+      SMTPEmail@1140019 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Net.Mail.SmtpClient";
+      WSHScript@1000000002 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{72C24DD5-D70A-438B-8A42-98424B88AFB8}:'Windows Script Host Object Model'.WshShell";
+      Process@1000000003 : DotNet "'System, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.Process";
+      Files@1140018 : File;
+      filename@1140017 : Text[1024];
+    BEGIN
+      //CDO Version Beginn
+
+      {
+      CLEAR(Process);
+      Process := Process.Process();
+      Process.StartInfo.UseShellExecute := FALSE;
+      }
+
+      {
+      filename := 'R:\Scripte\GroupWise\GWStastic.vbs';
+
+
+      CREATE(wshFile,FALSE,TRUE);
+      wshFileText := wshFile.CreateTextFile(filename);
+      wshFileText.WriteLine('Set objMessage = CreateObject("CDO.Message")');
+      wshFileText.WriteLine('objMessage.Subject = "' + subject + '"');
+      wshFileText.WriteLine('objMessage.TextBody = '+ body + '"');
+      wshFileText.WriteLine('objMessage.From = "' + from_addr + '"');
+      wshFileText.WriteLine('objMessage.To = "' + to_addr + '"');
+      wshFileText.WriteLine('objMessage.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/sendusing") = 2');
+      wshFileText.WriteLine('objMessage.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/smtpserver") = "oes-gw"');
+      wshFileText.WriteLine('objMessage.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/smtpserverport") = 25');
+      wshFileText.WriteLine('objMessage.Configuration.Fields.Update');
+
+      wshFileText.WriteLine('objMessage.AddAttachment "' + AttPath + '"');
+
+      wshFileText.WriteLine('objMessage.Send');
+
+      wshFileText.Close;
+      CLEAR(wshFileText);
+
+      WSHScript.Exec('C:\WINDOWS\system32\wscript.exe ' + filename);
+      }
+
+      CLEAR(SMTPEmail);
+
+      SMTPEmail.Host := 'oes-gw';
+      SMTPEmail.Port := 25;
+      SMTPEmail.Send(from_addr,to_addr,subject,body);
+
+      SLEEP(1000);
+
+      EXIT(TRUE);
 
       //CDO Version Ende
     END;
@@ -1786,7 +1761,8 @@ OBJECT Codeunit 50001 TOPAS API
     VAR
       num@1140001 : Integer;
     BEGIN
-      EVALUATE(num,DELCHR(string,'=',DELCHR(string,'=','0123456789')));
+      IF DELCHR(string,'=',DELCHR(string,'=','0123456789')) <> '' THEN
+        EVALUATE(num,DELCHR(string,'=',DELCHR(string,'=','0123456789')));
       EXIT(num);
     END;
 
@@ -1881,6 +1857,7 @@ OBJECT Codeunit 50001 TOPAS API
     PROCEDURE CreateExcelHyperlinkToNav@1140023(RecordTableName@1140000 : Text[50];RecordKeyId@1140001 : Integer;PageID@1140003 : Integer;DataValue@1140002 : Text[50]) : Text[1024];
     VAR
       Wartungsvertrag@1000000000 : Record 50011;
+      Campaign@1000000012 : Record 5071;
       SalesHeader@1000000001 : Record 36;
       SalesHeaderArchive@1000000009 : Record 5107;
       Contact@1000000002 : Record 5050;
@@ -1980,11 +1957,11 @@ OBJECT Codeunit 50001 TOPAS API
               Item.SETRANGE("No. 2",DataValue);
               IF Item.FINDFIRST THEN
                 //NAV 2016
-                EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, Item) + '";"' + Item."No. 2" + '")')
+                EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, Item) + '&mode=Edit";"' + Item."No. 2" + '")')
               ELSE BEGIN
                 IF Item.GET(DataValue) THEN
                   //NAV 2016
-                  EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, Item) + '";"' + Item."No. 2" + '")')
+                  EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, Item) + '&mode=Edit";"' + Item."No. 2" + '")')
                 ELSE
                   //NAV 5.0
                   EXIT('=HYPERLINK("' + STRSUBSTNO(Link_Field1,PageID,DataValue) + '";"' + Item."No. 2" + '")');
@@ -2065,6 +2042,18 @@ OBJECT Codeunit 50001 TOPAS API
               ELSE
                 //NAV 5.0
                 EXIT('=HYPERLINK("' + STRSUBSTNO(Link_Field7,PageID,DataValue) + '";"' + DataValue + '")');
+            END;
+          END;
+
+        'Campaign' :
+          BEGIN
+            IF RecordKeyId = 1 THEN BEGIN
+              IF Campaign.GET(DataValue) THEN
+                //NAV 2016
+                EXIT('=HYPERLINK("' + GETURL(CURRENTCLIENTTYPE, COMPANYNAME, OBJECTTYPE::Page, PageID, Campaign) + '";"' + DataValue + '")')
+              ELSE
+                //NAV 5.0
+                EXIT('=HYPERLINK("' + STRSUBSTNO(Link_Field1,PageID,DataValue) + '";"' + DataValue + '")');
             END;
           END;
 
