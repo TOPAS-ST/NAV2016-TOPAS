@@ -2,10 +2,10 @@ OBJECT Table 18 Customer
 {
   OBJECT-PROPERTIES
   {
-    Date=19.03.18;
-    Time=17:14:31;
+    Date=28.05.18;
+    Time=18:40:39;
     Modified=Yes;
-    Version List=NAVW19.00.00.45480,TOP1.02;
+    Version List=NAVW19.00.00.50221,TOP1.04;
   }
   PROPERTIES
   {
@@ -218,10 +218,6 @@ OBJECT Table 18 Customer
                END;
 
                SalesOrderLine.SETCURRENTKEY("Document Type","Bill-to Customer No.");
-               SalesOrderLine.SETFILTER(
-                 "Document Type",'%1|%2',
-                 SalesOrderLine."Document Type"::Order,
-                 SalesOrderLine."Document Type"::"Return Order");
                SalesOrderLine.SETRANGE("Bill-to Customer No.","No.");
                IF SalesOrderLine.FINDFIRST THEN
                  ERROR(
@@ -411,7 +407,11 @@ OBJECT Table 18 Customer
     { 28  ;   ;Fin. Charge Terms Code;Code10      ;TableRelation="Finance Charge Terms";
                                                    CaptionML=[DEU=Zinskonditionencode;
                                                               ENU=Fin. Charge Terms Code] }
-    { 29  ;   ;Salesperson Code    ;Code10        ;TableRelation=Salesperson/Purchaser;
+    { 29  ;   ;Salesperson Code    ;Code20        ;TableRelation=Salesperson/Purchaser;
+                                                   OnValidate=BEGIN
+                                                                ValidateSalesPersonCode;
+                                                              END;
+
                                                    CaptionML=[DEU=Verk„ufercode;
                                                               ENU=Salesperson Code] }
     { 30  ;   ;Shipment Method Code;Code10        ;TableRelation="Shipment Method";
@@ -451,7 +451,18 @@ OBJECT Table 18 Customer
                                                    CaptionML=[DEU=Bemerkung;
                                                               ENU=Comment];
                                                    Editable=No }
-    { 39  ;   ;Blocked             ;Option        ;CaptionML=[DEU=Gesperrt;
+    { 39  ;   ;Blocked             ;Option        ;OnValidate=BEGIN
+                                                                IF (Blocked <> Blocked::All) AND "Privacy Blocked" THEN
+                                                                  IF GUIALLOWED THEN
+                                                                    IF CONFIRM(ConfirmBlockedPrivacyBlockedQst) THEN
+                                                                      "Privacy Blocked" := FALSE
+                                                                    ELSE
+                                                                      ERROR('')
+                                                                  ELSE
+                                                                    ERROR(CanNotChangeBlockedDueToPrivacyBlockedErr);
+                                                              END;
+
+                                                   CaptionML=[DEU=Gesperrt;
                                                               ENU=Blocked];
                                                    OptionCaptionML=[DEU=" ,Liefern,Fakturieren,Alle";
                                                                     ENU=" ,Ship,Invoice,All"];
@@ -1071,6 +1082,15 @@ OBJECT Table 18 Customer
                                                    OptionCaptionML=[DEU=" ,Unternehmen,Person";
                                                                     ENU=" ,Company,Person"];
                                                    OptionString=[ ,Company,Person] }
+    { 150 ;   ;Privacy Blocked     ;Boolean       ;OnValidate=BEGIN
+                                                                IF "Privacy Blocked" THEN
+                                                                  Blocked := Blocked::All
+                                                                ELSE
+                                                                  Blocked := Blocked::" ";
+                                                              END;
+
+                                                   CaptionML=[DEU=Datenschutzsperre;
+                                                              ENU=Privacy Blocked] }
     { 288 ;   ;Preferred Bank Account;Code10      ;TableRelation="Customer Bank Account".Code WHERE (Customer No.=FIELD(No.));
                                                    CaptionML=[DEU=Bevorzugtes Bankkonto;
                                                               ENU=Preferred Bank Account] }
@@ -1381,6 +1401,10 @@ OBJECT Table 18 Customer
     { 50341;  ;Lizenz EMail-Adresse;Text80        ;Description=TOPAS, ST 19.03.18 }
     { 50512;  ;SVS Verzichtskunde  ;Boolean       ;Description=TOPAS }
     { 50513;  ;Steuernummer        ;Text20        ;Description=TOPAS }
+    { 50514;  ;ADV                 ;Boolean       ;DataClassification=ToBeClassified;
+                                                   Description=TOPAS, ST 07.05.18 - Auftragsdatenvereinbarung liegt vor }
+    { 50515;  ;System Preisbindung ;Boolean       ;DataClassification=ToBeClassified;
+                                                   Description=TOPAS, ST 28.05.18 - Infodruck auf Angeboten - Preise nur bis zur n„chsten Preisliste gltig }
     { 50520;  ;Warenkreditversicherung;Code15     ;TableRelation=Optionstabelle.Code WHERE (Tabellen ID=CONST(18),
                                                                                             Feld ID=CONST(50520));
                                                    Description=TOPAS }
@@ -1459,6 +1483,7 @@ OBJECT Table 18 Customer
       ServContract@1026 : Record 5965;
       ServHeader@1034 : Record 5900;
       ServiceItem@1027 : Record 5940;
+      SalespersonPurchaser@1060 : Record 13;
       PaymentToleranceMgt@1038 : Codeunit 426;
       NoSeriesMgt@1011 : Codeunit 396;
       MoveEntries@1012 : Codeunit 361;
@@ -1481,6 +1506,11 @@ OBJECT Table 18 Customer
       Text015@1036 : TextConst 'DEU=%1 ''%2'' kann nicht gel”scht werden, da dem Debitor mindestens ein Objekt vom Typ %3 zugeordnet ist.;ENU=You cannot delete %1 %2 because there is at least one %3 associated to this customer.';
       AllowPaymentToleranceQst@1037 : TextConst 'DEU=M”chten Sie Zahlungstoleranzen fr momentan offene Posten zulassen?;ENU=Do you want to allow payment tolerance for entries that are currently open?';
       RemovePaymentRoleranceQst@1019 : TextConst 'DEU=M”chten Sie Zahlungstoleranzen fr momentan offene Posten l”schen?;ENU=Do you want to remove payment tolerance from entries that are currently open?';
+      PrivacyBlockedActionErr@1061 : TextConst '@@@="%1 = action (create or post), %2 = customer code.";DEU=Sie k”nnen diese Belegart nicht %1, wenn der Debitor %2 aus Datenschutzgrnden gesperrt ist.;ENU=You cannot %1 this type of document when Customer %2 is blocked for privacy.';
+      PrivacyBlockedGenericTxt@1062 : TextConst '@@@="%1 = customer code";DEU="""Datenschutzsperre"" darf fr den Debitor %1 nicht ""true"" sein.";ENU=Privacy Blocked must not be true for customer %1.';
+      ConfirmBlockedPrivacyBlockedQst@1071 : TextConst 'DEU=Wenn Sie das Feld "Gesperrt" „ndern, wird das Feld "Datenschutzsperre" in "Nein" ge„ndert. M”chten Sie fortfahren?;ENU=If you change the Blocked field, the Privacy Blocked field is changed to No. Do you want to continue?';
+      CanNotChangeBlockedDueToPrivacyBlockedErr@1072 : TextConst 'DEU=Das Feld "Gesperrt" kann nicht ge„ndert werden, weil der Benutzer aus Datenschutzgrnden gesperrt ist.;ENU=The Blocked field cannot be changed because the user is blocked for privacy reasons.';
+      "***TOPAS_VAR***"@1000000015 : Integer;
       BenutzerEinr@1000000011 : Record 91;
       Belehistorie@1000000010 : Record 50008;
       Belege@1000000009 : Record 50010;
@@ -1552,6 +1582,9 @@ OBJECT Table 18 Customer
     PROCEDURE CheckBlockedCustOnDocs@5(Cust2@1000 : Record 18;DocType@1001 : 'Quote,Order,Invoice,Credit Memo,Blanket Order,Return Order';Shipment@1005 : Boolean;Transaction@1003 : Boolean);
     BEGIN
       WITH Cust2 DO BEGIN
+        IF "Privacy Blocked" THEN
+          CustPrivacyBlockedErrorMessage(Cust2,Transaction);
+
         IF ((Blocked = Blocked::All) OR
             ((Blocked = Blocked::Invoice) AND (DocType IN [DocType::Quote,DocType::Order,DocType::Invoice,DocType::"Blanket Order"])) OR
             ((Blocked = Blocked::Ship) AND (DocType IN [DocType::Quote,DocType::Order,DocType::"Blanket Order"]) AND
@@ -1566,6 +1599,9 @@ OBJECT Table 18 Customer
     PROCEDURE CheckBlockedCustOnJnls@7(Cust2@1003 : Record 18;DocType@1002 : ' ,Payment,Invoice,Credit Memo,Finance Charge Memo,Reminder,Refund';Transaction@1000 : Boolean);
     BEGIN
       WITH Cust2 DO BEGIN
+        IF "Privacy Blocked" THEN
+          CustPrivacyBlockedErrorMessage(Cust2,Transaction);
+
         IF (Blocked = Blocked::All) OR
            ((Blocked = Blocked::Invoice) AND (DocType IN [DocType::Invoice,DocType::" "]))
         THEN
@@ -1582,6 +1618,23 @@ OBJECT Table 18 Customer
       ELSE
         Action := Text005;
       ERROR(Text006,Action,Cust2."No.",Cust2.Blocked);
+    END;
+
+    PROCEDURE CustPrivacyBlockedErrorMessage@72(Cust2@1001 : Record 18;Transaction@1000 : Boolean);
+    VAR
+      Action@1002 : Text[30];
+    BEGIN
+      IF Transaction THEN
+        Action := Text004
+      ELSE
+        Action := Text005;
+
+      ERROR(PrivacyBlockedActionErr,Action,Cust2."No.");
+    END;
+
+    PROCEDURE GetPrivacyBlockedGenericErrorText@73(Cust2@1001 : Record 18) : Text[250];
+    BEGIN
+      EXIT(STRSUBSTNO(PrivacyBlockedGenericTxt,Cust2."No."));
     END;
 
     PROCEDURE DisplayMap@8();
@@ -1674,6 +1727,18 @@ OBJECT Table 18 Customer
 
       IF CustLedgEntryRemainAmtQuery.READ THEN
         OverDueBalance := CustLedgEntryRemainAmtQuery.Sum_Remaining_Amt_LCY;
+    END;
+
+    PROCEDURE ShowOverdueEntries@25();
+    VAR
+      CustLedgEntry@1000 : Record 21;
+      DtldCustLedgEntry@1001 : Record 379;
+    BEGIN
+      DtldCustLedgEntry.SETFILTER("Customer No.","No.");
+      COPYFILTER("Global Dimension 1 Filter",DtldCustLedgEntry."Initial Entry Global Dim. 1");
+      COPYFILTER("Global Dimension 2 Filter",DtldCustLedgEntry."Initial Entry Global Dim. 2");
+      COPYFILTER("Currency Filter",DtldCustLedgEntry."Currency Code");
+      CustLedgEntry.DrillDownOnOverdueEntries(DtldCustLedgEntry);
     END;
 
     PROCEDURE GetLegalEntityType@6() : Text;
@@ -1773,6 +1838,14 @@ OBJECT Table 18 Customer
       END;
     END;
 
+    LOCAL PROCEDURE ValidateSalesPersonCode@1900();
+    BEGIN
+      IF "Salesperson Code" <> '' THEN
+        IF SalespersonPurchaser.GET("Salesperson Code") THEN
+          IF SalespersonPurchaser.VerifySalesPersonPurchaserPrivacyBlocked(SalespersonPurchaser) THEN
+            ERROR(SalespersonPurchaser.GetPrivacyBlockedGenericText(SalespersonPurchaser,TRUE))
+    END;
+
     PROCEDURE GetBillToCustomerNo@27() : Code[20];
     BEGIN
       IF "Bill-to Customer No." <> '' THEN
@@ -1814,6 +1887,8 @@ OBJECT Table 18 Customer
       2       TOP1.00   24.10.16    ST    TOPAS Programmierung bernommen
       3       TOP1.01   04.12.17    ST    Neue Felder fr Rechnungsadresse Feld ID 50530-50536
       4       TOP1.02   13.03.18    ST    Neue Felder 50340 und 50341 angelegt
+      5       TOP1.03   07.05.18    ST    Neues Feld 50514 ADV angelegt - Datenschutz Auftragsdatenvereinbarung
+      6       TOP1.04   28.05.18    ST    Neues Feld 50515 "System Preisbindung" angelegt - fr Andruck auf Angeboten
     }
     END.
   }
