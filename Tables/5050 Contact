@@ -2,15 +2,26 @@ OBJECT Table 5050 Contact
 {
   OBJECT-PROPERTIES
   {
-    Date=12.09.17;
-    Time=09:38:03;
+    Date=07.05.18;
+    Time=17:50:09;
     Modified=Yes;
-    Version List=NAVW19.00.00.46621,TOP1.01;
+    Version List=NAVW19.00.00.50221,TOP1.02;
   }
   PROPERTIES
   {
     Permissions=TableData 36=rm,
-                TableData 5065=r,
+                TableData 5051=rd,
+                TableData 5052=rd,
+                TableData 5054=rd,
+                TableData 5056=rd,
+                TableData 5058=rd,
+                TableData 5060=rd,
+                TableData 5061=rd,
+                TableData 5065=rm,
+                TableData 5067=rd,
+                TableData 5080=rm,
+                TableData 5089=rd,
+                TableData 5092=rm,
                 TableData 5093=rm;
     DataCaptionFields=No.,Name;
     OnInsert=BEGIN
@@ -63,6 +74,7 @@ OBJECT Table 5050 Contact
                InteractLogEntry@1010 : Record 5065;
                Opp@1011 : Record 5092;
                DOPaymentCreditCard@1017 : Record 827;
+               CompanyInformation@1013 : Record 79;
                CampaignTargetGrMgt@1016 : Codeunit 7030;
                VATRegistrationLogMgt@1012 : Codeunit 249;
              BEGIN
@@ -258,6 +270,8 @@ OBJECT Table 5050 Contact
                ContAltAddrDateRange.DELETEALL;
 
                VATRegistrationLogMgt.DeleteContactLog(Rec);
+
+               CompanyInformation.CheckDeleteIntrastatContact(CompanyInformation."Intrastat Contact Type"::Contact,"No.");
              END;
 
     OnRename=BEGIN
@@ -360,8 +374,9 @@ OBJECT Table 5050 Contact
     { 24  ;   ;Language Code       ;Code10        ;TableRelation=Language;
                                                    CaptionML=[DEU=Sprachcode;
                                                               ENU=Language Code] }
-    { 29  ;   ;Salesperson Code    ;Code10        ;TableRelation=Salesperson/Purchaser;
+    { 29  ;   ;Salesperson Code    ;Code20        ;TableRelation=Salesperson/Purchaser;
                                                    OnValidate=BEGIN
+                                                                ValidateSalesPerson;
                                                                 //TOPAS 10.09.08 ST Beginn - Update des Verk„ufers in den dazugeh”rigen Projekten mit Hauptbeteiligung, bei Bestckern kommt nur ein Hinweis
                                                                 counter := 0;
                                                                 IF ("No." <> '') AND ("Salesperson Code" <> xRec."Salesperson Code") AND ("Salesperson Code" <> '') AND (Type=Type::Company) THEN BEGIN
@@ -506,6 +521,28 @@ OBJECT Table 5050 Contact
     { 107 ;   ;No. Series          ;Code10        ;TableRelation="No. Series";
                                                    CaptionML=[DEU=Nummernserie;
                                                               ENU=No. Series] }
+    { 150 ;   ;Privacy Blocked     ;Boolean       ;OnValidate=BEGIN
+                                                                IF NOT "Privacy Blocked" THEN
+                                                                  IF Minor THEN
+                                                                    IF NOT "Parental Consent Received" THEN
+                                                                      ERROR(ParentalConsentReceivedErr,"No.");
+                                                              END;
+
+                                                   CaptionML=[DEU=Datenschutzsperre;
+                                                              ENU=Privacy Blocked] }
+    { 151 ;   ;Minor               ;Boolean       ;OnValidate=BEGIN
+                                                                IF Minor THEN
+                                                                  VALIDATE("Privacy Blocked",TRUE);
+                                                              END;
+
+                                                   CaptionML=[DEU=Minderj„hrig;
+                                                              ENU=Minor] }
+    { 152 ;   ;Parental Consent Received;Boolean  ;OnValidate=BEGIN
+                                                                VALIDATE("Privacy Blocked",TRUE);
+                                                              END;
+
+                                                   CaptionML=[DEU=Zustimmung eines Erziehungsberechtigten erhalten;
+                                                              ENU=Parental Consent Received] }
     { 5050;   ;Type                ;Option        ;OnValidate=BEGIN
                                                                 IF (CurrFieldNo <> 0) AND ("No." <> '') THEN BEGIN
                                                                   TypeChange;
@@ -801,7 +838,7 @@ OBJECT Table 5050 Contact
                                                    CaptionML=[DEU=Aufgabenposten vorhanden;
                                                               ENU=To-do Entry Exists];
                                                    Editable=No }
-    { 5084;   ;Salesperson Filter  ;Code10        ;FieldClass=FlowFilter;
+    { 5084;   ;Salesperson Filter  ;Code20        ;FieldClass=FlowFilter;
                                                    TableRelation=Salesperson/Purchaser;
                                                    CaptionML=[DEU=Verk„uferfilter;
                                                               ENU=Salesperson Filter] }
@@ -1017,6 +1054,10 @@ OBJECT Table 5050 Contact
                                                    Editable=No }
     { 50235;  ;Zusatzangaben       ;Text60        ;CaptionML=DEU=Zusatzangaben;
                                                    Description=TOPAS 07.05.08 UB }
+    { 50240;  ;Letzte Kontaktaufnahme;Date        ;DataClassification=ToBeClassified;
+                                                   Description=TOPAS 07.05.18 ST - Fr Auswertung zum Datenschutz ben”tigt }
+    { 50241;  ;Kontaktgrund        ;Text50        ;DataClassification=ToBeClassified;
+                                                   Description=TOPAS 07.05.18 ST - Fr Auswertung zum Datenschutz ben”tigt }
     { 60001;  ;Betreuer Innendienst;Code10        ;TableRelation=Salesperson/Purchaser;
                                                    OnValidate=BEGIN
                                                                 //TOPAS 10.09.08 ST - Update des Betreuers in den dazugeh”rigen Projekten mit Hauptbeteiligung, bei Bestckern kommt nur ein Hinweis
@@ -1122,6 +1163,7 @@ OBJECT Table 5050 Contact
       Text009@1009 : TextConst 'DEU=%1 %2 wurde erstellt.;ENU=The %2 record of the %1 has been created.';
       Text010@1010 : TextConst 'DEU=%1 %2 ist nicht mit einer anderen Tabelle verknpft.;ENU=The %2 record of the %1 is not linked with any other table.';
       RMSetup@1012 : Record 5079;
+      Salesperson@1927 : Record 13;
       Cont@1013 : Record 5050;
       ContBusRel@1014 : Record 5054;
       PostCode@1011 : Record 225;
@@ -1140,6 +1182,11 @@ OBJECT Table 5050 Contact
       Text029@1045 : TextConst 'DEU=Die Gesamtl„nge von Vorname, zweitem Vornamen und Nachnamen ist %1 Zeichen l„nger als die zul„ssige Maximall„nge fr das Namensfeld.;ENU=The total length of first name, middle name and surname is %1 character(s)longer than the maximum length allowed for the Name field.';
       Text032@1048 : TextConst 'DEU=Die L„nge von %1 ist um %2 Zeichen l„nger als die maximal zul„ssige L„nge des %1-Felds.;ENU=The length of %1 is %2 character(s)longer than the maximum length allowed for the %1 field.';
       Text033@1008 : TextConst 'DEU=Bevor Sie Online Map verwenden k”nnen, mssen Sie die Felder des Fensters ''Online Map-Einrichtung'' ausfllen.\Informationen hierzu finden Sie in der Hilfe zum Einrichten von Online Map.;ENU=Before you can use Online Map, you must fill in the Online Map Setup window.\See Setting Up Online Map in Help.';
+      PrivacyBlockedPostErr@2013 : TextConst '@@@="%1=contact no.";DEU=Sie k”nnen diese Belegart nicht buchen, weilÿder Kontakt %1 aus Datenschutzgrnden gesperrt ist.;ENU=You cannot post this type of document because contact %1 is blocked due to privacy.';
+      PrivacyBlockedCreateErr@2011 : TextConst '@@@="%1=contact no.";DEU=Sie k”nnen diese Belegart nicht erstellen, weil der Kontakt %1 aus Datenschutzgrnden gesperrt ist.;ENU=You cannot create this type of document because contact %1 is blocked due to privacy.';
+      PrivacyBlockedGenericErr@2014 : TextConst '@@@="%1=contact no.";DEU=Sie k”nnenÿden Kontakt %1 nicht verwenden, weil er als aus Datenschutzgrnden gesperrt markiert ist.;ENU=You cannot use contact %1 because they are marked as blocked due to privacy.';
+      ParentalConsentReceivedErr@2026 : TextConst '@@@="%1=contact no.";DEU="""Datenschutzsperre"" kann erst gel”scht werden, wenn ""Zustimmung eines Erziehungsberechtigten erhalten"" fr den minderj„hrigen Kontakt %1 auf ""true"" festgelegt ist.";ENU=Privacy Blocked cannot be cleared until Parental Consent Received is set to true for minor contact %1.';
+      ProfileForMinorErr@2027 : TextConst 'DEU=Sie k”nnen keine Profile von Kontakten verwenden, die als "Minderj„hrig" markiert sind.;ENU=You cannot use profiles for contacts marked as Minor.';
       "***TOPAS_VAR***"@1000000000 : Integer;
       Branchen@1000000003 : Record 5058;
       Projekte@1000000002 : Record 5071;
@@ -1441,6 +1488,7 @@ OBJECT Table 5050 Contact
       DefaultDim@1005 : Record 352;
       DefaultDim2@1004 : Record 352;
     BEGIN
+      CheckIfPrivacyBlockedGeneric;
       TESTFIELD("Company No.");
       RMSetup.GET;
       RMSetup.TESTFIELD("Bus. Rel. Code for Customers");
@@ -1482,13 +1530,26 @@ OBJECT Table 5050 Contact
       Cust.MODIFY;
 
       IF CustTemplate.Code <> '' THEN BEGIN
+        IF "Territory Code" = '' THEN
         //TOPAS 11.09.17 ST - Gebietscode soll nicht durch die Debitorenvorlage berschrieben werden
-        //Cust."Territory Code" := CustTemplate."Territory Code";
-        Cust."Territory Code" := "Territory Code";
-        Cust."Currency Code" := CustTemplate."Currency Code";
+        BEGIN END
+          {
+          Cust."Territory Code" := CustTemplate."Territory Code"
+          }
+        ELSE
+          Cust."Territory Code" := "Territory Code";
+        IF "Currency Code" = '' THEN
+          Cust."Currency Code" := CustTemplate."Currency Code"
+        ELSE
+          Cust."Currency Code" := "Currency Code";
+        IF "Country/Region Code" = '' THEN
         //TOPAS 11.09.17 ST - L„ndercode soll nicht durch die Debitorenvorlage berschrieben werden
-        //Cust."Country/Region Code" := CustTemplate."Country/Region Code";
-        Cust."Country/Region Code" := "Country/Region Code";
+        BEGIN END
+          {
+          Cust."Country/Region Code" := CustTemplate."Country/Region Code"
+          }
+        ELSE
+          Cust."Country/Region Code" := "Country/Region Code";
         //TOPAS Ende
         Cust."Customer Posting Group" := CustTemplate."Customer Posting Group";
         Cust."Customer Price Group" := CustTemplate."Customer Price Group";
@@ -1528,6 +1589,7 @@ OBJECT Table 5050 Contact
       Vend@1000 : Record 23;
       ContComp@1001 : Record 5050;
     BEGIN
+      CheckIfPrivacyBlockedGeneric;
       TESTFIELD("Company No.");
       RMSetup.GET;
       RMSetup.TESTFIELD("Bus. Rel. Code for Vendors");
@@ -1578,6 +1640,8 @@ OBJECT Table 5050 Contact
       ContBusRel."No." := BankAcc."No.";
       ContBusRel.INSERT(TRUE);
 
+      CheckIfPrivacyBlockedGeneric;
+
       UpdateCustVendBank.UpdateBankAccount(ContComp,ContBusRel);
 
       MESSAGE(Text009,BankAcc.TABLECAPTION,BankAcc."No.");
@@ -1588,6 +1652,7 @@ OBJECT Table 5050 Contact
       Cust@1001 : Record 18;
       ContBusRel@1000 : Record 5054;
     BEGIN
+      CheckIfPrivacyBlockedGeneric;
       TESTFIELD("Company No.");
       RMSetup.GET;
       RMSetup.TESTFIELD("Bus. Rel. Code for Customers");
@@ -1606,6 +1671,7 @@ OBJECT Table 5050 Contact
 
     PROCEDURE CreateVendorLink@6();
     BEGIN
+      CheckIfPrivacyBlockedGeneric;
       TESTFIELD("Company No.");
       RMSetup.GET;
       RMSetup.TESTFIELD("Bus. Rel. Code for Vendors");
@@ -1617,6 +1683,7 @@ OBJECT Table 5050 Contact
 
     PROCEDURE CreateBankAccountLink@9();
     BEGIN
+      CheckIfPrivacyBlockedGeneric;
       TESTFIELD("Company No.");
       RMSetup.GET;
       RMSetup.TESTFIELD("Bus. Rel. Code for Bank Accs.");
@@ -1642,6 +1709,7 @@ OBJECT Table 5050 Contact
     VAR
       SegmentLine@1000 : TEMPORARY Record 5077;
     BEGIN
+      CheckIfPrivacyBlockedGeneric;
       SegmentLine.CreateInteractionFromContact(Rec);
     END;
 
@@ -2046,6 +2114,35 @@ OBJECT Table 5050 Contact
         MESSAGE(Text033);
     END;
 
+    PROCEDURE CheckIfMinorForProfiles@52();
+    BEGIN
+      IF Minor THEN
+        ERROR(ProfileForMinorErr);
+    END;
+
+    PROCEDURE CheckIfPrivacyBlocked@48(IsPosting@1000 : Boolean);
+    BEGIN
+      IF "Privacy Blocked" THEN BEGIN
+        IF IsPosting THEN
+          ERROR(PrivacyBlockedPostErr,"No.");
+        ERROR(PrivacyBlockedCreateErr,"No.");
+      END;
+    END;
+
+    PROCEDURE CheckIfPrivacyBlockedGeneric@50();
+    BEGIN
+      IF "Privacy Blocked" THEN
+        ERROR(PrivacyBlockedGenericErr,"No.");
+    END;
+
+    LOCAL PROCEDURE ValidateSalesPerson@433();
+    BEGIN
+      IF "Salesperson Code" <> '' THEN
+        IF Salesperson.GET("Salesperson Code") THEN
+          IF Salesperson.VerifySalesPersonPurchaserPrivacyBlocked(Salesperson) THEN
+            ERROR(Salesperson.GetPrivacyBlockedGenericText(Salesperson,TRUE))
+    END;
+
     LOCAL PROCEDURE ProcessNameChange@37();
     VAR
       ContBusRel@1000 : Record 5054;
@@ -2087,6 +2184,7 @@ OBJECT Table 5050 Contact
       2       TOP1.00   14.11.16    ST    TOPAS Programmierung bernommen
       3       TOP1.00   28.06.17    ST    L”schen der Kontakt Verbindungen in Projekten, Memos (aber mit Info in Zeilen), RMA's
       4       TOP1.01   11.09.17    ST    Fkt. CreateCustomer() angepasst, so dass der "Country/Region Code" und "Territory Code" vom Kontakt bernommen wird und nicht von der Vorlage
+      5       TOP1.02   07.05.18    ST    Neue Felder 50240 und 50241 angelegt, fr Auswertungen zum Datenschutz ben”tigt
     }
     END.
   }
