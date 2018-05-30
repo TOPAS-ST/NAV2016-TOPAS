@@ -2,9 +2,10 @@ OBJECT Table 23 Vendor
 {
   OBJECT-PROPERTIES
   {
-    Date=23.03.16;
-    Time=12:00:00;
-    Version List=NAVW19.00.00.45480,NAVDACH9.00.00.45480;
+    Date=23.05.18;
+    Time=15:44:46;
+    Modified=Yes;
+    Version List=NAVW19.00.00.50293,NAVDACH9.00.00.50293,TOP1.00;
   }
   PROPERTIES
   {
@@ -67,6 +68,7 @@ OBJECT Table 23 Vendor
                PurchPrepmtPct@1003 : Record 460;
                SocialListeningSearchTopic@1005 : Record 871;
                CustomReportSelection@1006 : Record 9657;
+               CompanyInformation@1008 : Record 79;
                VATRegistrationLogMgt@1004 : Codeunit 249;
              BEGIN
                MoveEntries.MoveVendorEntries(Rec);
@@ -87,10 +89,6 @@ OBJECT Table 23 Vendor
                ItemCrossReference.DELETEALL;
 
                PurchOrderLine.SETCURRENTKEY("Document Type","Pay-to Vendor No.");
-               PurchOrderLine.SETFILTER(
-                 "Document Type",'%1|%2',
-                 PurchOrderLine."Document Type"::Order,
-                 PurchOrderLine."Document Type"::"Return Order");
                PurchOrderLine.SETRANGE("Pay-to Vendor No.","No.");
                IF PurchOrderLine.FINDFIRST THEN
                  ERROR(
@@ -137,6 +135,8 @@ OBJECT Table 23 Vendor
                PurchPrepmtPct.DELETEALL(TRUE);
 
                VATRegistrationLogMgt.DeleteVendorLog(Rec);
+
+               CompanyInformation.CheckDeleteIntrastatContact(CompanyInformation."Intrastat Contact Type"::Vendor,"No.");
              END;
 
     OnRename=BEGIN
@@ -248,7 +248,11 @@ OBJECT Table 23 Vendor
     { 28  ;   ;Fin. Charge Terms Code;Code10      ;TableRelation="Finance Charge Terms";
                                                    CaptionML=[DEU=Zinskonditionencode;
                                                               ENU=Fin. Charge Terms Code] }
-    { 29  ;   ;Purchaser Code      ;Code10        ;TableRelation=Salesperson/Purchaser;
+    { 29  ;   ;Purchaser Code      ;Code20        ;TableRelation=Salesperson/Purchaser;
+                                                   OnValidate=BEGIN
+                                                                ValidatePurchaserCode;
+                                                              END;
+
                                                    CaptionML=[DEU=Eink„ufercode;
                                                               ENU=Purchaser Code] }
     { 30  ;   ;Shipment Method Code;Code10        ;TableRelation="Shipment Method";
@@ -271,7 +275,18 @@ OBJECT Table 23 Vendor
                                                    CaptionML=[DEU=Bemerkung;
                                                               ENU=Comment];
                                                    Editable=No }
-    { 39  ;   ;Blocked             ;Option        ;CaptionML=[DEU=Gesperrt;
+    { 39  ;   ;Blocked             ;Option        ;OnValidate=BEGIN
+                                                                IF (Blocked <> Blocked::All) AND "Privacy Blocked" THEN
+                                                                  IF GUIALLOWED THEN
+                                                                    IF CONFIRM(ConfirmBlockedPrivacyBlockedQst) THEN
+                                                                      "Privacy Blocked" := FALSE
+                                                                    ELSE
+                                                                      ERROR('')
+                                                                  ELSE
+                                                                    ERROR(CanNotChangeBlockedDueToPrivacyBlockedErr);
+                                                              END;
+
+                                                   CaptionML=[DEU=Gesperrt;
                                                               ENU=Blocked];
                                                    OptionCaptionML=[DEU=" ,Zahlung,Alle";
                                                                     ENU=" ,Payment,All"];
@@ -889,6 +904,15 @@ OBJECT Table 23 Vendor
                                                    OptionCaptionML=[DEU=" ,Unternehmen,Person";
                                                                     ENU=" ,Company,Person"];
                                                    OptionString=[ ,Company,Person] }
+    { 150 ;   ;Privacy Blocked     ;Boolean       ;OnValidate=BEGIN
+                                                                IF "Privacy Blocked" THEN
+                                                                  Blocked := Blocked::All
+                                                                ELSE
+                                                                  Blocked := Blocked::" ";
+                                                              END;
+
+                                                   CaptionML=[DEU=Datenschutzsperre;
+                                                              ENU=Privacy Blocked] }
     { 170 ;   ;Creditor No.        ;Code20        ;CaptionML=[DEU=Gl„ubiger-Identifikationsnummer;
                                                               ENU=Creditor No.];
                                                    Numeric=Yes }
@@ -951,7 +975,11 @@ OBJECT Table 23 Vendor
     { 5701;   ;Location Code       ;Code10        ;TableRelation=Location WHERE (Use As In-Transit=CONST(No));
                                                    CaptionML=[DEU=Lagerortcode;
                                                               ENU=Location Code] }
-    { 5790;   ;Lead Time Calculation;DateFormula  ;AccessByPermission=TableData 120=R;
+    { 5790;   ;Lead Time Calculation;DateFormula  ;OnValidate=BEGIN
+                                                                LeadTimeMgt.CheckLeadTimeIsNotNegative("Lead Time Calculation");
+                                                              END;
+
+                                                   AccessByPermission=TableData 120=R;
                                                    CaptionML=[DEU=Beschaffungszeit;
                                                               ENU=Lead Time Calculation] }
     { 7177;   ;No. of Pstd. Receipts;Integer      ;FieldClass=FlowField;
@@ -1086,6 +1114,8 @@ OBJECT Table 23 Vendor
                                                               ENU=Base Calendar Code] }
     { 11000;  ;Registration No.    ;Text20        ;CaptionML=[DEU=Steuernummer;
                                                               ENU=Registration No.] }
+    { 50514;  ;ADV                 ;Boolean       ;DataClassification=ToBeClassified;
+                                                   Description=TOPAS, ST 23.05.18 - Auftragsdatenvereinbarung liegt vor }
     { 5005270;;Delivery Reminder Terms;Code10     ;TableRelation="Delivery Reminder Term";
                                                    CaptionML=[DEU=Lieferanmahnungsmethodencode;
                                                               ENU=Delivery Reminder Terms] }
@@ -1127,10 +1157,12 @@ OBJECT Table 23 Vendor
       ItemCrossReference@1016 : Record 5717;
       RMSetup@1020 : Record 5079;
       ServiceItem@1024 : Record 5940;
+      SalespersonPurchaser@1050 : Record 13;
       NoSeriesMgt@1011 : Codeunit 396;
       MoveEntries@1012 : Codeunit 361;
       UpdateContFromVend@1013 : Codeunit 5057;
       DimMgt@1014 : Codeunit 408;
+      LeadTimeMgt@1018 : Codeunit 5404;
       InsertFromContact@1015 : Boolean;
       Text004@1019 : TextConst 'DEU=Kontakt %1 %2 ist nicht mit Kreditor %3 %4 verknpft.;ENU=Contact %1 %2 is not related to vendor %3 %4.';
       Text005@1021 : TextConst 'DEU=buchen;ENU=post';
@@ -1140,6 +1172,10 @@ OBJECT Table 23 Vendor
       Text009@1027 : TextConst 'DEU=Das Abstimmen von IC-Buchungen kann schwierig sein, wenn Sie den IC-Partnercode „ndern, weil %1 Posten in einem noch nicht geschlossenen Gesch„ftsjahr aufweist.\ M”chten Sie den IC-Partnercode trotzdem „ndern?;ENU=Reconciling IC transactions may be difficult if you change IC Partner Code because this %1 has ledger entries in a fiscal year that has not yet been closed.\ Do you still want to change the IC Partner Code?';
       Text010@1026 : TextConst 'DEU=Sie k”nnen den Inhalt des Feldes %1 nicht „ndern, weil fr dieses %2 ein oder mehrere offene Posten vorliegen.;ENU=You cannot change the contents of the %1 field because this %2 has one or more open ledger entries.';
       Text011@1004 : TextConst 'DEU=Bevor Sie Online Map verwenden k”nnen, mssen Sie die Felder des Fensters ''Online Map-Einrichtung'' ausfllen.\Informationen hierzu finden Sie in der Hilfe zum Einrichten von Online Map.;ENU=Before you can use Online Map, you must fill in the Online Map Setup window.\See Setting Up Online Map in Help.';
+      PrivacyBlockedActionErr@1061 : TextConst '@@@="%1 = action (create or post), %2 = vendor code.";DEU=Sie k”nnen diese Belegart nicht %1, wenn der Kreditor %2 aus Datenschutzgrnden gesperrt ist.;ENU=You cannot %1 this type of document when Vendor %2 is blocked for privacy.';
+      PrivacyBlockedGenericTxt@1062 : TextConst '@@@="%1 = vendor code";DEU="""Datenschutzsperre"" darf fr den Kreditor %1 nicht ""true"" sein.";ENU=Privacy Blocked must not be true for vendor %1.';
+      ConfirmBlockedPrivacyBlockedQst@1030 : TextConst 'DEU=Wenn Sie das Feld "Gesperrt" „ndern, wird das Feld "Datenschutzsperre" in "Nein" ge„ndert. M”chten Sie fortfahren?;ENU=If you change the Blocked field, the Privacy Blocked field is changed to No. Do you want to continue?';
+      CanNotChangeBlockedDueToPrivacyBlockedErr@1029 : TextConst 'DEU=Das Feld "Gesperrt" kann nicht ge„ndert werden, weil der Benutzer aus Datenschutzgrnden gesperrt ist.;ENU=The Blocked field cannot be changed because the user is blocked for privacy reasons.';
 
     PROCEDURE AssistEdit@2(OldVend@1000 : Record 23) : Boolean;
     VAR
@@ -1197,6 +1233,9 @@ OBJECT Table 23 Vendor
 
     PROCEDURE CheckBlockedVendOnDocs@4(Vend2@1003 : Record 23;Transaction@1000 : Boolean);
     BEGIN
+      IF Vend2."Privacy Blocked" THEN
+        VendPrivacyBlockedErrorMessage(Vend2,Transaction);
+
       IF Vend2.Blocked = Vend2.Blocked::All THEN
         VendBlockedErrorMessage(Vend2,Transaction);
     END;
@@ -1204,6 +1243,9 @@ OBJECT Table 23 Vendor
     PROCEDURE CheckBlockedVendOnJnls@5(Vend2@1005 : Record 23;DocType@1004 : ' ,Payment,Invoice,Credit Memo,Finance Charge Memo,Reminder,Refund';Transaction@1003 : Boolean);
     BEGIN
       WITH Vend2 DO BEGIN
+        IF "Privacy Blocked" THEN
+          VendPrivacyBlockedErrorMessage(Vend2,Transaction);
+
         IF (Blocked = Blocked::All) OR
            (Blocked = Blocked::Payment) AND (DocType = DocType::Payment)
         THEN
@@ -1244,6 +1286,23 @@ OBJECT Table 23 Vendor
       ERROR(Text007,Action,Vend2."No.",Vend2.Blocked);
     END;
 
+    PROCEDURE VendPrivacyBlockedErrorMessage@62(Vend2@1001 : Record 23;Transaction@1002 : Boolean);
+    VAR
+      Action@1000 : Text[30];
+    BEGIN
+      IF Transaction THEN
+        Action := Text005
+      ELSE
+        Action := Text006;
+
+      ERROR(PrivacyBlockedActionErr,Action,Vend2."No.");
+    END;
+
+    PROCEDURE GetPrivacyBlockedGenericErrorText@73(Vend2@1001 : Record 23) : Text[250];
+    BEGIN
+      EXIT(STRSUBSTNO(PrivacyBlockedGenericTxt,Vend2."No."));
+    END;
+
     PROCEDURE DisplayMap@7();
     VAR
       MapPoint@1001 : Record 800;
@@ -1265,7 +1324,7 @@ OBJECT Table 23 Vendor
       VendLedgEntryRemainAmtQuery.OPEN;
 
       IF VendLedgEntryRemainAmtQuery.READ THEN
-        OverDueBalance := VendLedgEntryRemainAmtQuery.Sum_Remaining_Amt_LCY;
+        OverDueBalance := -VendLedgEntryRemainAmtQuery.Sum_Remaining_Amt_LCY;
     END;
 
     PROCEDURE GetInvoicedPrepmtAmountLCY@18() : Decimal;
@@ -1279,6 +1338,14 @@ OBJECT Table 23 Vendor
       EXIT(PurchLine."Prepmt. Amount Inv. (LCY)" + PurchLine."Prepmt. VAT Amount Inv. (LCY)");
     END;
 
+    LOCAL PROCEDURE ValidatePurchaserCode@690();
+    BEGIN
+      IF "Purchaser Code" <> '' THEN
+        IF SalespersonPurchaser.GET("Purchaser Code") THEN
+          IF SalespersonPurchaser.VerifySalesPersonPurchaserPrivacyBlocked(SalespersonPurchaser) THEN
+            ERROR(SalespersonPurchaser.GetPrivacyBlockedGenericText(SalespersonPurchaser,FALSE))
+    END;
+
     PROCEDURE GetTotalAmountLCY@10() : Decimal;
     BEGIN
       CALCFIELDS(
@@ -1290,6 +1357,11 @@ OBJECT Table 23 Vendor
     END;
 
     BEGIN
+    {
+      Lfd.Nr. Version   Datum       User  Beschreibung
+      ===========================================================================
+      1       TOP1.00   23.05.18    ST    Neues Feld 50514 ADV angelegt - Datenschutz Auftragsdatenvereinbarung
+    }
     END.
   }
 }
