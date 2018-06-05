@@ -1,0 +1,283 @@
+OBJECT Table 50032 Dokumentenversand
+{
+  OBJECT-PROPERTIES
+  {
+    Date=31.05.18;
+    Time=15:37:51;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    OnInsert=VAR
+               NoSeriesMgt@1140000 : Codeunit 396;
+               laufende_nummer@1140001 : Code[20];
+               eingabe@1140002 : Code[10];
+               ok@1140003 : Boolean;
+             BEGIN
+               ok := EVALUATE(eingabe,'TOPAS-DOKU');
+               laufende_nummer := '';
+               NoSeriesMgt.InitSeries(eingabe,eingabe,TODAY,laufende_nummer,eingabe);
+               "Lfd. Nr." := laufende_nummer;
+
+               IF Belegdatum = 0D THEN
+                 Belegdatum := WORKDATE;
+               "Angelegt von" := USERID;
+               "Angelegt am"  := WORKDATE;
+             END;
+
+    OnModify=BEGIN
+               "Korrigiert von" := USERID;
+               "Korrigiert am"  := WORKDATE;
+             END;
+
+    OnDelete=BEGIN
+               TopasBemerkungen.RESET;
+               TopasBemerkungen.SETCURRENTKEY("Nr.",Art,"Artikelnr.","Zeilennr.");
+               TopasBemerkungen.SETRANGE(Art,TopasBemerkungen.Art :: Dokumentenversand);
+               TopasBemerkungen.SETRANGE(TopasBemerkungen."Nr.","Lfd. Nr.");
+               TopasBemerkungen.DELETEALL;
+             END;
+
+    OnRename=BEGIN
+               IF "Lfd. Nr." <> xRec."Lfd. Nr." THEN
+                 ERROR(Text006,TABLECAPTION);
+             END;
+
+  }
+  FIELDS
+  {
+    { 1   ;   ;Lfd. Nr.            ;Code20         }
+    { 2   ;   ;Korrespondenzart    ;Option        ;OptionString=[ ,,,Email,,,Fax,,,Post,,,Web,,Besuch] }
+    { 3   ;   ;Aktion              ;Option        ;OptionString=[ ,,,NDA,Schulung,BEA,PDF,Mailing,,SW Lizenz,,,TT,,,Datenblatt,,,CD/DVD,,Geschenk] }
+    { 5   ;   ;Betreff             ;Text80         }
+    { 6   ;   ;Speicherort         ;Text180       ;OnValidate=BEGIN
+                                                                Dateiname := Return_filename(Speicherort);
+                                                              END;
+                                                               }
+    { 7   ;   ;Belegdatum          ;Date           }
+    { 8   ;   ;Kontaktnr.          ;Code20        ;TableRelation=Contact;
+                                                   OnValidate=BEGIN
+                                                                IF Cont.GET("Kontaktnr.") THEN BEGIN
+                                                                  IF ("Mandantennr." <> '') AND ("Mandantennr." <> Cont."Company No.") THEN BEGIN
+                                                                    IF CONFIRM(Text005,TRUE) THEN BEGIN
+                                                                      "Mandantennr." := Cont."Company No.";
+                                                                      CALCFIELDS(Kontaktname);
+                                                                    END;
+                                                                  END ELSE BEGIN
+                                                                    "Mandantennr." := Cont."Company No.";
+                                                                    CALCFIELDS(Kontaktname);
+                                                                  END;
+                                                                END;
+                                                              END;
+
+                                                   OnLookup=BEGIN
+                                                              CLEAR(Cont);
+                                                              IF "Mandantennr." <> '' THEN
+                                                                Cont.SETFILTER(Cont."Company No.",'%1',"Mandantennr.");
+                                                              IF Cont.FINDFIRST THEN BEGIN
+                                                                IF PAGE.RUNMODAL(PAGE::"Contact List",Cont) = ACTION::LookupOK THEN BEGIN
+                                                                  VALIDATE("Kontaktnr.",Cont."No.");
+                                                                  CALCFIELDS(Mandantenname);
+                                                                END;
+                                                              END;
+                                                            END;
+
+                                                   DataClassification=EndUserIdentifiableInformation }
+    { 9   ;   ;Kontaktname         ;Text50        ;FieldClass=FlowField;
+                                                   CalcFormula=Lookup(Contact.Name WHERE (No.=FIELD(Kontaktnr.)));
+                                                   Editable=No }
+    { 10  ;   ;Mandantennr.        ;Code20        ;TableRelation=Contact }
+    { 11  ;   ;Mandantenname       ;Text50        ;FieldClass=FlowField;
+                                                   CalcFormula=Lookup(Contact.Name WHERE (No.=FIELD(Mandantennr.),
+                                                                                          Type=CONST(Company)));
+                                                   Editable=No }
+    { 12  ;   ;Versandadresse      ;Text80         }
+    { 13  ;   ;Status              ;Option        ;OptionString=[ ,,,An Kunden,,,An Hersteller,,,Komplett,Abgebrochen,Abgelehnt,,Direkt Abwicklung,,,Direkt Komplett,,angemeldet,teilgenommen,On Hold] }
+    { 14  ;   ;Feedback            ;Option        ;OptionString=nein,ja }
+    { 15  ;   ;Feedbacktext        ;Text50         }
+    { 16  ;   ;Fehlermeldung       ;Text180        }
+    { 17  ;   ;Laufzeit            ;Code15        ;TableRelation=Optionstabelle.Code WHERE (Tabellen ID=FILTER(50032),
+                                                                                            Feld ID=FILTER(17));
+                                                   OnValidate=BEGIN
+                                                                IF Belegdatum <> 0D THEN Ablaufdatum := CALCDATE(Laufzeit,Belegdatum);
+                                                              END;
+
+                                                   Description=NDA }
+    { 18  ;   ;Ablaufdatum         ;Date          ;Description=NDA }
+    { 19  ;   ;Linie               ;Code10        ;TableRelation=Manufacturer;
+                                                   OnValidate=BEGIN
+                                                                Manufac.RESET;
+                                                                Manufac.SETRANGE(Manufac.Code,Linie);
+                                                                IF Manufac.FINDFIRST THEN
+                                                                  Linienkurzname := Manufac.Herstellerkurzname;
+                                                              END;
+
+                                                   Description=Manufacturer }
+    { 20  ;   ;Linienkurzname      ;Code4         ;OnValidate=BEGIN
+                                                                Manufac.RESET;
+                                                                Manufac.SETRANGE(Manufac.Herstellerkurzname,Linienkurzname);
+                                                                IF Manufac.FINDFIRST THEN
+                                                                  Linie := Manufac.Code
+                                                                ELSE
+                                                                  IF Linie <> '' THEN
+                                                                    ERROR(Text002,FIELDCAPTION(Linienkurzname));
+                                                              END;
+
+                                                   OnLookup=BEGIN
+                                                              CLEAR(Manufac);
+                                                              IF PAGE.RUNMODAL(PAGE::Manufacturers,Manufac) = ACTION::LookupOK THEN
+                                                                VALIDATE(Linienkurzname,Manufac.Herstellerkurzname);
+                                                            END;
+
+                                                   Description=Manufacturer }
+    { 21  ;   ;Kontaktnr. Hersteller;Code20       ;TableRelation=Contact;
+                                                   OnLookup=BEGIN
+                                                              IF Linie = '' THEN MESSAGE(Text003,FIELDCAPTION(Linie));
+
+                                                              IF Manufac.GET(Linie) THEN BEGIN
+                                                                ContBusRel.RESET;
+                                                                ContBusRel.SETRANGE(ContBusRel."Business Relation Code",'KRED');
+                                                                ContBusRel.SETRANGE(ContBusRel."No.",Manufac."Zugeordnete Kreditorennr.");
+                                                                IF ContBusRel.FINDFIRST THEN BEGIN
+                                                                  CLEAR(Cont);
+                                                                  IF Linie = '43' THEN
+                                                                    Cont.SETFILTER("Company No.",'%1|%2',ContBusRel."Contact No.",'KT000155')
+                                                                  ELSE
+                                                                    Cont.SETFILTER("Company No.",'%1',ContBusRel."Contact No.");
+                                                                  IF Cont.FINDFIRST THEN BEGIN
+                                                                    IF "Kontaktnr. Hersteller" <> '' THEN
+                                                                      Cont.GET("Kontaktnr. Hersteller");
+                                                                    IF PAGE.RUNMODAL(PAGE::"Contact List",Cont) = ACTION::LookupOK THEN BEGIN
+                                                                      VALIDATE("Kontaktnr. Hersteller",Cont."No.");
+                                                                      CALCFIELDS("Kontaktname Hersteller");
+                                                                    END;
+                                                                  END;
+                                                                END ELSE
+                                                                  MESSAGE(Text007,ContBusRel.TABLECAPTION,Manufac.FIELDCAPTION("Zugeordnete Kreditorennr."),Manufac.TABLECAPTION,Linie);
+                                                              END;
+                                                            END;
+                                                             }
+    { 22  ;   ;Kontaktname Hersteller;Text50      ;FieldClass=FlowField;
+                                                   CalcFormula=Lookup(Contact.Name WHERE (No.=FIELD(Kontaktnr. Hersteller)));
+                                                   Editable=No }
+    { 23  ;   ;Statustext          ;Text80         }
+    { 24  ;   ;Interne Info        ;Text80        ;Description=31.08.17 ST - Fr individuelle Freitexte gedacht }
+    { 30  ;   ;Belegart            ;Option        ;OptionString=[ ,,,Angebot,,,Arch. Angebot,,,Rechnung];
+                                                   Description=[ ,,,Angebot,,,Arch. Angebot,,,Rechnung] }
+    { 31  ;   ;Belegnr.            ;Code20        ;TableRelation=IF (Belegart=CONST(Angebot)) "Sales Header".No. WHERE (Document Type=CONST(Quote))
+                                                                 ELSE IF (Belegart=CONST(Arch. Angebot)) "Sales Header Archive".No. WHERE (Document Type=CONST(Quote))
+                                                                 ELSE IF (Belegart=CONST(Rechnung)) "Sales Invoice Header".No. }
+    { 40  ;   ;Datei 1             ;Text180        }
+    { 41  ;   ;Datei 2             ;Text180        }
+    { 42  ;   ;Datei 3             ;Text180        }
+    { 45  ;   ;Dateiname           ;Text80        ;Description=Dateiname von Speicherort;
+                                                   Editable=No }
+    { 50  ;   ;Angelegt von        ;Code50         }
+    { 51  ;   ;Angelegt am         ;Date           }
+    { 52  ;   ;Korrigiert von      ;Code50         }
+    { 53  ;   ;Korrigiert am       ;Date           }
+    { 80  ;   ;Schulung            ;Option        ;OptionString=[ ,,,Basic SIP CPE,,,M1K & M800 E-SBC,,,MS Lync,MS Lync 1,MS Lync 2,M3K E-SBC,,,,,,,,E-SBC 1,E-SBC 2,SIP CPE,SIP CPE 1,SIP CPE 2,M3K SIP GW,MS UM/OCS,MSBG VoIP,,,Alcatel Lucent SBC,,,FER-UMS,,,FER-GW,,,S4B-1,S4B-2,,,Wildix];
+                                                   Description=01.06.12 ST - Fr Trainings / Schulungen genutzt z.B. AudioCodes }
+    { 81  ;   ;Schulungsdatum      ;Date          ;Description=01.06.12 ST - Datum des Trainings / der Schulung }
+    { 90  ;   ;Anzahl              ;Integer        }
+    { 91  ;   ;Zust„ndig Bearb     ;Text20         }
+  }
+  KEYS
+  {
+    {    ;Lfd. Nr.                                ;Clustered=Yes }
+    {    ;Ablaufdatum,Mandantennr.,Lfd. Nr.        }
+  }
+  FIELDGROUPS
+  {
+  }
+  CODE
+  {
+    VAR
+      FileMgt@1000000000 : Codeunit 419;
+      Cont@1140000 : Record 5050;
+      Text000@1140001 : TextConst 'DEU=Speicherorte, die auf Disketten-, lokale oder CD/DVD Laufwerke verweisen, sind nicht gestattet.';
+      ContBusRel@1140005 : Record 5054;
+      Manufac@1140004 : Record 5720;
+      Opt_tab@1140007 : Record 50001;
+      TopasBemerkungen@1140012 : Record 50023;
+      var_field@1140002 : Text[180];
+      Text001@1140003 : TextConst 'DEU=Die Datei oder der Pfad %1 konnte nicht gefunden werden.';
+      Text002@1140006 : TextConst 'DEU=%1 konnte nicht gefunden werden.';
+      Text003@1140009 : TextConst 'DEU=Sie mssen zuerst eine %1 hinterlegen.';
+      Text004@1140008 : TextConst 'DEU=Es wurde fr die %1 %2 noch kein Template hinterlegt.';
+      Text005@1140010 : TextConst 'DEU=Die Mandantennr. wird umgestellt, wollen Sie diese Žnderung wirklich durchfhren?';
+      Text006@1140011 : TextConst 'DEU=Sie k”nnen den %1 nicht umbenennen.';
+      Text007@1000000001 : TextConst 'DEU=Es konnte entweder keine %1 gefunden werden oder das Feld %2 fr %3 %4 wurde noch nicht gefllt.';
+
+    PROCEDURE Save_FileLocation@1140002();
+    BEGIN
+      Speicherort := FileMgt.OpenFileDialog('Dokument ausw„hlen','','');
+
+      IF (STRPOS((Speicherort),'A:\') >0 ) OR (STRPOS((Speicherort),'B:\') >0 ) OR (STRPOS((Speicherort),'C:\') > 0)
+      OR (STRPOS((Speicherort),'D:\') >0) OR (STRPOS((Speicherort),'E:\') >0) OR (STRPOS((Speicherort),'L:\') >0) THEN BEGIN
+        Speicherort := xRec.Speicherort;
+        ERROR(Text000);
+      END;
+
+      VALIDATE(Speicherort);
+      MODIFY;
+    END;
+
+    PROCEDURE Save_FileLocation_newFields@1140003(VAR field@1140003 : Text[180]);
+    VAR
+      DialogMgt@1140002 : Codeunit 50001;
+      DialogDefaultFileType@1140001 : ' ,Text,Excel,Word,Custom,PDF';
+      DialogAction@1140000 : 'Open,Save';
+    BEGIN
+      field := FileMgt.OpenFileDialog('Dokument ausw„hlen','','');
+
+      IF (STRPOS((field),'A:\') >0 ) OR (STRPOS((field),'B:\') >0 ) OR (STRPOS((field),'C:\') > 0)
+      OR (STRPOS((field),'D:\') >0) OR (STRPOS((field),'E:\') >0) OR (STRPOS((field),'L:\') >0) THEN
+        ERROR(Text000);
+    END;
+
+    PROCEDURE Return_filename@1140000(VAR field@1140000 : Text[180]) : Text[80];
+    VAR
+      temp_v@1140001 : Text[180];
+    BEGIN
+      temp_v := field;
+      REPEAT
+        temp_v := COPYSTR(temp_v,STRPOS(temp_v,'\')+1,STRLEN(temp_v));
+      UNTIL DELCHR(temp_v,'=','\') = temp_v;
+      EXIT(temp_v);
+    END;
+
+    PROCEDURE New_Template@1140005();
+    BEGIN
+      IF Linie = '' THEN
+        ERROR(Text003,FIELDCAPTION(Linie));
+
+      Opt_tab.RESET;
+      Opt_tab.SETFILTER(Opt_tab."Tabellen ID",'%1',50032);
+      Opt_tab.SETFILTER(Opt_tab."Feld ID",'%1',6);
+      Opt_tab.SETFILTER(Opt_tab.Code,'%1',Linie);
+      PAGE.RUN(PAGE::Optionswerte,Opt_tab);
+    END;
+
+    PROCEDURE Open_Template@1140006();
+    BEGIN
+      IF Linie = '' THEN
+        ERROR(Text003,FIELDCAPTION(Linie));
+
+      Opt_tab.RESET;
+      Opt_tab.SETFILTER(Opt_tab."Tabellen ID",'%1',50032);
+      Opt_tab.SETFILTER(Opt_tab."Feld ID",'%1',6);
+      Opt_tab.SETFILTER(Opt_tab.Code,'%1',Linie);
+      IF Opt_tab.FINDFIRST THEN BEGIN
+        Speicherort := Opt_tab.Pfad;
+        MODIFY;
+      END ELSE
+        ERROR(Text004,FIELDCAPTION(Linie),Linienkurzname);
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
