@@ -2,8 +2,8 @@ OBJECT Page 50104 Belegausgabe per Batch
 {
   OBJECT-PROPERTIES
   {
-    Date=28.02.18;
-    Time=13:57:07;
+    Date=06.07.18;
+    Time=11:45:48;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -147,7 +147,7 @@ OBJECT Page 50104 Belegausgabe per Batch
                 SourceExpr=Rechnung_PDF }
 
     { 1000000012;3;Field  ;
-                CaptionML=DEU=Rahmenauftrag als PDF;
+                CaptionML=DEU=Rahmenauftr„ge als PDF;
                 SourceExpr=Rahmenauftrag_PDF }
 
     { 1140018;3;Field     ;
@@ -380,7 +380,7 @@ OBJECT Page 50104 Belegausgabe per Batch
         purch_header.RESET;
         purch_header.SETFILTER("Document Type",'%1',purch_header."Document Type"::Order);
         purch_header.SETFILTER("Location Code",'<>%1','MUST');
-        purch_header.SETFILTER("Buy-from Vendor No.",'<>%1&<>%2','600055','880045');
+        purch_header.SETFILTER("Buy-from Vendor No.",'<>%1&<>%2&<>%3','600055','880045','880072');
         purch_header.SETFILTER("Order Date",'%1',Tagesdatum);
         purch_header.SETFILTER("No.",belegnr);
         //purch_header.SETFILTER("AB via EMail",'%1',TRUE);
@@ -452,6 +452,10 @@ OBJECT Page 50104 Belegausgabe per Batch
                       belege := belege + ',' + rahmen."No." + '.pdf';
                 UNTIL sales_line.NEXT = 0;
 
+              IF CheckCHAMPS_AV_notwendig(sales_header) THEN
+                IF sales_header."Language Code" <> 'ENU' THEN
+                  belege := belege + ',F:\Daten NEU\Gemeinsame Ordner\Compliance\Datenschutz\AV_Vorlagen_TOPAS\AV_Champs_TOPAS.pdf';
+
               TOPAS_API.NewMail(sales_header."AB EMail-Adresse",'','',subject+
               sales_header."External Document No.",body,AttachmentPath,belege);
             UNTIL sales_header.NEXT = 0;
@@ -503,6 +507,10 @@ OBJECT Page 50104 Belegausgabe per Batch
                     IF STRPOS(belege,rahmen."No." + '.pdf') = 0 THEN
                       belege := belege + ',' + rahmen."No." + '.pdf';
                 UNTIL sales_line.NEXT = 0;
+
+              IF CheckCHAMPS_AV_notwendig(sales_header) THEN
+                IF sales_header."Language Code" <> 'ENU' THEN
+                  belege := belege + ',F:\Daten NEU\Gemeinsame Ordner\Compliance\Datenschutz\AV_Vorlagen_TOPAS\AV_Champs_TOPAS.pdf';
 
               TOPAS_API.NewMail(sales_header."AB EMail-Adresse",'','',subject+
               sales_header."External Document No.",body,AttachmentPath,belege);
@@ -711,6 +719,32 @@ OBJECT Page 50104 Belegausgabe per Batch
             END;
           UNTIL Ship_Header.NEXT = 0;
       END;
+    END;
+
+    LOCAL PROCEDURE CheckCHAMPS_AV_notwendig@1000000001(SalesHeader@1000000000 : Record 36) : Boolean;
+    VAR
+      Item@1000000003 : Record 27;
+      SalesLine@1000000001 : Record 37;
+      TroubleshootingSetup@1000000002 : Record 5945;
+    BEGIN
+      //06.07.2018 ST - Prfen, ob Anhang AV Vereinbarung notwendig ist, wenn noch keine ADV vorliegt und CHAMPS im Beleg gefunden wird
+      SalesLine.RESET;
+      SalesLine.SETRANGE("Document No.",SalesHeader."No.");
+      SalesLine.SETRANGE(Type,SalesLine.Type::Item);
+      IF SalesLine.FINDFIRST THEN BEGIN
+        Customer.GET(SalesHeader."Sell-to Customer No.");
+        REPEAT
+          IF (Item.GET(SalesLine."No.") AND (Item."Software Upgrade Protection")) THEN
+            TroubleshootingSetup.SETRANGE(Type,TroubleshootingSetup.Type::Item);
+            TroubleshootingSetup.SETRANGE("No.",Item."No.");
+            TroubleshootingSetup.SETRANGE("Troubleshooting No.",'CHAMPS');
+            IF TroubleshootingSetup.FINDFIRST THEN
+              IF (Customer.ADV = FALSE) AND (Customer."Territory Code" = 'SYSTEM') THEN BEGIN
+                EXIT(TRUE)
+              END;
+        UNTIL SalesLine.NEXT = 0;
+      END;
+      EXIT(FALSE);
     END;
 
     BEGIN
