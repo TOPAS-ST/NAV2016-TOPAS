@@ -2,8 +2,8 @@ OBJECT Codeunit 50008 TOPAS Service Modul
 {
   OBJECT-PROPERTIES
   {
-    Date=03.05.18;
-    Time=16:04:48;
+    Date=20.08.18;
+    Time=11:23:46;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -37,7 +37,7 @@ OBJECT Codeunit 50008 TOPAS Service Modul
       Text52005@1000000017 : TextConst 'DEU=Bitte hinterlegen Sie die Laufzeit fr Artikel %1 in der Optionstabelle (Feld Code), damit der Service-Preis fr Artikel %2 richtig ermittelt werden kann.';
       Text52006@1000000018 : TextConst 'DEU=Bitte hinterlegen Sie den MSRP-Preis als Vk-Preis im Artikel %1, damit der Vk-Preis fr die %2 automatisch berechnet werden kann. Vergewissern Sie sich auch, dass das Arbeitsdatum innerhalb des Start- und Enddatums des Vk-Preises liegt.\Oder setzen Sie den Haken "%3" im Artikel.';
       Text52007@1000000019 : TextConst 'DEU=Bitte hinterlegen Sie fr Artikel %1 in der Service Preistabelle sowohl den ACTS Euro und/oder den ACTS USD MSRP (%2).';
-      Text37_000@1000000024 : TextConst 'DEU=M”chten Sie wirklich alle Service Kalkulationen im Beleg mit dem Kurs vom %1 neu rechnen lassen?\Hinweis: Sie berschreiben damit auch manuell festgelegte VK-Preise. Zudem wird bei allen Positionen, sowohl fr Systemartikel als auch Service Kalkulationen, der %2 aktualisiert.';
+      Text37_000@1000000024 : TextConst 'DEU=M”chten Sie wirklich alle Service Kalkulationen im Beleg mit dem Kurs vom %1 neu rechnen lassen?\Hinweis: Sie berschreiben damit auch manuell festgelegte VK-Preise. Die Service DC''s werden auch neu gerechnet. Zudem wird bei allen Positionen, sowohl fr Systemartikel als auch Service Kalkulationen, der %2 aktualisiert.';
       Text39_000@1000000021 : TextConst 'DEU=Diese Funktion ist nur fr Artikel mit Kennzeichnung %1 gestattet.';
       Text39_001@1000000022 : TextConst 'DEU=Die Einkaufszeile wurde aktualisiert. Der EK-Preis betr„gt nun %1.';
       Text39_002@1000000023 : TextConst 'DEU=Diese Bestellzeile wurde noch nicht mit Service Einzelpositionen verknpft oder der W„hrungscode stimmt nicht mit dem Service Einkaufsw„hrungscode berein.';
@@ -1700,7 +1700,9 @@ OBJECT Codeunit 50008 TOPAS Service Modul
       TOPAS_API@1000000004 : Codeunit 50001;
       CurrencyDate@1000000001 : Date;
       single_service_price_new@1140002 : Decimal;
+      single_service_dc_new@1000000007 : Decimal;
       total_service_price_new@1140003 : Decimal;
+      total_service_dc_new@1000000008 : Decimal;
       ek_w„h_faktor@1000000002 : Decimal;
       Window@1140007 : Dialog;
       v_ablaufdatum@1140009 : Date;
@@ -1725,7 +1727,9 @@ OBJECT Codeunit 50008 TOPAS Service Modul
         ek_w„h_faktor := CurrExchRate.ExchangeRate(CurrencyDate,SalesLine.Einkaufsw„hrungscode);
         REPEAT
           single_service_price_new := 0;
+          single_service_dc_new := 0;
           total_service_price_new := 0;
+          total_service_dc_new := 0;
           SalesLine.VALIDATE(Einkaufsw„hrungsfaktor,ek_w„h_faktor);
           SalesLine.MODIFY(TRUE);
           Artikel.GET(SalesLine."No.");
@@ -1753,11 +1757,15 @@ OBJECT Codeunit 50008 TOPAS Service Modul
                   END;
 
                   EVALUATE(v_laufzeit,COPYSTR(Laufzeit,1,STRPOS(Laufzeit,'M')-1));
+                  single_service_dc_new    := Gen_Service_DC("SUP Artikelnr.","Ger„te Artikelnr.",v_laufzeit,FALSE,SalesLine.Einkaufsw„hrungscode,"Quotenr.");
                   single_service_price_new := Gen_Service_VK("SUP Artikelnr.","Ger„te Artikelnr.",v_laufzeit,"Belegnr.","Belegzeilennr.",
                                               Fremderwerb,Basisger„t,FALSE,"Rabatt/Marge",SalesLine.Einkaufsw„hrungscode,SalesLine.Einkaufsw„hrungsfaktor,SalesLine."Currency Code");
 
                   // Service Kalkulation wird neu berechnet
+                  total_service_dc_new := total_service_dc_new + (single_service_dc_new * "Menge kalk.");
                   total_service_price_new := total_service_price_new + (single_service_price_new * "Menge kalk.");
+                  "Service DC einzeln" := single_service_dc_new;
+                  "Service DC Gesamt" := single_service_dc_new * "Menge kalk.";
                   "Service VK-Preis einzeln" := single_service_price_new;
                   "Service VK-Preis Zeilenbetrag" := single_service_price_new * "Menge kalk.";
                   "Service W„hrungsfaktor" := ek_w„h_faktor;
@@ -1771,7 +1779,9 @@ OBJECT Codeunit 50008 TOPAS Service Modul
             //***************************************************************************************************************
 
             total_service_price_new := ROUND(total_service_price_new,1);
-            IF (SalesLine."Unit Price" <> total_service_price_new) AND (total_service_price_new <> 0) AND (Artikel."Software Upgrade Protection" = TRUE) THEN BEGIN
+            IF (total_service_price_new <> 0) AND (Artikel."Software Upgrade Protection" = TRUE) THEN BEGIN
+              IF total_service_dc_new <> 0 THEN
+                SalesLine.VALIDATE("DC-Preis (EKW)", total_service_dc_new);
               SalesLine.VALIDATE(SalesLine."Unit Price",total_service_price_new);
               SalesLine.MODIFY;
 
