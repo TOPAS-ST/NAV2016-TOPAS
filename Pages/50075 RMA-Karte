@@ -1,0 +1,702 @@
+OBJECT Page 50075 RMA-Karte
+{
+  OBJECT-PROPERTIES
+  {
+    Date=26.07.17;
+    Time=12:26:02;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    DeleteAllowed=No;
+    SourceTable=Table50020;
+    DataCaptionExpr=Caption;
+    PromotedActionCategoriesML=[DEU=Neu,Vorgang,Bericht,Filter,Hilfe;
+                                ENU=New,Process,Report,Filter,Help];
+    OnOpenPage=BEGIN
+                 ersatz_pool_show := FALSE;
+               END;
+
+    OnAfterGetRecord=BEGIN
+                       //vorerst deaktiviert bis das ControlAddin berall verfgbar ist
+                       {
+                       IF FieldReklControlReady THEN BEGIN
+                         IF Reklamationsgrund <> '' THEN
+                           CurrPage.Reklamationsgrund.BackgroundColor := Color.LightGreen
+                         ELSE
+                           CurrPage.Reklamationsgrund.BackgroundColor := Color.LightCoral;
+                       END;
+                       }
+
+                       AnzAufgabe := 0;
+                       ToDo.RESET;
+                       ToDo.SETRANGE("Belegnr.","RMA-Nr.");
+                       ToDo.SETRANGE("System To-do Type",ToDo."System To-do Type"::Organizer);
+                       IF (ToDo.FINDFIRST) AND (ToDo."Belegnr."<>'') THEN
+                         AnzAufgabe := ToDo.COUNT;
+
+                       //Service Hinweis
+                       txt_hinweis_service := '';
+                       txt_hinweis_repl := '';
+
+                       "RMA-Zeilen".RESET;
+                       "RMA-Zeilen".SETFILTER(Belegart,'%1',"RMA-Zeilen".Belegart :: Rechnung);
+                       "RMA-Zeilen".SETFILTER("Artikelnr.",'<>%1','');
+                       "RMA-Zeilen".SETFILTER("RMA-Nr.",'%1',"RMA-Nr.");
+                       IF "RMA-Zeilen".FINDFIRST THEN
+                         REPEAT
+                           Servicezeilen.RESET;
+                           Servicezeilen.SETFILTER("Artikelnr.",'%1',"RMA-Zeilen"."Artikelnr.");
+                           Servicezeilen.SETFILTER("Seriennr.",'%1',"RMA-Zeilen"."SN-Nr. / DC");
+                           //Servicezeilen.SETFILTER(Inaktiv,'%1',FALSE);
+                           Servicezeilen.SETFILTER("Ablaufdatum Serviceleistung",'>=%1',WORKDATE);
+                           Servicezeilen.SETFILTER(Art,'%1',Servicezeilen.Art :: Service);
+                           IF Servicezeilen.FINDFIRST THEN
+                             REPEAT
+                               IF Servicezeilen.Benutzername <> '' THEN
+                                 txt_hinweis_service :=  'Achtung: Ger„te unter SERVICE!!!';
+                               IF (STRPOS(Servicezeilen."SUP Artikelnr.",'ADV-HW') <> 0)
+                               OR (STRPOS(Servicezeilen."SUP Artikelnr.",'REPL') <> 0) THEN
+                                 txt_hinweis_repl := 'Achtung: Ger„te unter HARDWARE REPLACEMENT!!!';
+                             UNTIL Servicezeilen.NEXT = 0;
+                         UNTIL ("RMA-Zeilen".NEXT = 0);
+
+                       RMA_Versand.RESET;
+                       RMA_Versand.SETFILTER("RMA-Nr.",'%1',"RMA-Nr.");
+                       RMA_Versand.SETFILTER(Art,'<>%1',RMA_Versand.Art::Artikel);
+                       IF RMA_Versand.FINDFIRST THEN
+                         AnzBeteiligte := RMA_Versand.COUNT
+                       ELSE
+                         AnzBeteiligte := 0;
+                     END;
+
+    OnModifyRecord=BEGIN
+                     IF "Status-Abgeschlossen" = TRUE THEN ERROR(Text011);
+                   END;
+
+    ActionList=ACTIONS
+    {
+      { 1900000000;0 ;ActionContainer;
+                      ActionContainerType=RelatedInformation }
+      { 1       ;1   ;ActionGroup;
+                      Name=Allgmein;
+                      CaptionML=[DEU=Allgmein;
+                                 ENU=General] }
+      { 1140080 ;2   ;Action    ;
+                      Name=Bemerkung_Intern;
+                      CaptionML=DEU=Bemerkung Intern;
+                      ToolTipML=DEU=RMA-Bemerkung fr Internes;
+                      RunObject=Page 50083;
+                      RunPageView=WHERE(Art=FILTER(Intern));
+                      RunPageLink=Nr.=FIELD(RMA-Nr.);
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=ViewComments;
+                      PromotedCategory=Process }
+      { 1140022 ;2   ;Action    ;
+                      Name=Hilfe;
+                      CaptionML=DEU=Hilfe;
+                      Promoted=Yes;
+                      Image=Help;
+                      PromotedCategory=Category5;
+                      OnAction=VAR
+                                 Shell@1140001 : Automation "{50A7E9B0-70EF-11D1-B75A-00A0C90564FE} 1.0:{13709620-C279-11CE-A49E-444553540000}:'Microsoft Shell Controls And Automation'.Shell";
+                                 Filename@1140000 : Text[260];
+                               BEGIN
+                                 CREATE(Shell,FALSE,TRUE);
+                                 Filename := 'F:\Daten NEU\Gemeinsame Ordner\Navision\Navision 5.0 Anleitungen\Nav.5.0 RMA.pdf';
+                                 Shell.Open(Filename);
+                               END;
+                                }
+      { 1000000026;2 ;Action    ;
+                      Name=Gesamtuebersicht;
+                      CaptionML=DEU=Gesamtbersicht;
+                      RunObject=Page 50087;
+                      RunPageView=SORTING(Belegnr.,Belegzeilennr.,Belegart)
+                                  ORDER(Ascending);
+                      RunPageLink=RMA-Nr.=FIELD(RMA-Nr.);
+                      Promoted=Yes;
+                      Image=ViewDocumentLine;
+                      PromotedCategory=Process }
+      { 1900000001;0 ;ActionContainer;
+                      ActionContainerType=ActionItems }
+      { 1000000030;1 ;ActionGroup;
+                      Name=Berechnung;
+                      CaptionML=DEU=Berechnung }
+      { 1000000032;2 ;Action    ;
+                      Name=RMA_WertBerechnen;
+                      CaptionML=DEU=RMA-Wert berechnen;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=Calculate;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 IF "RMA-Wert" <> 0 THEN BEGIN
+                                   IF CONFIRM(Text000,FALSE) THEN BEGIN
+                                     RMAWertBerechnen;
+                                     CurrPage.UPDATE;
+                                   END;
+                                 END ELSE BEGIN
+                                   RMAWertBerechnen;
+                                   CurrPage.UPDATE;
+                                 END;
+                               END;
+                                }
+      { 1000000031;2 ;Action    ;
+                      Name=RMA_abschlieáen;
+                      CaptionML=DEU=RMA abschlieáen;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=ReleaseDoc;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 IF (LOWERCASE(USERID) = 'w2k\ischramm')  OR (LOWERCASE(USERID) = 'w2k\jmaass') OR (LOWERCASE(USERID) = 'superuser')
+                                 OR (LOWERCASE(USERID) = 'w2k\stheuerkauf') OR (LOWERCASE(USERID) = 'w2k\agutsche') OR (LOWERCASE(USERID) = 'w2k\customerservice') THEN BEGIN
+                                   IF "Status-Abgeschlossen" = FALSE THEN BEGIN
+                                     IF "Einfache Archivierung" = FALSE THEN
+                                       IF ("Status-RMA-Annahme" = FALSE) THEN ERROR (Text007);
+
+                                     IF CONFIRM(Text003,TRUE) THEN BEGIN
+                                       //*********************************************************************************
+                                       //    Prft Mengen Wareneingang gegen Mengen Ausgang an Kunden 01.12.2010-ST
+                                       //*********************************************************************************
+                                       Menge_Annahme := 0;
+                                       Menge_anKunde := 0;
+
+                                       "RMA-Annahme".RESET;
+                                       "RMA-Annahme".SETFILTER("RMA-Nr.",'%1',"RMA-Nr.");
+                                       "RMA-Annahme".SETFILTER(Belegart,'%1',"RMA-Annahme".Belegart :: "vom Kunden");
+                                       IF "RMA-Annahme".FINDFIRST THEN
+                                         REPEAT
+                                           Menge_Annahme := Menge_Annahme + "RMA-Annahme"."Menge SN-Nr. / DC";
+                                         UNTIL "RMA-Annahme".NEXT = 0;
+
+                                       "RMA-anKunde".RESET;
+                                       "RMA-anKunde".SETFILTER("RMA-Nr.",'%1',"RMA-Nr.");
+                                       "RMA-anKunde".SETFILTER(Belegart,'%1',"RMA-anKunde".Belegart :: "an Kunden");
+                                       IF "RMA-anKunde".FINDFIRST THEN
+                                         REPEAT
+                                           Menge_anKunde := Menge_anKunde + "RMA-anKunde"."Menge SN-Nr. / DC";
+                                         UNTIL "RMA-anKunde".NEXT = 0;
+
+                                       IF Menge_Annahme <> Menge_anKunde THEN
+                                         IF NOT CONFIRM(Text009,FALSE) THEN
+                                           ERROR('');
+
+                                       IF ("Status-Zurck vom Kunden" = FALSE) OR ("Status-An Hersteller" = FALSE)
+                                       OR ("Status-Zurck vom Hersteller" = FALSE) OR ("Status-An Kunden" = FALSE) THEN BEGIN
+                                         IF CONFIRM(Text004,FALSE) THEN BEGIN
+                                           "Status-Abgeschlossen" := TRUE;
+                                           MODIFY;
+                                         END;
+                                       END ELSE BEGIN
+                                         "Status-Abgeschlossen" := TRUE;
+                                         MODIFY;
+                                       END;
+                                     END;
+                                   END ELSE
+                                     IF CONFIRM(Text006,FALSE) THEN BEGIN
+                                       "Status-Abgeschlossen" := FALSE;
+                                       MODIFY;
+                                     END;
+                                 END ELSE
+                                   ERROR(Text005);
+                               END;
+                                }
+      { 1140042 ;1   ;ActionGroup;
+                      Name=Berichte;
+                      CaptionML=DEU=Berichte;
+                      Image=1225 }
+      { 1000000021;2 ;Action    ;
+                      Name=RMA_Uebersicht;
+                      CaptionML=DEU=RMA šbersicht;
+                      ToolTipML=DEU=RMA-šbersicht;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=Report;
+                      PromotedCategory=Report;
+                      OnAction=VAR
+                                 Proj@1140000 : Record 5071;
+                               BEGIN
+                                 "RMA-Kopf" := Rec;
+                                 "RMA-Kopf".SETRECFILTER;
+                                 REPORT.RUN(50017,TRUE,FALSE,"RMA-Kopf");
+                               END;
+                                }
+      { 1140055 ;2   ;Action    ;
+                      Name=RMA_FormularI;
+                      CaptionML=DEU=RMA-Formular I;
+                      Promoted=Yes;
+                      Image=Report;
+                      PromotedCategory=Report;
+                      OnAction=BEGIN
+                                 "RMA-Kopf" := Rec;
+                                 "RMA-Kopf".SETRECFILTER;
+                                 REPORT.RUN(50014,TRUE,FALSE,"RMA-Kopf");
+                               END;
+                                }
+      { 1140074 ;2   ;Action    ;
+                      Name=RMA_FormularII;
+                      CaptionML=DEU=RMA-Formular II;
+                      Promoted=Yes;
+                      Image=Report;
+                      PromotedCategory=Report;
+                      OnAction=BEGIN
+                                 IF Betreuer = '' THEN ERROR(Text008);
+                                 IF "Status-RMA-Annahme" = FALSE THEN ERROR(Text007);
+
+                                 "RMA-Kopf" := Rec;
+                                 "RMA-Kopf".SETRECFILTER;
+                                 REPORT.RUN(50015,TRUE,FALSE,"RMA-Kopf");
+                               END;
+                                }
+      { 1140075 ;2   ;Action    ;
+                      Name=Best_Ruecksendung;
+                      CaptionML=DEU=Best„tigung fr Rcklieferung;
+                      Promoted=Yes;
+                      Image=Report;
+                      PromotedCategory=Report;
+                      OnAction=BEGIN
+                                 "RMA-Kopf" := Rec;
+                                 "RMA-Kopf".SETRECFILTER;
+                                 REPORT.RUN(50013,TRUE,FALSE,"RMA-Kopf");
+                               END;
+                                }
+      { 1140068 ;2   ;Action    ;
+                      Name=ProForma_Invoice;
+                      CaptionML=DEU=ProForma Invoice;
+                      Promoted=Yes;
+                      Image=Report;
+                      PromotedCategory=Report;
+                      OnAction=BEGIN
+                                 "RMA-Kopf" := Rec;
+                                 "RMA-Kopf".SETRECFILTER;
+                                 REPORT.RUN(50018,TRUE,FALSE,"RMA-Kopf");
+                               END;
+                                }
+      { 1140069 ;2   ;Action    ;
+                      Name=Lieferschein_Kunde;
+                      CaptionML=DEU=Lieferschein Kunde;
+                      Promoted=Yes;
+                      Image=Report;
+                      PromotedCategory=Report;
+                      OnAction=BEGIN
+                                 "RMA-Kopf" := Rec;
+                                 "RMA-Kopf".SETRECFILTER;
+                                 REPORT.RUN(50016,TRUE,FALSE,"RMA-Kopf");
+                               END;
+                                }
+      { 1140088 ;2   ;Action    ;
+                      Name=RMA_Formular_Beantragung.docx;
+                      CaptionML=DEU=RMA-Formular Beantragung.docx;
+                      Promoted=Yes;
+                      Image=Report;
+                      PromotedCategory=Report;
+                      OnAction=BEGIN
+                                 CREATE(ShellApp,FALSE,TRUE);
+                                 Filename := 'F:\Daten NEU\Gemeinsame Ordner\Formulare (Muster, RMA. Split usw.)\interne_Formulare\'+
+                                             'TOPAS RMA-Formular Beantragung.docx';
+
+                                 ShellApp.Open(Filename);
+                               END;
+                                }
+      { 1140076 ;1   ;ActionGroup;
+                      Name=Aufgaben;
+                      CaptionML=DEU=Aufgaben;
+                      Image=1241 }
+      { 1140077 ;2   ;Action    ;
+                      Name=Aufgaben_anzeigen;
+                      CaptionML=DEU=Aufgaben anzeigen;
+                      Promoted=Yes;
+                      Image=Task;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 ToDo.RESET;
+                                 ToDo.SETFILTER(ToDo."Belegnr.",'%1',"RMA-Nr.");
+                                 ToDo.SETFILTER(ToDo."System To-do Type",'%1',ToDo."System To-do Type"::Organizer);
+                                 IF (ToDo.FINDFIRST) AND (ToDo."Belegnr."<>'') THEN
+                                   PAGE.RUNMODAL(PAGE::"To-do Card",ToDo)
+                                 ELSE
+                                   ERROR('Es existiert keine Aufgabe zu %1.',"RMA-Nr.");
+                               END;
+                                }
+      { 1140078 ;2   ;Action    ;
+                      Name=Aufgabe_erstellen;
+                      CaptionML=DEU=Aufgabe erstellen;
+                      Promoted=Yes;
+                      Image=NewToDo;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 CreateToDoRMA;
+                               END;
+                                }
+      { 1000000009;1 ;ActionGroup;
+                      Name=Versandadresse;
+                      CaptionML=DEU=Versandadresse }
+      { 1000000011;2 ;Action    ;
+                      Name=Versand_bearbeiten;
+                      CaptionML=DEU=Versand bearbeiten;
+                      RunObject=Page 50086;
+                      RunPageView=SORTING(RMA-Nr.,Kontakt Mandantennr.,Art,Nr.)
+                                  WHERE(Art=FILTER(Kunde|Hersteller));
+                      RunPageLink=RMA-Nr.=FIELD(RMA-Nr.);
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=ShipAddress;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 {
+                                 RMA_Versand.RESET;
+                                 RMA_Versand.SETCURRENTKEY("RMA-Nr.","Kontakt Mandantennr.",Art,"Nr.");
+                                 RMA_Versand.SETFILTER(Art,'%1|%2',RMA_Versand.Art :: Kunde, RMA_Versand.Art :: Hersteller);
+                                 IF RMA_Versand.FINDFIRST THEN
+                                   PAGE.RUNMODAL(50086,RMA_Versand)
+                                 ELSE
+                                   ERROR(Text010);
+                                 }
+                               END;
+                                }
+      { 1000000028;1 ;ActionGroup;
+                      Name=Einblendung }
+      { 1000000029;2 ;Action    ;
+                      Name=ErsatzPool_anzeigen;
+                      CaptionML=DEU=Ersatzpool ein-/ausblenden;
+                      Promoted=Yes;
+                      Image=ShowList;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 IF ersatz_pool_show THEN
+                                   ersatz_pool_show := FALSE
+                                 ELSE
+                                   ersatz_pool_show := TRUE;
+
+                                 CurrPage.UPDATE;
+                               END;
+                                }
+    }
+  }
+  CONTROLS
+  {
+    { 1900000;0;Container ;
+                ContainerType=ContentArea }
+
+    { 1900001;1;Group     ;
+                Name=Allgemein;
+                GroupType=Group }
+
+    { 1140003;2;Field     ;
+                Name=RMA-Nr.;
+                SourceExpr="RMA-Nr." }
+
+    { 1140005;2;Field     ;
+                Name=Reklamationsgrund;
+                SourceExpr=Reklamationsgrund;
+                OnValidate=BEGIN
+                             //vorerst deaktiviert bis das ControlAddin berall verfgbar ist
+                             {
+                             IF FieldReklControlReady THEN
+                               IF Reklamationsgrund <> '' THEN
+                                 CurrPage.Reklamationsgrund.BackgroundColor := Color.LightGreen
+                               ELSE
+                                 CurrPage.Reklamationsgrund.BackgroundColor := Color.LightCoral;
+                             }
+                             CurrPage.UPDATE;
+                           END;
+                            }
+
+    { 1140007;2;Field     ;
+                Name=Belegdatum;
+                SourceExpr=Belegdatum;
+                OnValidate=BEGIN
+                             CurrPage.UPDATE;
+                           END;
+                            }
+
+    { 1140009;2;Field     ;
+                Name=Betreuer;
+                SourceExpr=Betreuer }
+
+    { 1140036;2;Field     ;
+                Name=RMA-Wert;
+                SourceExpr="RMA-Wert" }
+
+    { 1140067;2;Field     ;
+                Name=RMA-Wert aktuell;
+                ToolTipML=DEU=RMA-Wert ist aktuell.;
+                SourceExpr="RMA-Wert aktuell";
+                Editable=FALSE }
+
+    { 1140070;2;Field     ;
+                Name=Genehmigt von;
+                SourceExpr="Genehmigt von";
+                OnValidate=BEGIN
+                             {
+                             IF ("Genehmigt von" = '') AND ("RMA-Wert" >= 250) THEN CurrPAGE.Achtung1.VISIBLE := TRUE
+                               ELSE CurrPAGE.Achtung1.VISIBLE := FALSE;
+                             }
+                           END;
+                            }
+
+    { 1140061;2;Field     ;
+                Name=Abgeschlossen;
+                SourceExpr="Status-Abgeschlossen";
+                Editable=FALSE }
+
+    { 1140014;2;Field     ;
+                Name=8D Report;
+                SourceExpr="8D Report" }
+
+    { 1000000010;2;Field  ;
+                Name=Anzahl Aufgaben;
+                SourceExpr=AnzAufgabe;
+                Editable=FALSE }
+
+    { 1000000000;2;Field  ;
+                Name=Beteiligte;
+                Lookup=Yes;
+                SourceExpr=AnzBeteiligte;
+                Editable=FALSE;
+                LookupPageID=RMA-Beteiligte;
+                OnLookup=BEGIN
+                           RMA_Versand.RESET;
+                           RMA_Versand.SETCURRENTKEY("RMA-Nr.","Kontakt Mandantennr.",Art,"Nr.");
+                           RMA_Versand.SETFILTER("RMA-Nr.",'%1',"RMA-Nr.");
+                           RMA_Versand.SETFILTER(Art,'<>%1',RMA_Versand.Art::Artikel);
+                           PAGE.RUN(50082,RMA_Versand);
+                         END;
+                          }
+
+    { 1000000023;2;Group  ;
+                GroupType=Group }
+
+    { 1000000024;2;Group  ;
+                Visible=txt_hinweis_service <> '';
+                GroupType=Group }
+
+    { 1000000020;3;Field  ;
+                Name=Hinweis_Service;
+                CaptionML=DEU=Hinweis Service;
+                SourceExpr=txt_hinweis_service;
+                Editable=FALSE;
+                Style=StrongAccent;
+                StyleExpr=TRUE }
+
+    { 1000000025;2;Group  ;
+                Visible=txt_hinweis_repl <> '';
+                GroupType=Group }
+
+    { 1000000022;3;Field  ;
+                Name=Hinweis_HW-Repl;
+                CaptionML=DEU=Hinweis Replacment;
+                SourceExpr=txt_hinweis_repl;
+                Editable=FALSE;
+                Style=Unfavorable;
+                StyleExpr=TRUE }
+
+    { 1000000019;1;Group  ;
+                CaptionML=DEU=RMA Status;
+                GroupType=Group }
+
+    { 1000000007;2;Group  ;
+                GroupType=GridLayout;
+                Layout=Rows }
+
+    { 1000000008;3;Group  ;
+                GroupType=Group;
+                Layout=Rows }
+
+    { 1000000005;4;Field  ;
+                Name=Status-RMA-Annahme;
+                ToolTipML=DEU=Status der RMA-Annahme;
+                SourceExpr="Status-RMA-Annahme";
+                Editable=FALSE }
+
+    { 1000000006;4;Field  ;
+                Name=Status-Zurck vom Kunden;
+                ToolTipML=DEU=Status - zurck vom Kunden;
+                SourceExpr="Status-Zurck vom Kunden";
+                Editable=FALSE }
+
+    { 1000000003;4;Field  ;
+                Name=Status-An Hersteller;
+                ToolTipML=DEU=Status - An Hersteller;
+                SourceExpr="Status-An Hersteller";
+                Editable=FALSE }
+
+    { 1000000004;4;Field  ;
+                Name=Status-Zurck vom Hersteller;
+                ToolTipML=DEU=Status - zurck vom Hersteller;
+                SourceExpr="Status-Zurck vom Hersteller";
+                Editable=FALSE }
+
+    { 1000000001;4;Field  ;
+                Name=Status-An Kunden;
+                ToolTipML=DEU=Status -  An Kunden;
+                SourceExpr="Status-An Kunden";
+                Editable=FALSE }
+
+    { 1000000002;4;Field  ;
+                Name=Status-Vorab;
+                ToolTipML=DEU=Status - Vorab Service;
+                SourceExpr="Status-Vorab";
+                Editable=FALSE }
+
+    { 1140011;1;Part      ;
+                Name=RMA-Annahme;
+                CaptionML=DEU=RMA-Annahme;
+                SubPageLink=RMA-Nr.=FIELD(RMA-Nr.);
+                PagePartID=Page50076;
+                PartType=Page }
+
+    { 1140025;1;Part      ;
+                Name=Zurck vom Kunden;
+                CaptionML=DEU=Zurck vom Kunden;
+                SubPageLink=RMA-Nr.=FIELD(RMA-Nr.);
+                PagePartID=Page50077;
+                PartType=Page }
+
+    { 1140027;1;Part      ;
+                Name=An Hersteller;
+                CaptionML=DEU=An Hersteller;
+                SubPageLink=RMA-Nr.=FIELD(RMA-Nr.);
+                PagePartID=Page50078;
+                PartType=Page }
+
+    { 1140029;1;Part      ;
+                Name=Zurck vom Hersteller;
+                CaptionML=DEU=Zurck vom Hersteller;
+                SubPageLink=RMA-Nr.=FIELD(RMA-Nr.);
+                PagePartID=Page50079;
+                PartType=Page }
+
+    { 1140031;1;Part      ;
+                Name=An Kunden;
+                CaptionML=DEU=An Kunden;
+                SubPageLink=RMA-Nr.=FIELD(RMA-Nr.);
+                PagePartID=Page50080;
+                PartType=Page }
+
+    { 1140060;1;Part      ;
+                Name=Ersatz Pool/Vorab Service;
+                CaptionML=DEU=Ersatz Pool/Vorab Service;
+                SubPageLink=RMA-Nr.=FIELD(RMA-Nr.);
+                PagePartID=Page50081;
+                Visible=ersatz_pool_show;
+                PartType=Page }
+
+    { 1000000018;1;Group  ;
+                CaptionML=DEU=Zusatzinformationen }
+
+    { 1000000017;2;Field  ;
+                Name=weitere MA;
+                SourceExpr="weitere MA" }
+
+    { 1000000016;2;Field  ;
+                Name=Angelegt am;
+                SourceExpr="Angelegt am";
+                Editable=FALSE }
+
+    { 1000000015;2;Field  ;
+                Name=Angelegt von;
+                SourceExpr="Angelegt von";
+                Editable=FALSE }
+
+    { 1000000014;2;Field  ;
+                Name=Korrigiert am;
+                SourceExpr="Korrigiert am";
+                Editable=FALSE }
+
+    { 1000000013;2;Field  ;
+                Name=Korrigiert von;
+                SourceExpr="Korrigiert von";
+                Editable=FALSE }
+
+    { 1000000012;2;Field  ;
+                Name=Einfache Archivierung;
+                SourceExpr="Einfache Archivierung" }
+
+    { 1000000027;0;Container;
+                ContainerType=FactBoxArea }
+
+    { 1000000033;1;Part   ;
+                PartType=System;
+                SystemPartID=RecordLinks }
+
+    { 1000000034;1;Part   ;
+                Name=<RecordLinks>;
+                PartType=System;
+                SystemPartID=Notes }
+
+  }
+  CODE
+  {
+    VAR
+      "RMA-Kopf"@1140016 : Record 50020;
+      "RMA-Zeilen"@1140008 : Record 50021;
+      "RMA-Annahme"@1140024 : Record 50021;
+      "RMA-anKunde"@1140025 : Record 50021;
+      RMA_Versand@1000000000 : Record 50022;
+      ToDo@1140018 : Record 5080;
+      Servicezeilen@1140030 : Record 50024;
+      "rma-betrag"@1140010 : Decimal;
+      Text000@1140009 : TextConst 'DEU=Wollen Sie den RMA-Wert neu berechnen lassen?';
+      Text001@1140007 : TextConst 'DEU=Es gibt nichts zu berechnen.';
+      Text002@1140011 : TextConst 'DEU=%1 darf nicht 0 sein in %2 %3.';
+      Text003@1140012 : TextConst 'DEU=Wollen Sie die RMA wirklich abschlieáen?';
+      Text004@1140015 : TextConst 'DEU=Es wurden noch nicht alle Teilprozesse vollst„ndig bearbeitet. M”chten Sie die RMA trotzdem abschlieáen?';
+      Text005@1140013 : TextConst 'DEU=Sie verfgen nicht ber gengend Rechte, um diese Funktion ausfhren zu k”nnen.';
+      Text006@1140014 : TextConst 'DEU=Die RMA wurde bereits abgeschlossen. Wollen Sie den Status wieder rckg„ngig machen?';
+      Text007@1140017 : TextConst 'DEU=Es muss mindestens der Status RMA-Annahme abgeschlossen sein.';
+      AnzAufgabe@1140019 : Integer;
+      Text008@1140020 : TextConst 'DEU=Betreuer darf nicht leer sein.';
+      Menge_Annahme@1140022 : Decimal;
+      Menge_anKunde@1140023 : Decimal;
+      Text009@1140026 : TextConst 'DEU=Die Menge der ursprnglich eingegangen Ware entspricht nicht der Menge, die an den Kunden zurckgehen soll.\M”chten Sie dennoch abschlieáen?';
+      RecLink@1140029 : Record 2000000068;
+      RecLinkRef@1140028 : RecordRef;
+      RecID@1140027 : RecordID;
+      ShellApp@1140031 : Automation "{50A7E9B0-70EF-11D1-B75A-00A0C90564FE} 1.0:{13709620-C279-11CE-A49E-444553540000}:'Microsoft Shell Controls And Automation'.Shell";
+      Filename@1140032 : Text[260];
+      Text010@1000000001 : TextConst 'DEU=Bitte hinterlegen Sie zun„chst die beteiligten Kunden und Hersteller.';
+      Color@1000000002 : DotNet "'System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a'.System.Drawing.Color";
+      FieldReklControlReady@1000000003 : Boolean;
+      txt_hinweis_service@1000000004 : Text;
+      txt_hinweis_repl@1000000005 : Text;
+      AnzBeteiligte@1000000006 : Integer;
+      ersatz_pool_show@1000000007 : Boolean;
+      Text011@1000000008 : TextConst 'DEU=Der RMA-Vorgang wurde bereits abgeschlossen. Žnderungen sind nicht mehr m”glich.';
+
+    PROCEDURE Caption@1140000() : Text[260];
+    VAR
+      CaptionStr@1140000 : Text[260];
+    BEGIN
+      CaptionStr := COPYSTR("RMA-Nr." + ' ' + Reklamationsgrund,1,MAXSTRLEN(CaptionStr));
+      EXIT(CaptionStr);
+    END;
+
+    PROCEDURE RMAWertBerechnen@1140001();
+    BEGIN
+      "rma-betrag" := 0;
+      "RMA-Zeilen".RESET;
+      "RMA-Zeilen".SETFILTER("RMA-Zeilen"."RMA-Nr.",'%1',"RMA-Nr.");
+      "RMA-Zeilen".SETFILTER("RMA-Zeilen".Belegart,'%1',"RMA-Zeilen".Belegart :: Rechnung);
+      IF "RMA-Zeilen".FINDFIRST THEN BEGIN
+        REPEAT
+          "rma-betrag" := "rma-betrag" + ("RMA-Zeilen"."Menge SN-Nr. / DC" * "RMA-Zeilen"."VK-Preis (MW)");
+        UNTIL "RMA-Zeilen".NEXT = 0;
+        IF "rma-betrag" <> 0 THEN BEGIN
+          VALIDATE("RMA-Wert","rma-betrag");
+          "RMA-Wert aktuell" := TRUE;
+          MODIFY;
+        END ELSE
+          MESSAGE(Text001);
+      END ELSE
+        MESSAGE(Text001);
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
