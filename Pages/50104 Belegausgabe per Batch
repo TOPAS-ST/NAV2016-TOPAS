@@ -2,8 +2,8 @@ OBJECT Page 50104 Belegausgabe per Batch
 {
   OBJECT-PROPERTIES
   {
-    Date=10.07.18;
-    Time=11:35:54;
+    Date=30.08.18;
+    Time=09:57:13;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -56,6 +56,7 @@ OBJECT Page 50104 Belegausgabe per Batch
                                  IF (Rahmenauftrag_PDF) THEN selected += 1;
                                  IF (Bestellung_PDF) THEN selected += 1;
                                  IF (Servicevertr„ge_PDF) THEN selected += 1;
+                                 IF (Certificates_PDF) THEN selected += 1;
 
                                  IF selected > 1 THEN ERROR(Text000);
 
@@ -163,6 +164,10 @@ OBJECT Page 50104 Belegausgabe per Batch
                 CaptionML=DEU=Servicevertr„gen als PDF;
                 SourceExpr=Servicevertr„ge_PDF }
 
+    { 1000000013;3;Field  ;
+                CaptionML=DEU=ACTS Certificates als PDF;
+                SourceExpr=Certificates_PDF }
+
   }
   CODE
   {
@@ -178,6 +183,7 @@ OBJECT Page 50104 Belegausgabe per Batch
       Ship_Header@1000000008 : Record 110;
       Wartungsvertrag@1000000007 : Record 50011;
       Servicepositionen@1000000006 : Record 50024;
+      FileServer@1000000021 : Record 2000000022;
       Tagesdatum@1140014 : Date;
       Žnd_Best_PDF@1140013 : Boolean;
       Žnd_Best_Druck@1140012 : Boolean;
@@ -188,8 +194,10 @@ OBJECT Page 50104 Belegausgabe per Batch
       Rahmenauftrag_PDF@1000000010 : Boolean;
       Bestellung_PDF@1140024 : Boolean;
       Servicevertr„ge_PDF@1140025 : Boolean;
+      Certificates_PDF@1000000011 : Boolean;
       TOPAS_API@1140002 : Codeunit 50001;
       Bullzip_PDF@1140016 : Codeunit 50005;
+      WshShell@1000000017 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{72C24DD5-D70A-438B-8A42-98424B88AFB8}:'Windows Script Host Object Model'.WshShell";
       AttachmentPath@1140001 : Text;
       belege@1140017 : Text;
       belegnr@1140004 : Code[20];
@@ -206,6 +214,14 @@ OBJECT Page 50104 Belegausgabe per Batch
       i@1000000002 : Integer;
       k@1000000001 : Integer;
       t@1000000000 : Integer;
+      Subject_Text@1000000015 : TextConst 'DEU=Support Service Certificate fr %1  - Ihre Bestellung %2;ENU=Support Service Certificate for %1  - Your Order %2';
+      Body_Text@1000000014 : TextConst 'DEU=Sehr geehrte Damen und Herren%1%1anbei finden Sie den ACTS-Servicevertrag zu Ihrer o.g. Bestellung. Bitte senden Sie diesen an Ihren Endkunden weiter.%1%1Bei weiteren Fragen stehen wir Ihnen gerne zur Verfgung.%1%1Mit freundlichen Gráen,%1%1;ENU=Dear Ladies and Gentlemen,%1%1attached you will find the ACTS service contract for your order mentioned above. Please send it to your End Customer.%1%1For further questions please do not hesitate to contact us.%1%1With kind regards,%1%1';
+      Result_Text@1000000013 : TextConst 'DEU=Es wurde(n) insgesamt %1 Support Certificate(s) abgearbeitet. Bitte prfen Sie, ob genauso viele E-Mails erstellt wurden.';
+      Proxy_Error@1000000012 : TextConst 'DEU=Bitte nehmen Sie das Konto %1 in Ihre GroupWise Vertretung auf, damit das Programm richtig ausgefhrt werden kann.';
+      attach_files@1000000016 : Text;
+      Program_SearchAndForward@1000000020 : Text;
+      Account@1000000019 : Text;
+      cached_processes@1000000018 : Text;
 
     PROCEDURE Run_Batch@1140010();
     BEGIN
@@ -728,6 +744,68 @@ OBJECT Page 50104 Belegausgabe per Batch
               END;
             END;
           UNTIL Ship_Header.NEXT = 0;
+      END;
+
+
+      //Mail-Job fr Support Services Certificates von AudioCodes
+      IF Certificates_PDF THEN BEGIN
+        CREATE(WshShell,FALSE,TRUE);
+        Program_SearchAndForward := '\\W2K8R2-FILESRV\Software\software\TOPAS eigen\GWMailForward\GWMailForwardWithAttachment.exe';
+        Account := 'Systeme';
+        AttachmentPath := '\\W2K8R2-FILESRV\Daten\Daten NEU\Gemeinsame Ordner\Customer Service\AudioCodes\';
+        IF TOPAS_API.ChangeProxy(Account) <> '' THEN ERROR(Proxy_Error,Account);
+
+        CLEAR(Ship_Header);
+        cached_processes := '';
+        Servicepositionen.RESET;
+        Servicepositionen.SETRANGE(Art,Servicepositionen.Art::Service);
+        Servicepositionen.SETRANGE("Zu Versenden",TRUE);
+        IF Servicepositionen.FINDSET THEN BEGIN
+          REPEAT
+            IF STRPOS(cached_processes,Servicepositionen."ACO Nr.") = 0 THEN BEGIN
+              attach_files := '';
+              Ship_Header.SETFILTER("No.",Servicepositionen."Nr.");
+              IF Ship_Header.FINDFIRST THEN BEGIN
+                Bullzip_PDF.BullzipPDF_Shipment(Ship_Header,AttachmentPath + '_Lieferscheine',50078);
+                attach_files += AttachmentPath + '_Lieferscheine\' + Ship_Header."No." + '.pdf';
+                //CurrPage.LANGUAGE := Language.GetLanguageID(Ship_Header."Language Code");
+              END;
+
+              FileServer.ASCENDING(FALSE);
+              FileServer.SETFILTER(Path, AttachmentPath + Servicepositionen."Wartungsvertragsnr.");
+              FileServer.SETFILTER(Name,Servicepositionen."ACO Nr." + '*.pdf');
+              FileServer.SETRANGE("Is a file", TRUE);
+              IF FileServer.FINDSET THEN BEGIN
+                attach_files += ',' + AttachmentPath + Servicepositionen."Wartungsvertragsnr." + '\' + FileServer.Name;
+                //wird erstmal nicht ben”tigt, ist aber ein guter Weg, um die Problematik der Tabelle File mit max. Dateinamen L„nge 100 Zeichen zu umgehen
+                {
+                FileMgt.GetClientDirectoryFilesList(NameValueBuffer,AttachmentPath + Servicepositionen."Wartungsvertragsnr.");
+                NameValueBuffer.RESET;
+                NameValueBuffer.SETFILTER(Name,'*' + Servicepositionen."ACO Nr." + '*.htm');
+                IF NameValueBuffer.FINDSET THEN BEGIN
+                END;
+                }
+              END ELSE BEGIN
+                FileServer.SETFILTER(Path, AttachmentPath + Servicepositionen."BET-Nr.");
+                IF FileServer.FINDSET THEN BEGIN
+                  attach_files += ',' + AttachmentPath + Servicepositionen."BET-Nr." + '\' + FileServer.Name;
+                END
+              END;
+
+              chr := 13;
+              body:= STRSUBSTNO(Body_Text,FORMAT(chr));
+              subject := STRSUBSTNO(Subject_Text,Servicepositionen."System Projektinfos",Ship_Header."External Document No.") ;
+              WshShell.Exec(Program_SearchAndForward + ' "' + Account + '"' + ' ""' + ' "' + Servicepositionen."ACO Nr." + '"' + ' "' + Ship_Header."Service EMail-Adresse" + '"' + ' "' + subject + '"' +
+              ' "' + body + '"' + ' "' + attach_files + '"');
+              IF STRPOS(cached_processes,Servicepositionen."ACO Nr.") = 0 THEN cached_processes += Servicepositionen."ACO Nr." + '|';
+
+            END;
+            Servicepositionen."Zu Versenden" := FALSE;
+            Servicepositionen.MODIFY;
+          UNTIL Servicepositionen.NEXT = 0;
+        END;
+
+        MESSAGE(Result_Text,STRLEN(DELCHR(cached_processes,'=',DELCHR(cached_processes,'=','|'))));
       END;
     END;
 
