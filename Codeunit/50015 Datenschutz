@@ -1,0 +1,329 @@
+OBJECT Codeunit 50015 Datenschutz
+{
+  OBJECT-PROPERTIES
+  {
+    Date=31.08.18;
+    Time=09:55:42;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    OnRun=BEGIN
+            CheckLastContactStatus(FALSE);
+          END;
+
+  }
+  CODE
+  {
+    VAR
+      TempExcelBuffer@1000000015 : TEMPORARY Record 370;
+      TOPAS_API@1000000021 : Codeunit 50001;
+      FileMgt@1000000008 : Codeunit 419;
+      ServerFileName@1000000007 : Text;
+      SheetName@1000000006 : Text;
+      ColumnNo@1000000005 : Integer;
+      RowNo@1000000004 : Integer;
+      FileName@1000000003 : Text;
+      RowCount@1000000002 : Integer;
+
+    PROCEDURE CheckLastContactStatus@1000000001(WithExport@1000000013 : Boolean);
+    VAR
+      SalesHeader@1000000010 : Record 36;
+      SalesHeaderArchive@1000000009 : Record 5107;
+      Contact@1000000008 : Record 5050;
+      Projekte@1000000007 : Record 5071;
+      Dokumentenversand@1000000006 : Record 50032;
+      Memokopf@1000000005 : Record 50003;
+      Support@1000000004 : Record 50012;
+      Todo@1000000003 : Record 5080;
+      Ansprechpartner@1000000002 : Record 50005;
+      RMAKopf@1000000001 : Record 50020;
+      "RMA-Beteiligte"@1000000000 : Record 50022;
+      letzte_kontaktaufnahme@1000000012 : Date;
+      letzter_kontaktgrund@1000000011 : Text;
+    BEGIN
+      //šberprfung der letzten Kontaktaufnahme einer Kontaktperson im System
+
+      IF WithExport THEN BEGIN
+        TempExcelBuffer.DELETEALL;
+        CLEAR(TempExcelBuffer);
+
+        RowNo := 1;
+        ColumnNo := ColumnNo + 1;
+      END;
+
+      Contact.SETRANGE(Type,Contact.Type::Person);
+      IF Contact.FIND('-') THEN BEGIN
+        REPEAT
+          letzte_kontaktaufnahme := 0D;
+          letzter_kontaktgrund := '';
+
+          //Aktuelle und archivierte Belege werden untersucht
+          SalesHeader.RESET;
+          //SalesHeader.SETRANGE("Document Type",SalesHeader."Document Type"::Quote);
+          SalesHeader.SETRANGE("Kontaktnr.",Contact."No.");
+          IF SalesHeader.FIND('-') THEN BEGIN
+            REPEAT
+              IF letzte_kontaktaufnahme < SalesHeader."Document Date" THEN BEGIN
+                letzte_kontaktaufnahme := SalesHeader."Document Date";
+                letzter_kontaktgrund := FORMAT(SalesHeader."Document Type") + ' ' + SalesHeader."No.";
+              END;
+            UNTIL SalesHeader.NEXT = 0;
+          END;
+
+          SalesHeaderArchive.RESET;
+          //SalesHeaderArchive.SETRANGE("Document Type",SalesHeaderArchive."Document Type"::Quote);
+          SalesHeaderArchive.SETRANGE("Kontaktnr.",Contact."No.");
+          IF SalesHeaderArchive.FIND('-') THEN BEGIN
+            REPEAT
+               IF letzte_kontaktaufnahme < SalesHeaderArchive."Document Date" THEN BEGIN
+                letzte_kontaktaufnahme := SalesHeaderArchive."Document Date";
+                letzter_kontaktgrund := FORMAT(SalesHeaderArchive."Document Type") + ' ' + SalesHeaderArchive."No.";
+              END;
+            UNTIL SalesHeaderArchive.NEXT = 0;
+          END;
+
+          //Projekt Beteiligungen, Support Kontingente, Projektmemos und Kontaktmemos werden untersucht
+          Ansprechpartner.RESET;
+          Ansprechpartner.SETRANGE("Kontaktnr.",Contact."No.");
+          IF Ansprechpartner.FIND('-') THEN BEGIN
+            REPEAT
+              IF Ansprechpartner."Memonr." <> '' THEN BEGIN
+                Memokopf.SETRANGE("Memonr.",Ansprechpartner."Memonr.");
+                IF Memokopf.FINDFIRST THEN BEGIN
+                  IF letzte_kontaktaufnahme < Memokopf.Memodatum THEN BEGIN
+                    letzte_kontaktaufnahme := Memokopf.Memodatum;
+                    letzter_kontaktgrund := 'Memo ' + Memokopf."Memonr.";
+                  END;
+                END;
+              END;
+
+              IF Ansprechpartner."Kampagnennr." <> '' THEN BEGIN
+                //Support Kontingente
+                Support.RESET;
+                Support.SETRANGE("Nr.",Ansprechpartner."Kampagnennr.");
+                IF Support.FINDFIRST THEN BEGIN
+                  IF letzte_kontaktaufnahme < Support."Angelegt am" THEN BEGIN
+                    letzte_kontaktaufnahme := Support."Angelegt am";
+                    letzter_kontaktgrund := 'Support ' + Support."Nr.";
+                  END;
+                END;
+              END;
+            UNTIL Ansprechpartner.NEXT = 0;
+          END;
+
+          //Projekt Beteiligung nur auswerten, wenn immer noch kein Datum gefunden wurde, da sehr ungenau
+          IF letzte_kontaktaufnahme = 0D THEN BEGIN
+            Ansprechpartner.RESET;
+            Ansprechpartner.SETFILTER("Kampagnennr.",'<>%1','');
+            Ansprechpartner.SETRANGE("Kontaktnr.",Contact."No.");
+            IF Ansprechpartner.FIND('-') THEN BEGIN
+              REPEAT
+                Projekte.SETRANGE("No.",Ansprechpartner."Kampagnennr.");
+                IF Projekte.FINDFIRST THEN BEGIN
+                  IF letzte_kontaktaufnahme < Projekte."Last Date Modified" THEN BEGIN
+                    letzte_kontaktaufnahme := Projekte."Last Date Modified";
+                    letzter_kontaktgrund := 'Projekt ' + Projekte."No." + ' (Datum ungenau)'
+                  END;
+                END;
+              UNTIL  Ansprechpartner.NEXT = 0;
+            END;
+          END;
+
+          //Dokumentenversand untersuchen
+          Dokumentenversand.RESET;
+          Dokumentenversand.SETRANGE("Kontaktnr.",Contact."No.");
+          IF Dokumentenversand.FIND('-') THEN BEGIN
+            REPEAT
+              IF letzte_kontaktaufnahme < Dokumentenversand.Belegdatum THEN BEGIN
+                letzte_kontaktaufnahme := Dokumentenversand.Belegdatum;
+                letzter_kontaktgrund := 'Dokuversand ' + FORMAT(Dokumentenversand.Aktion) + ' ' + Dokumentenversand."Lfd. Nr.";
+              END;
+            UNTIL Dokumentenversand.NEXT = 0;
+          END;
+
+          //RMA
+          "RMA-Beteiligte".RESET;
+          "RMA-Beteiligte".SETRANGE("Nr.",Contact."No.");
+          IF "RMA-Beteiligte".FIND('-') THEN BEGIN
+            REPEAT
+              IF RMAKopf.GET("RMA-Beteiligte"."RMA-Nr.") THEN BEGIN
+                IF letzte_kontaktaufnahme < RMAKopf."Angelegt am" THEN BEGIN
+                  letzte_kontaktaufnahme := RMAKopf."Angelegt am";
+                  letzter_kontaktgrund := RMAKopf."RMA-Nr.";
+                END;
+              END;
+            UNTIL "RMA-Beteiligte".NEXT = 0;
+          END;
+
+          Todo.RESET;
+          Todo.SETRANGE("Contact No.",Contact."No.");
+          IF Todo.FIND('-') THEN BEGIN
+            REPEAT
+              IF letzte_kontaktaufnahme < Todo."Last Date Modified" THEN BEGIN
+                letzte_kontaktaufnahme := Todo."Last Date Modified";
+                letzter_kontaktgrund := 'Aufgabe ' + Todo."No.";
+              END;
+            UNTIL Todo.NEXT = 0;
+          END;
+
+          IF (letzte_kontaktaufnahme <> 0D) AND (letzter_kontaktgrund <> '') THEN BEGIN
+            IF WithExport THEN BEGIN
+              ColumnNo := 1;
+              EnterCell(RowNo,ColumnNo,'',TOPAS_API.replace_text(TOPAS_API.CreateExcelHyperlinkToNav(Contact.TABLENAME,1,5050,Contact."No."),';',','),FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Text);
+              ColumnNo := ColumnNo + 1;
+              EnterCell(RowNo,ColumnNo,Contact.Name,'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              ColumnNo := ColumnNo + 1;
+              EnterCell(RowNo,ColumnNo,FORMAT(letzte_kontaktaufnahme),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Date);
+              ColumnNo := ColumnNo + 1;
+              EnterCell(RowNo,ColumnNo,letzter_kontaktgrund,'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              RowNo := RowNo + 1;
+            END;
+
+            //Update des Kontaktes
+            IF letzte_kontaktaufnahme > Contact."Letzte Kontaktaufnahme" THEN BEGIN
+              Contact."Letzte Kontaktaufnahme" := letzte_kontaktaufnahme;
+              Contact.Kontaktgrund := COPYSTR(letzter_kontaktgrund,1,50);
+              Contact.MODIFY;
+            END;
+
+          END;
+
+        UNTIL Contact.NEXT = 0;
+      END;
+
+      IF WithExport THEN BEGIN
+        TempExcelBuffer.CreateBook('','Kontakte');
+        TempExcelBuffer.WriteSheet('Sheet 1',COMPANYNAME,USERID);
+        TempExcelBuffer.CloseBook;
+        TempExcelBuffer.OpenExcel;
+        TempExcelBuffer.GiveUserControl();
+      END;
+    END;
+
+    PROCEDURE ExportContactsTimeStatus@1000000002(modificator@1000000000 : Code[10]);
+    VAR
+      Contact@1000000001 : Record 5050;
+      ContactJobResponsibility@1000000002 : Record 5067;
+      ContactBusinessRelation@1000000003 : Record 5054;
+    BEGIN
+      //Kontakt Adressliste aus dem System generieren
+      TempExcelBuffer.DELETEALL;
+      CLEAR(TempExcelBuffer);
+
+      RowNo := 1;
+      ColumnNo := 1;
+      EnterCell(RowNo,ColumnNo,'Kontaktnr.','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,'Anrede','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,'Vorname','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,'Nachname','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,'Firma','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,'PLZ','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,'Ort','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,'Telefonnr.','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,'E-Mail','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,'Betreuer','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,'Verk„ufer','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,'Gebietscode','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,'Positionscode','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,'Unternehmen verlassen','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      ColumnNo := ColumnNo + 1;
+      EnterCell(RowNo,ColumnNo,'Letzte Kontaktaufnahme','',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+      RowNo := RowNo + 1;
+
+      //Contact.SETFILTER("Territory Code",'<>%1','SYSTEM');
+      Contact.SETRANGE(Type,Contact.Type::Person);
+      IF Contact.FIND('-') THEN BEGIN
+        REPEAT
+          //Kontakt Verantwortlichkeiten prfen
+          ContactJobResponsibility.SETRANGE("Contact No.",Contact."No.");
+          ContactJobResponsibility.SETFILTER("Job Responsibility Code",'%1','PCN-EOL');
+          IF (NOT ContactJobResponsibility.FINDFIRST) AND (Contact.Surname <> '') THEN BEGIN
+            ContactBusinessRelation.RESET;
+            ContactBusinessRelation.SETCURRENTKEY("Link to Table","No.");
+            ContactBusinessRelation.SETRANGE("Link to Table",ContactBusinessRelation."Link to Table"::Vendor);
+            ContactBusinessRelation.SETRANGE("Contact No.",Contact."Company No.");
+            IF NOT ContactBusinessRelation.FINDFIRST THEN BEGIN
+              //IF Contact."Letzte Kontaktaufnahme" = 0D THEN BEGIN
+              IF (Contact."Letzte Kontaktaufnahme" <> 0D) AND (CALCDATE(STRSUBSTNO('<-%1Y>',modificator),WORKDATE) > Contact."Letzte Kontaktaufnahme") THEN BEGIN
+                ColumnNo := 1;
+                //EnterCell(RowNo,ColumnNo,'',TOPAS_API.replace_text(TOPAS_API.CreateExcelHyperlinkToNav(Contact.TABLENAME,1,5050,Contact."No."),';',','),FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Text);
+                EnterCell(RowNo,ColumnNo,Contact."No.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                ColumnNo := ColumnNo + 1;
+                EnterCell(RowNo,ColumnNo,Contact."Salutation Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                ColumnNo := ColumnNo + 1;
+                EnterCell(RowNo,ColumnNo,Contact."First Name",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                ColumnNo := ColumnNo + 1;
+                EnterCell(RowNo,ColumnNo,Contact.Surname,'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                ColumnNo := ColumnNo + 1;
+                EnterCell(RowNo,ColumnNo,Contact."Company Name",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                ColumnNo := ColumnNo + 1;
+                EnterCell(RowNo,ColumnNo,Contact."Post Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                ColumnNo := ColumnNo + 1;
+                EnterCell(RowNo,ColumnNo,Contact.City,'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                ColumnNo := ColumnNo + 1;
+                EnterCell(RowNo,ColumnNo,Contact."Phone No.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                ColumnNo := ColumnNo + 1;
+                EnterCell(RowNo,ColumnNo,Contact."E-Mail",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                ColumnNo := ColumnNo + 1;
+                EnterCell(RowNo,ColumnNo,Contact."Betreuer Innendienst",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                ColumnNo := ColumnNo + 1;
+                EnterCell(RowNo,ColumnNo,Contact."Salesperson Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                ColumnNo := ColumnNo + 1;
+                EnterCell(RowNo,ColumnNo,Contact."Territory Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                ColumnNo := ColumnNo + 1;
+                EnterCell(RowNo,ColumnNo,Contact."Organizational Level Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                ColumnNo := ColumnNo + 1;
+                EnterCell(RowNo,ColumnNo,FORMAT(Contact."Unternehmen verlassen"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                ColumnNo := ColumnNo + 1;
+                EnterCell(RowNo,ColumnNo,FORMAT(Contact."Letzte Kontaktaufnahme"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Date);
+                RowNo := RowNo + 1;
+              END;
+            END ELSE BEGIN
+            END;
+          END ELSE BEGIN
+          END;
+        UNTIL Contact.NEXT = 0;
+      END;
+
+      TempExcelBuffer.CreateBook('','Kontakte');
+      TempExcelBuffer.WriteSheet('Sheet 1',COMPANYNAME,USERID);
+      TempExcelBuffer.CloseBook;
+      TempExcelBuffer.OpenExcel;
+      TempExcelBuffer.GiveUserControl();
+    END;
+
+    LOCAL PROCEDURE EnterCell@1000000000(RowNo@1000 : Integer;ColumnNo@1001 : Integer;CellValue@1002 : Text[250];Formular@1000000000 : Text[250];Bold@1003 : Boolean;Italic@1004 : Boolean;UnderLine@1005 : Boolean;NumberFormat@1006 : Text[30];CellType@1007 : Option);
+    BEGIN
+      TempExcelBuffer.INIT;
+      TempExcelBuffer.VALIDATE("Row No.",RowNo);
+      TempExcelBuffer.VALIDATE("Column No.",ColumnNo);
+      TempExcelBuffer."Cell Value as Text" := CellValue;
+      TempExcelBuffer.Formula := Formular;
+      TempExcelBuffer.Bold := Bold;
+      TempExcelBuffer.Italic := Italic;
+      TempExcelBuffer.Underline := UnderLine;
+      TempExcelBuffer.NumberFormat := NumberFormat;
+      TempExcelBuffer."Cell Type" := CellType;
+      TempExcelBuffer.INSERT;
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
