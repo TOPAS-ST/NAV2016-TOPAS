@@ -1,0 +1,521 @@
+OBJECT Page 9300 Sales Quotes
+{
+  OBJECT-PROPERTIES
+  {
+    Date=05.12.17;
+    Time=10:45:33;
+    Modified=Yes;
+    Version List=NAVW19.00.00.45480,TOP1.02;
+  }
+  PROPERTIES
+  {
+    Editable=No;
+    CaptionML=[DEU=Verkaufsangebote;
+               ENU=Sales Quotes];
+    SourceTable=Table36;
+    SourceTableView=ORDER(Descending)
+                    WHERE(Document Type=CONST(Quote));
+    PageType=List;
+    CardPageID=Sales Quote;
+    OnOpenPage=BEGIN
+                 SetSecurityFilterOnRespCenter;
+
+                 //TOPAS 11.09.17 ST - Cursor an die 1. Stelle
+                 IF FINDFIRST THEN ;
+                 //TOPAS Ende
+               END;
+
+    OnAfterGetRecord=BEGIN
+                       //TOPAS 30.06.17 ST - W„hrungscode wird eingef„rbt
+                       currency_style := TOPAS_Funktionen.SetCurrencyColor("Currency Code");
+                       //TOPAS Ende
+                     END;
+
+    OnAfterGetCurrRecord=BEGIN
+                           SetControlAppearance;
+                           CurrPage.IncomingDocAttachFactBox.PAGE.LoadDataFromRecord(Rec);
+                         END;
+
+    ActionList=ACTIONS
+    {
+      { 1900000003;0 ;ActionContainer;
+                      ActionContainerType=RelatedInformation }
+      { 1102601026;1 ;ActionGroup;
+                      CaptionML=[DEU=&Angebot;
+                                 ENU=&Quote];
+                      Image=Quote }
+      { 1102601028;2 ;Action    ;
+                      Name=Statistics;
+                      ShortCutKey=F7;
+                      CaptionML=[DEU=Statistik;
+                                 ENU=Statistics];
+                      Promoted=Yes;
+                      Image=Statistics;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 CalcInvDiscForHeader;
+                                 COMMIT;
+                                 PAGE.RUNMODAL(PAGE::"Sales Statistics",Rec);
+                               END;
+                                }
+      { 1102601029;2 ;Action    ;
+                      ShortCutKey=Shift+F7;
+                      CaptionML=[DEU=Debitorenkarte;
+                                 ENU=Customer Card];
+                      RunObject=Page 21;
+                      RunPageLink=No.=FIELD(Sell-to Customer No.);
+                      Image=Customer }
+      { 1102601030;2 ;Action    ;
+                      CaptionML=[DEU=Ko&ntaktkarte;
+                                 ENU=C&ontact Card];
+                      RunObject=Page 5050;
+                      RunPageLink=No.=FIELD(Sell-to Contact No.);
+                      Image=Card }
+      { 1102601031;2 ;Action    ;
+                      CaptionML=[DEU=Be&merkungen;
+                                 ENU=Co&mments];
+                      RunObject=Page 67;
+                      RunPageLink=Document Type=FIELD(Document Type),
+                                  No.=FIELD(No.),
+                                  Document Line No.=CONST(0);
+                      Image=ViewComments }
+      { 1102601032;2 ;Action    ;
+                      AccessByPermission=TableData 348=R;
+                      ShortCutKey=Shift+Ctrl+D;
+                      CaptionML=[DEU=Dimensionen;
+                                 ENU=Dimensions];
+                      Image=Dimensions;
+                      OnAction=BEGIN
+                                 ShowDocDim;
+                               END;
+                                }
+      { 1102601033;2 ;Action    ;
+                      CaptionML=[DEU=Genehmigungen;
+                                 ENU=Approvals];
+                      Image=Approvals;
+                      OnAction=VAR
+                                 ApprovalEntries@1001 : Page 658;
+                               BEGIN
+                                 ApprovalEntries.Setfilters(DATABASE::"Sales Header","Document Type","No.");
+                                 ApprovalEntries.RUN;
+                               END;
+                                }
+      { 1000000004;2 ;Action    ;
+                      CaptionML=DEU=Au&fgaben anzeigen;
+                      Image=Task;
+                      OnAction=BEGIN
+                                 //TOPAS 05.12.17-ST - Aufgabenliste des Beleges wird ge”ffnet
+                                 Todo.RESET;
+                                 Todo.SETRANGE("Belegnr.","No.");
+                                 Todo.SETRANGE("System To-do Type",Todo."System To-do Type"::Organizer);
+                                 IF Todo.FINDLAST THEN
+                                   PAGE.RUN(PAGE::"To-do List",Todo)
+                                 ELSE
+                                   CreateTodo;
+                                 //TOPAS Ende
+                               END;
+                                }
+      { 1900000004;0 ;ActionContainer;
+                      ActionContainerType=ActionItems }
+      { 69      ;1   ;Action    ;
+                      Ellipsis=Yes;
+                      CaptionML=[DEU=D&rucken;
+                                 ENU=&Print];
+                      Promoted=Yes;
+                      Image=Print;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 //TOPAS 05.12.17 ST
+                                 CheckPrintOK;
+                                 //TOPAS Ende
+                                 DocPrint.PrintSalesHeader(Rec);
+                               END;
+                                }
+      { 7       ;1   ;Action    ;
+                      CaptionML=[DEU=E-Mail;
+                                 ENU=Email];
+                      Image=Email;
+                      OnAction=BEGIN
+                                 //TOPAS 05.12.17 ST
+                                 CheckPrintOK;
+                                 //TOPAS Ende
+                                 DocPrint.EmailSalesHeader(Rec);
+                               END;
+                                }
+      { 1000000003;1 ;Action    ;
+                      CaptionML=DEU=PDF + E-Mail (GroupWise);
+                      Promoted=Yes;
+                      Image=SendEmailPDF;
+                      PromotedCategory=Process;
+                      OnAction=VAR
+                                 Contact@1000000004 : Record 5050;
+                                 Shell@1000000003 : Automation "{50A7E9B0-70EF-11D1-B75A-00A0C90564FE} 1.0:{13709620-C279-11CE-A49E-444553540000}:'Microsoft Shell Controls And Automation'.Shell";
+                                 email_address@1000000005 : Text;
+                                 FileNameServer@1000000000 : Text;
+                                 FileNameClient@1000000002 : Text;
+                                 FileManagement@1000000001 : Codeunit 419;
+                                 body@1000000008 : Text;
+                                 subject@1000000007 : Text;
+                                 chr@1000000006 : Char;
+                                 selection@1000000009 : Integer;
+                               BEGIN
+                                 //29.11.17 ST - PDF + EMail erstellen
+                                 CheckPrintOK;
+                                 TOPAS_Funktionen.PrintSalesDocToPDFwithEmail(Rec);
+                                 //TOPAS Ende
+                               END;
+                                }
+      { 3       ;1   ;ActionGroup;
+                      CaptionML=[DEU=Freigeben;
+                                 ENU=Release];
+                      Image=ReleaseDoc }
+      { 1102601020;2 ;Action    ;
+                      ShortCutKey=Ctrl+F9;
+                      CaptionML=[DEU=&Freigeben;
+                                 ENU=Re&lease];
+                      Image=ReleaseDoc;
+                      OnAction=VAR
+                                 ReleaseSalesDoc@1000 : Codeunit 414;
+                               BEGIN
+                                 //TOPAS 05.12.17 ST
+                                 CheckDocReleaseOK;
+                                 //TOPAS Ende
+                                 ReleaseSalesDoc.PerformManualRelease(Rec);
+                               END;
+                                }
+      { 1102601021;2 ;Action    ;
+                      CaptionML=[DEU=Stat&us zurcksetzen;
+                                 ENU=Re&open];
+                      Image=ReOpen;
+                      OnAction=VAR
+                                 ReleaseSalesDoc@1001 : Codeunit 414;
+                               BEGIN
+                                 ReleaseSalesDoc.PerformManualReopen(Rec);
+                               END;
+                                }
+      { 5       ;1   ;ActionGroup;
+                      CaptionML=[DEU=Erstellen;
+                                 ENU=Create] }
+      { 68      ;2   ;Action    ;
+                      Name=MakeOrder;
+                      CaptionML=[DEU=Auftrag &erst.;
+                                 ENU=Make &Order];
+                      Promoted=Yes;
+                      Image=MakeOrder;
+                      PromotedCategory=Process;
+                      OnAction=VAR
+                                 ApprovalsMgmt@1000 : Codeunit 1535;
+                               BEGIN
+                                 //TOPAS 05.12.17 ST
+                                 IF "Salesperson Code" = 'MULTI' THEN ERROR('Der Verk„ufercode ist nicht ausgew„hlt!');
+                                 IF "Betreuer Innendienst" = 'MULTI' THEN ERROR('Der Betreuer Innendienstcode ist nicht ausgew„hlt!');
+                                 IF Teams = 'MULTI' THEN ERROR('Das Team ist nicht ausgew„hlt!');
+                                 //TOPAS Ende
+                                 IF ApprovalsMgmt.PrePostApprovalCheckSales(Rec) THEN
+                                   CODEUNIT.RUN(CODEUNIT::"Sales-Quote to Order (Yes/No)",Rec);
+                               END;
+                                }
+      { 1102601015;2 ;Action    ;
+                      CaptionML=[DEU=Debi&tor erstellen;
+                                 ENU=C&reate Customer];
+                      Image=NewCustomer;
+                      OnAction=BEGIN
+                                 IF CheckCustomerCreated(FALSE) THEN
+                                   CurrPage.UPDATE(TRUE);
+                               END;
+                                }
+      { 1102601025;2 ;Action    ;
+                      AccessByPermission=TableData 5050=R;
+                      CaptionML=[DEU=&Aufgabe erstellen;
+                                 ENU=Create &To-do];
+                      Image=NewToDo;
+                      OnAction=BEGIN
+                                 CreateTodo;
+                               END;
+                                }
+      { 1102601000;1 ;ActionGroup;
+                      CaptionML=[DEU=Genehmigungsanforderung;
+                                 ENU=Request Approval];
+                      Image=Approval }
+      { 1102601017;2 ;Action    ;
+                      Name=SendApprovalRequest;
+                      CaptionML=[DEU=&Genehmigungsanforderung senden;
+                                 ENU=Send A&pproval Request];
+                      Enabled=NOT OpenApprovalEntriesExist;
+                      Image=SendApprovalRequest;
+                      OnAction=VAR
+                                 ApprovalsMgmt@1001 : Codeunit 1535;
+                               BEGIN
+                                 IF ApprovalsMgmt.CheckSalesApprovalsWorkflowEnabled(Rec) THEN
+                                   ApprovalsMgmt.OnSendSalesDocForApproval(Rec);
+                               END;
+                                }
+      { 1102601018;2 ;Action    ;
+                      Name=CancelApprovalRequest;
+                      CaptionML=[DEU=&Genehmigungsanforderung stornieren;
+                                 ENU=Cancel Approval Re&quest];
+                      Enabled=OpenApprovalEntriesExist;
+                      Image=Cancel;
+                      OnAction=VAR
+                                 ApprovalsMgmt@1001 : Codeunit 1535;
+                               BEGIN
+                                 ApprovalsMgmt.OnCancelSalesApprovalRequest(Rec);
+                               END;
+                                }
+    }
+  }
+  CONTROLS
+  {
+    { 1900000001;0;Container;
+                ContainerType=ContentArea }
+
+    { 1   ;1   ;Group     ;
+                GroupType=Repeater }
+
+    { 2   ;2   ;Field     ;
+                SourceExpr="No." }
+
+    { 4   ;2   ;Field     ;
+                SourceExpr="Sell-to Customer No." }
+
+    { 6   ;2   ;Field     ;
+                SourceExpr="Sell-to Customer Name" }
+
+    { 17  ;2   ;Field     ;
+                SourceExpr="External Document No." }
+
+    { 33  ;2   ;Field     ;
+                SourceExpr="Sell-to Post Code";
+                Visible=FALSE }
+
+    { 29  ;2   ;Field     ;
+                SourceExpr="Sell-to Country/Region Code";
+                Visible=FALSE }
+
+    { 41  ;2   ;Field     ;
+                SourceExpr="Sell-to Contact";
+                Visible=FALSE }
+
+    { 13  ;2   ;Field     ;
+                SourceExpr="Bill-to Customer No.";
+                Visible=FALSE }
+
+    { 15  ;2   ;Field     ;
+                SourceExpr="Bill-to Name";
+                Visible=FALSE }
+
+    { 39  ;2   ;Field     ;
+                SourceExpr="Bill-to Post Code";
+                Visible=FALSE }
+
+    { 35  ;2   ;Field     ;
+                SourceExpr="Bill-to Country/Region Code";
+                Visible=FALSE }
+
+    { 159 ;2   ;Field     ;
+                SourceExpr="Bill-to Contact";
+                Visible=FALSE }
+
+    { 155 ;2   ;Field     ;
+                SourceExpr="Ship-to Code";
+                Visible=FALSE }
+
+    { 153 ;2   ;Field     ;
+                SourceExpr="Ship-to Name";
+                Visible=FALSE }
+
+    { 27  ;2   ;Field     ;
+                SourceExpr="Ship-to Post Code";
+                Visible=FALSE }
+
+    { 23  ;2   ;Field     ;
+                SourceExpr="Ship-to Country/Region Code";
+                Visible=FALSE }
+
+    { 143 ;2   ;Field     ;
+                SourceExpr="Ship-to Contact";
+                Visible=FALSE }
+
+    { 139 ;2   ;Field     ;
+                SourceExpr="Posting Date";
+                Visible=FALSE }
+
+    { 121 ;2   ;Field     ;
+                SourceExpr="Shortcut Dimension 1 Code";
+                Visible=FALSE }
+
+    { 119 ;2   ;Field     ;
+                SourceExpr="Shortcut Dimension 2 Code";
+                Visible=FALSE }
+
+    { 123 ;2   ;Field     ;
+                SourceExpr="Location Code";
+                Visible=TRUE }
+
+    { 1000000000;2;Field  ;
+                SourceExpr="Betreuer Innendienst" }
+
+    { 99  ;2   ;Field     ;
+                SourceExpr="Salesperson Code";
+                Visible=FALSE }
+
+    { 1000000001;2;Field  ;
+                SourceExpr=Teams }
+
+    { 1000000002;2;Field  ;
+                SourceExpr="Territory Code" }
+
+    { 21  ;2   ;Field     ;
+                SourceExpr="Assigned User ID" }
+
+    { 11  ;2   ;Field     ;
+                SourceExpr="Currency Code";
+                Visible=FALSE;
+                StyleExpr=currency_style }
+
+    { 1102601001;2;Field  ;
+                SourceExpr="Document Date";
+                Visible=FALSE }
+
+    { 1102601003;2;Field  ;
+                SourceExpr="Campaign No.";
+                Visible=FALSE }
+
+    { 1102601005;2;Field  ;
+                SourceExpr="Opportunity No.";
+                Visible=FALSE }
+
+    { 1102601007;2;Field  ;
+                SourceExpr=Status;
+                Visible=FALSE }
+
+    { 1900000007;0;Container;
+                ContainerType=FactBoxArea }
+
+    { 1902018507;1;Part   ;
+                SubPageLink=No.=FIELD(Bill-to Customer No.),
+                            Date Filter=FIELD(Date Filter);
+                PagePartID=Page9082;
+                Visible=TRUE;
+                PartType=Page }
+
+    { 1900316107;1;Part   ;
+                SubPageLink=No.=FIELD(Bill-to Customer No.),
+                            Date Filter=FIELD(Date Filter);
+                PagePartID=Page9084;
+                Visible=TRUE;
+                PartType=Page }
+
+    { 8   ;1   ;Part      ;
+                Name=IncomingDocAttachFactBox;
+                PagePartID=Page193;
+                Visible=FALSE;
+                PartType=Page;
+                ShowFilter=No }
+
+    { 1900383207;1;Part   ;
+                Visible=FALSE;
+                PartType=System;
+                SystemPartID=RecordLinks }
+
+    { 1905767507;1;Part   ;
+                Visible=TRUE;
+                PartType=System;
+                SystemPartID=Notes }
+
+  }
+  CODE
+  {
+    VAR
+      DocPrint@1102601000 : Codeunit 229;
+      OpenApprovalEntriesExist@1002 : Boolean;
+      "***TOPAS_Var***"@1000000000 : Integer;
+      Todo@1000000006 : Record 5080;
+      TOPAS_Funktionen@1000000002 : Codeunit 50006;
+      currency_style@1000000001 : Text;
+      Text50000@1000000007 : TextConst 'DEU=In Zeilennr. %1 wurde %2 %3 eingetragen.';
+      Text50002@1000000005 : TextConst 'DEU=Der Angebotswert von %1 wurde unterscrhitten.';
+      Text50003@1000000004 : TextConst 'DEU=Sind Sie sich wirklich sicher, dass Sie mit %1: %2 anbieten wollen?';
+      Text50004@1000000003 : TextConst 'DEU=PDF,PDF + E-Mail';
+
+    LOCAL PROCEDURE SetControlAppearance@5();
+    VAR
+      ApprovalsMgmt@1000 : Codeunit 1535;
+    BEGIN
+      OpenApprovalEntriesExist := ApprovalsMgmt.HasOpenApprovalEntries(RECORDID);
+    END;
+
+    LOCAL PROCEDURE "***TOPAS_Func***"@1000000000();
+    BEGIN
+    END;
+
+    PROCEDURE CheckPrintOK@1140000();
+    BEGIN
+      //TOPAS 05.12.17 ST - Prft, ob das Angebot gedruckt werden kann
+      IF "Salesperson Code" = 'MULTI' THEN ERROR('Der Verk„ufercode ist nicht ausgew„hlt!');
+      IF "Betreuer Innendienst" = 'MULTI' THEN ERROR('Der Betreuer Innendienstcode ist nicht ausgew„hlt!');
+      IF Teams = 'MULTI' THEN ERROR('Das Team ist nicht ausgew„hlt!');
+      IF Status <> Status::Released THEN ERROR('Angebot ist nicht Freigegeben !!');
+      IF Kontaktperson='' THEN ERROR('Die Kontaktperson ist nicht ausgew„hlt!');
+    END;
+
+    LOCAL PROCEDURE CheckDocReleaseOK@1000000012();
+    VAR
+      SalesLine@1000000001 : Record 37;
+      sales_amount@1000000000 : Decimal;
+    BEGIN
+      //TOPAS 05.12.17 ST - Prft, ob das Angebot freigegeben werden kann
+      IF "Salesperson Code" = 'MULTI' THEN ERROR('Der Verk„ufercode ist nicht ausgew„hlt!');
+      IF "Betreuer Innendienst" = 'MULTI' THEN ERROR('Der Betreuer Innendienstcode ist nicht ausgew„hlt!');
+      IF Teams = 'MULTI' THEN ERROR('Das Team ist nicht ausgew„hlt!');
+
+      sales_amount := 0;
+      SalesLine.RESET;
+      SalesLine.SETRANGE("Document No.","No.");
+      SalesLine.SETRANGE("Location Code",'ZENT');
+      SalesLine.SETRANGE(Type,SalesLine.Type::Item);
+      IF SalesLine.FINDFIRST THEN BEGIN
+        REPEAT
+          //VK-Preis mit 0 nicht gestattet, es sei denn der Haken Kein VK notwendig ist im Artikel gesetzt
+          IF SalesLine.Quantity = 0 THEN
+            ERROR(Text50000,SalesLine."Line No.",'keine',SalesLine.FIELDCAPTION(Quantity));
+          sales_amount += (SalesLine."Unit Price" * SalesLine.Quantity);
+        UNTIL SalesLine.NEXT = 0;
+
+        CASE "Currency Code" OF
+          //Warnhinweis wenn Angebotswert von 50 Euro oder 500 $ unterschritten wird
+          '' : IF sales_amount < 50 THEN MESSAGE(Text50002,'50 °');
+          'USD' : IF sales_amount < 500 THEN MESSAGE(Text50002,'500 $');
+        END;
+
+      END;
+
+      //*******************************************************************************************************
+      //16.09.11 ST - Prfung auf Serviceartikel und Vorhandensein einer entsprechenden Kalkulation
+      //*******************************************************************************************************
+
+      CheckServiceCalcCreated("No.","Document Type");
+
+      //*******************************************************************************************************
+      //26.10.11 ST - Prft OmniVision Artikel und NDA Vorhandensein beim Kunden
+      //*******************************************************************************************************
+
+      CheckOVTNDA("No.","Document Type","No.");
+
+      //Zahlungsbedingung BBL Hinweis
+      IF "Payment Terms Code" = 'BBL' THEN
+        MESSAGE(Text50003,FIELDCAPTION("Payment Terms Code"),"Payment Terms Code");
+    END;
+
+    BEGIN
+    {
+      Lfd.Nr. Version   Datum       User  Beschreibung
+      ===========================================================================
+      1       TOP1.00   12.07.17    ST    Weitere Felder eingebaut und W„hrungscode wird eingef„rbt
+      2       TOP1.01   11.09.17    ST    Absteigend sortiert +  Cursor an die 1. Stelle
+      3       TOP1.02   05.12.17    ST    Fkt. CheckPrintOK und CheckDocReleaseOK von Angebotskarte bernommen und in Aktionen eingebaut
+    }
+    END.
+  }
+}
+
