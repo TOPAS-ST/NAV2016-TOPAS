@@ -2,8 +2,8 @@ OBJECT Page 50023 Service Kalkulationsblatt
 {
   OBJECT-PROPERTIES
   {
-    Date=27.06.18;
-    Time=10:21:19;
+    Date=06.07.18;
+    Time=11:58:46;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -584,6 +584,9 @@ OBJECT Page 50023 Service Kalkulationsblatt
       service_controls_zeigen@1000000004 : Boolean;
       splicecom_controls_zeigen@1000000003 : Boolean;
       hinweis_ahr_zeigen@1000000013 : Boolean;
+      Text024@1000000015 : TextConst 'DEU=Service Verl„ngerung + NEU hinzu: AHR  - das Start- und Ablaufdatum MUSS manuell vergeben werden!,Nachtr„gliche Erweiterung des AHR''s - Laufzeit wird automatisch anhand des bestehenden Vertrages vorgeschlagen';
+      Text024_Instruktion@1000000018 : TextConst 'DEU=Es wurde bisher kein AHR im Vertrag abgeschlossen.\Folgende M”glichkeiten:';
+      Text025@1000000016 : TextConst 'DEU=M”chten Sie das Ablaufdatum auf das aktuelle Vertragsende %1 festlegen lassen?';
 
     PROCEDURE HoleArtikelPos@1140007();
     BEGIN
@@ -1019,6 +1022,31 @@ OBJECT Page 50023 Service Kalkulationsblatt
           END ELSE
             ERROR(Text000);
         END;
+        {
+        AHR_angleichungs_datum := 0D;
+        AHR_angleichungs_datum := AHR_LaufzeitAngleichungPruefen(ServRelaDoc);
+        IF AHR_angleichungs_datum <> 0D THEN BEGIN
+          auswahl := STRMENU(Text025,1,'Es wurde bisher kein AHR im Vertrag abgeschlossen.\Folgende M”glichkeiten:');
+          IF auswahl = 2 THEN BEGIN
+            IF CONFIRM(Text024,TRUE,ahr_angleichungs_datum) THEN BEGIN
+              CurrPage.SAVERECORD;
+              ServRelaDoc.RESET;
+              ServRelaDoc.SETRANGE(Art,ServRelaDoc.Art::"SUP-AU");
+              ServRelaDoc.SETRANGE("Nr.",GETFILTER("Nr."));
+              ServRelaDoc.SETRANGE("Zeilennr.",zeilennr);
+              IF ServRelaDoc.FINDFIRST THEN BEGIN
+                REPEAT
+                  ServRelaDoc.Startdatum := WORKDATE;
+                  ServRelaDoc.VALIDATE(Ablaufdatum,AHR_angleichungs_datum);
+                  ServRelaDoc.MODIFY;
+                UNTIL ServRelaDoc.NEXT = 0;
+              END;
+              CurrPage.UPDATE;
+            END;
+          END;
+        END;
+        }
+        AHR_LaufzeitAngleichungPruefen(ServRelaDoc);
       END;
     END;
 
@@ -1102,6 +1130,7 @@ OBJECT Page 50023 Service Kalkulationsblatt
             CurrPage.UPDATE;
           END;
         END;
+        AHR_LaufzeitAngleichungPruefen(ServRelaDoc);
       END;
     END;
 
@@ -1745,6 +1774,7 @@ OBJECT Page 50023 Service Kalkulationsblatt
           END;
           CurrPage.UPDATE;
         END;
+        AHR_LaufzeitAngleichungPruefen(ServRelaDoc);
       END;
     END;
 
@@ -2023,6 +2053,81 @@ OBJECT Page 50023 Service Kalkulationsblatt
         EXIT(FALSE)
       ELSE
         EXIT(TRUE);
+    END;
+
+    LOCAL PROCEDURE AHR_LaufzeitAngleichungPruefen@1000000000(VAR ServiceKalkulation@1000000002 : Record 50027) : Boolean;
+    VAR
+      TroubleshootingSetup@1000000000 : Record 5945;
+      ServicePositionen@1000000001 : Record 50024;
+      AHR_gefunden@1000000003 : Boolean;
+      AHR_angleichungs_datum@1000000005 : Date;
+      Dialog_Auswahl@1000000004 : Integer;
+    BEGIN
+      WITH ServiceKalkulation DO BEGIN
+        AHR_gefunden := FALSE;
+        IF Ablaufdatum <> 0D THEN
+          EXIT(FALSE);
+        TroubleshootingSetup.SETRANGE(Type,TroubleshootingSetup.Type::Item);
+        TroubleshootingSetup.SETRANGE("No.","SUP Artikelnr.");
+        TroubleshootingSetup.SETRANGE("Troubleshooting No.",'AHR');
+        IF TroubleshootingSetup.FINDFIRST THEN BEGIN
+          TroubleshootingSetup.RESET;
+          TroubleshootingSetup.SETRANGE(Type,TroubleshootingSetup.Type::Item);
+          TroubleshootingSetup.SETRANGE("Troubleshooting No.",'AHR');
+          IF TroubleshootingSetup.FINDFIRST THEN BEGIN
+            REPEAT
+              ServicePositionen.RESET;
+              ServicePositionen.SETCURRENTKEY("Ablaufdatum Serviceleistung","SUP Artikelnr.",Gruppierung);
+              ServicePositionen.ASCENDING(FALSE);
+              ServicePositionen.SETRANGE(Inaktiv,FALSE);
+              ServicePositionen.SETRANGE(Art,ServicePositionen.Art::Service);
+              ServicePositionen.SETRANGE("Artikelnr.","Ger„te Artikelnr.");
+              ServicePositionen.SETRANGE("SUP Artikelnr.",TroubleshootingSetup."No.");
+              ServicePositionen.SETRANGE("Urspr. Lieferscheinnr.","Belegnr.");
+              ServicePositionen.SETRANGE("Urspr. Lieferscheinzeilennr.","Belegzeilennr.");
+              IF ServicePositionen.FINDFIRST THEN BEGIN
+                AHR_gefunden := TRUE;
+              END;
+            UNTIL (TroubleshootingSetup.NEXT = 0) OR (AHR_gefunden);
+          END;
+          IF AHR_gefunden = FALSE THEN BEGIN
+            ServicePositionen.RESET;
+            ServicePositionen.SETCURRENTKEY("Ablaufdatum Serviceleistung","SUP Artikelnr.",Gruppierung);
+            ServicePositionen.ASCENDING(FALSE);
+            ServicePositionen.SETRANGE(Inaktiv,FALSE);
+            ServicePositionen.SETRANGE(Art,ServicePositionen.Art::Service);
+            ServicePositionen.SETRANGE("Artikelnr.","Ger„te Artikelnr.");
+            ServicePositionen.SETRANGE("Urspr. Lieferscheinnr.","Belegnr.");
+            ServicePositionen.SETRANGE("Urspr. Lieferscheinzeilennr.","Belegzeilennr.");
+            IF ServicePositionen.FINDFIRST THEN BEGIN
+              AHR_angleichungs_datum := ServicePositionen."Ablaufdatum Serviceleistung";
+              IF AHR_angleichungs_datum <> 0D THEN BEGIN
+                Dialog_Auswahl := STRMENU(Text024,1,Text024_Instruktion);
+                IF Dialog_Auswahl = 2 THEN BEGIN
+                  IF CONFIRM(Text025,TRUE,AHR_angleichungs_datum) THEN BEGIN
+                    CurrPage.SAVERECORD;
+                    ServRelaDoc.RESET;
+                    ServRelaDoc.SETRANGE(Art,ServRelaDoc.Art::"SUP-AU");
+                    ServRelaDoc.SETRANGE("Nr.",ServiceKalkulation."Nr.");
+                    ServRelaDoc.SETRANGE("Zeilennr.",ServiceKalkulation."Zeilennr.");
+                    IF ServRelaDoc.FINDFIRST THEN BEGIN
+                      REPEAT
+                        ServRelaDoc.Startdatum := WORKDATE;
+                        ServRelaDoc."Laufzeit ab Buchungsdatum" := TRUE;
+                        ServRelaDoc.VALIDATE(Ablaufdatum,AHR_angleichungs_datum);
+                        ServRelaDoc.MODIFY;
+                      UNTIL ServRelaDoc.NEXT = 0;
+                    END;
+                    CurrPage.UPDATE;
+                    EXIT(TRUE);
+                  END;
+                END;
+              END;
+            END;
+          END;
+        END;
+      END;
+      EXIT(FALSE);
     END;
 
     LOCAL PROCEDURE EnterCell@2(RowNo@1000 : Integer;ColumnNo@1001 : Integer;CellValue@1002 : Text[250];Bold@1003 : Boolean;Italic@1004 : Boolean;UnderLine@1005 : Boolean;NumberFormat@1006 : Text[30];CellType@1007 : Option);
