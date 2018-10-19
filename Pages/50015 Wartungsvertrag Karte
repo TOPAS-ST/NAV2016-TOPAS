@@ -2,8 +2,8 @@ OBJECT Page 50015 Wartungsvertrag Karte
 {
   OBJECT-PROPERTIES
   {
-    Date=04.06.18;
-    Time=18:48:16;
+    Date=17.10.18;
+    Time=13:41:18;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -48,6 +48,11 @@ OBJECT Page 50015 Wartungsvertrag Karte
                                    vertragsartstyle := 'StrongAccent';
                                  END;
 
+                           IF (Vertragsablaufdatum < WORKDATE) AND (Vertragsablaufdatum <> 0D) THEN
+                             vertragsablaufdatum_style := 'Unfavorable'
+                           ELSE
+                             vertragsablaufdatum_style := 'Standard';
+
                            Servicepositionen.RESET;
                            Servicepositionen.SETRANGE(Art,Servicepositionen.Art::Service);
                            Servicepositionen.SETRANGE("Wartungsvertragsnr.","Wartungsvertragsnr.");
@@ -73,7 +78,7 @@ OBJECT Page 50015 Wartungsvertrag Karte
                            SORStyleTxt := SetStyle;
 
                            //Pfad fr die Lizenzverwaltung virtueller ACS Systeme
-                           FolderPath := 'F:\Daten NEU\Gemeinsame Ordner\AudioCodes Lizenzverwaltung\' + FORMAT("Wartungsvertragsnr.");
+                           FolderPath := 'F:\Daten NEU\Gemeinsame Ordner\Customer Service\AudioCodes\' + FORMAT("Wartungsvertragsnr.");
 
                            //Record Links
                            RecLinkRef.GETTABLE(Rec);
@@ -134,6 +139,17 @@ OBJECT Page 50015 Wartungsvertrag Karte
                                        Statistiken.Z„hle_Service_detailiert(1,FALSE);
                                      END;
                                  END;
+                               END;
+                                }
+      { 1000000024;2 ;Action    ;
+                      Name=SystemOverview;
+                      CaptionML=DEU=Systembersicht;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=ViewServiceOrder;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 System_Zusammenfassung;
                                END;
                                 }
       { 1140086 ;2   ;Action    ;
@@ -328,6 +344,7 @@ OBJECT Page 50015 Wartungsvertrag Karte
                 Importance=Additional }
 
     { 8   ;2   ;Field     ;
+                DecimalPlaces=0:0;
                 SourceExpr=Volumen;
                 Importance=Additional }
 
@@ -338,6 +355,7 @@ OBJECT Page 50015 Wartungsvertrag Karte
     { 1140004;2;Field     ;
                 SourceExpr=Vertragsablaufdatum;
                 Importance=Promoted;
+                StyleExpr=vertragsablaufdatum_style;
                 OnValidate=BEGIN
                              CurrPage.UPDATE;
                            END;
@@ -592,6 +610,7 @@ OBJECT Page 50015 Wartungsvertrag Karte
       TOPAS_API@1000000010 : Codeunit 50001;
       temp_vertragsnr@1140009 : Code[20];
       vertragsart@1140002 : Text[30];
+      vertragsablaufdatum_style@1000000022 : Text;
       comment@1140000 : Boolean;
       Text000@1140010 : TextConst 'DEU=M”chten Sie wirklich mit der Anlage von Systempositionen beginnen?';
       Text001@1140008 : TextConst 'DEU=M”chten Sie wirklich mit dem Verschieben von Systempositionen beginnen?';
@@ -1070,6 +1089,72 @@ OBJECT Page 50015 Wartungsvertrag Karte
 
       IF (ausgabe) AND (AN_liegt_vor = FALSE) THEN
         MESSAGE('Es liegt kein aktueller Beleg fr die letzten 3 Monate vor.');
+    END;
+
+    PROCEDURE System_Zusammenfassung@1000000000();
+    VAR
+      Systempositionen@1000000000 : Record 50024;
+      ItemAmount@1000000002 : TEMPORARY Record 268;
+      ItemAmount2@1000000001 : TEMPORARY Record 268;
+      system_overview_text@1000000003 : Text;
+    BEGIN
+      system_overview_text := 'Zusammenfassung aktiver System Komponenten:\\';
+      ItemAmount.DELETEALL;
+      ItemAmount2.DELETEALL;
+      CLEAR(ItemAmount);
+      Systempositionen.RESET;
+      Systempositionen.SETCURRENTKEY(Art,"Leihstellung zurck","Artikelnr.");
+      Systempositionen.SETRANGE(Art,Systempositionen.Art::System);
+      Systempositionen.SETRANGE("Wartungsvertragsnr.","Wartungsvertragsnr.");
+      Systempositionen.SETRANGE(Inaktiv,FALSE);
+      IF Systempositionen.FINDFIRST THEN
+        REPEAT
+            ItemAmount.SETRANGE("Item No.",Systempositionen."Artikelnr.");
+            IF ItemAmount.FINDFIRST THEN BEGIN
+              ItemAmount.Menge += Systempositionen.Menge;
+              ItemAmount.MODIFY;
+            END ELSE BEGIN
+              ItemAmount.INIT;
+              ItemAmount."Item No." := Systempositionen."Artikelnr.";
+              ItemAmount.Menge := Systempositionen.Menge;
+              ItemAmount.INSERT;
+          END;
+          Servicepositionen.RESET;
+          Servicepositionen.SETRANGE(Art,Servicepositionen.Art::Service);
+          Servicepositionen.SETRANGE("Wartungsvertragsnr.",Systempositionen."Wartungsvertragsnr.");
+          Servicepositionen.SETRANGE("Artikelnr.",Systempositionen."Artikelnr.");
+          Servicepositionen.SETRANGE("Seriennr.",Systempositionen."Seriennr.");
+          Servicepositionen.SETRANGE(Inaktiv,FALSE);
+          Servicepositionen.SETFILTER("Ablaufdatum Serviceleistung",'>=%1&<>%2',WORKDATE,0D);
+          IF Servicepositionen.FINDLAST THEN BEGIN
+              ItemAmount2.SETRANGE("Item No.",Servicepositionen."Artikelnr.");
+              IF ItemAmount2.FINDFIRST THEN BEGIN
+                ItemAmount2.Menge += Servicepositionen.Menge;
+                ItemAmount2.MODIFY;
+              END ELSE BEGIN
+                ItemAmount2.INIT;
+                ItemAmount2."Item No." := Servicepositionen."Artikelnr.";
+                ItemAmount2.Menge := Servicepositionen.Menge;
+                ItemAmount2.INSERT;
+              END;
+          END;
+
+        UNTIL Systempositionen.NEXT = 0;
+
+      ItemAmount.RESET;
+      IF ItemAmount.FINDFIRST THEN
+        REPEAT
+          system_overview_text += ItemAmount."Item No." + ': ' + FORMAT(ItemAmount.Menge) + '\';
+        UNTIL ItemAmount.NEXT = 0;
+
+      system_overview_text += '\----------------------------------\\Zusammenfassung aktiver Komponenten unter Wartung:\\';
+      ItemAmount2.RESET;
+      IF ItemAmount2.FINDFIRST THEN
+        REPEAT
+          system_overview_text += ItemAmount2."Item No." + ': ' + FORMAT(ItemAmount2.Menge) + '\';
+        UNTIL ItemAmount2.NEXT = 0;
+
+      MESSAGE(system_overview_text);
     END;
 
     LOCAL PROCEDURE SetStyle@1000000004() : Text;
