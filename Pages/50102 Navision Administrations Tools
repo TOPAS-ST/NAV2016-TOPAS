@@ -2,8 +2,8 @@ OBJECT Page 50102 Navision Administrations Tools
 {
   OBJECT-PROPERTIES
   {
-    Date=28.08.18;
-    Time=09:14:27;
+    Date=22.10.18;
+    Time=15:26:55;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -17,7 +17,8 @@ OBJECT Page 50102 Navision Administrations Tools
                  hinweis[5] := 'Hinweis: Spalte A = Artikelnummer, Spalte B = Seriennummer (šberschrift bernehmen)';
                  hinweis[6] := 'Service Statistik (Detailliert = Statistik + Fehler Bereinigung) - Klick dazu auf Aktion "Statistik"';
                  hinweis[7] := 'Benutzer auf neuen Mandanten umstellen - Klick dazu auf Aktion "Benutzer umstellen"';
-                 hinweis[8] := 'Kunden Mailings einspielen';
+                 hinweis[8] := 'Kunden Mailings werden in den Dokumentenversand eingespielt';
+                 hinweis[9] := 'Kopiert Servicepreise von einer Artikelnr. zu einer gewnschten Ziel Artikelnr. (keine Servicepreise vorhanden)';
                END;
 
     ActionList=ACTIONS
@@ -155,6 +156,20 @@ OBJECT Page 50102 Navision Administrations Tools
                       PromotedCategory=Process;
                       OnAction=BEGIN
                                  ImportSeriennrInBeleg(auftragsnr,auftragszeilennr);
+                               END;
+                                }
+      { 1000000044;2 ;Action    ;
+                      Name=Servicepreise_kopieren;
+                      CaptionML=DEU=Servicepreise kopieren;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=Copy;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 IF (servicepreis_kopieren_von = '') OR (servicepreis_kopieren_nach = '') THEN
+                                   ERROR(Text002);
+
+                                 ServicepreiseKopieren(servicepreis_kopieren_von,servicepreis_kopieren_nach);
                                END;
                                 }
       { 1140048 ;2   ;Action    ;
@@ -309,8 +324,14 @@ OBJECT Page 50102 Navision Administrations Tools
                               }
 
     { 1000000036;2;Group  ;
-                CaptionML=DEU=Mailings einspielen;
+                CaptionML=DEU=Kunden Mailings einspielen;
                 GroupType=Group }
+
+    { 1000000046;3;Field  ;
+                SourceExpr=hinweis[8];
+                Editable=FALSE;
+                Style=StrongAccent;
+                StyleExpr=TRUE }
 
     { 1000000039;3;Field  ;
                 Name=Betreff des Mailings;
@@ -443,6 +464,24 @@ OBJECT Page 50102 Navision Administrations Tools
                              END;
                               }
 
+    { 1000000041;2;Group  ;
+                CaptionML=DEU=Servicepreise kopieren;
+                GroupType=Group }
+
+    { 1000000045;3;Field  ;
+                SourceExpr=hinweis[9];
+                Editable=FALSE;
+                Style=StrongAccent;
+                StyleExpr=TRUE }
+
+    { 1000000042;3;Field  ;
+                Name=Vorlage Artikelnr.;
+                SourceExpr=servicepreis_kopieren_von }
+
+    { 1000000043;3;Field  ;
+                Name=Ziel Artikelnr.;
+                SourceExpr=servicepreis_kopieren_nach }
+
     { 1000000019;2;Group  ;
                 CaptionML=DEU=Statistik;
                 GroupType=Group }
@@ -551,6 +590,9 @@ OBJECT Page 50102 Navision Administrations Tools
       Text010@1140016 : TextConst 'DEU=Die tempor„r vorbelegte Seriennr. %1 konnte fr die Kalkulation im Beleg %2, Zeilennr. %3 ge„ndert werden.';
       Text011@1000000005 : TextConst 'DEU=Sie mssen zun„chst einen Mandanten ausw„hlen.';
       Text012@1000000006 : TextConst 'DEU=Alle Benutzer erfolgreich auf %1 umgestellt.';
+      Text013@1000000039 : TextConst 'DEU=Die Servicepreise wurden erfolgreich bertragen.';
+      Text014@1000000038 : TextConst 'DEU=Es konnten keine Servicepreise fr Artikel %1 gefunden werden.';
+      Text015@1000000037 : TextConst 'DEU=Es wurden bereits Servicepreise fr den Artikel %1 angelegt. Bitte l”schen Sie zun„chst alle Zuordnungen fr diesen Artikel und fhren die Funktion danach erneut aus.';
       Text020@1140029 : TextConst 'DEU=Das Feld Lieferscheinnr. darf nicht leer sein.';
       Text100@1140013 : TextConst 'DEU=Die Datei oder der Pfad %1 konnte nicht gefunden werden.';
       start_lfdnr@1140014 : Code[20];
@@ -570,6 +612,8 @@ OBJECT Page 50102 Navision Administrations Tools
       hinweis@1000000001 : ARRAY [10] OF Text;
       mandant@1000000003 : Text[30];
       Text300@1000000035 : TextConst 'DEU=Import erfolgreich abgeschlossen.';
+      servicepreis_kopieren_von@1000000034 : Code[20];
+      servicepreis_kopieren_nach@1000000036 : Code[20];
 
     PROCEDURE Service_neu_aufbauen@1140002(ShipmentNo@1140000 : Code[20]);
     VAR
@@ -1037,6 +1081,40 @@ OBJECT Page 50102 Navision Administrations Tools
           ServicePos.MODIFY(TRUE);
           MESSAGE(Text010,Alte_SN,ServicePos."Auftragsnr.",ServicePos."Auftragszeilennr.");
         UNTIL ServicePos.NEXT = 0;
+    END;
+
+    LOCAL PROCEDURE ServicepreiseKopieren@1000000002(item_service_copy@1000000004 : Code[20];item_service_paste@1000000003 : Code[20]);
+    VAR
+      Item@1000000002 : Record 27;
+      ServicePreistabelleCopy@1000000001 : Record 50028;
+      ServicePreistabellePaste@1000000000 : Record 50028;
+    BEGIN
+      CLEAR(ServicePreistabelleCopy);
+      CLEAR(ServicePreistabellePaste);
+      ServicePreistabellePaste.SETRANGE("Artikelnr.",item_service_paste);
+      ServicePreistabellePaste.SETRANGE("Zuordnung obsolete",FALSE);
+      IF NOT ServicePreistabellePaste.FINDFIRST THEN BEGIN
+        ServicePreistabelleCopy.SETRANGE("Artikelnr.",item_service_copy);
+        ServicePreistabelleCopy.SETRANGE("Zuordnung obsolete",FALSE);
+        IF ServicePreistabelleCopy.FINDFIRST THEN BEGIN
+            REPEAT
+              ServicePreistabellePaste.INIT;
+              ServicePreistabellePaste.TRANSFERFIELDS(ServicePreistabelleCopy);
+              CLEAR(Item);
+              IF Item.GET(item_service_paste) THEN BEGIN
+                ServicePreistabellePaste.VALIDATE("Artikelnr.",Item."No.");
+              END ELSE BEGIN
+                ServicePreistabellePaste."Artikelnr." := '';
+                ServicePreistabellePaste."Artikelnr. 2" := item_service_paste;
+              END;
+              ServicePreistabellePaste."Update letzte Preisliste" := FALSE;
+              ServicePreistabellePaste.Preisliste := 'manuell_' + item_service_copy;
+              ServicePreistabellePaste.INSERT(TRUE);
+          UNTIL ServicePreistabelleCopy.NEXT = 0;
+          MESSAGE(Text013);
+        END ELSE MESSAGE(Text014,item_service_copy);
+      END ELSE
+        MESSAGE(Text015,item_service_paste);
     END;
 
     PROCEDURE LabelDatenBuchen@1140008();
