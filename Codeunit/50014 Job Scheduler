@@ -2,8 +2,8 @@ OBJECT Codeunit 50014 Job Scheduler
 {
   OBJECT-PROPERTIES
   {
-    Date=31.08.18;
-    Time=11:31:40;
+    Date=13.09.18;
+    Time=14:59:16;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -20,6 +20,8 @@ OBJECT Codeunit 50014 Job Scheduler
                 ExportServiceBETCrosslink;
               'Datenschutz' :
                 DataPrivacySetStatus;
+              'Typo3_Update' :
+                ExportTypo3AccountUpdateStatus;
             END;
           END;
 
@@ -68,6 +70,65 @@ OBJECT Codeunit 50014 Job Scheduler
       Datenschutz@1000000000 : Codeunit 50015;
     BEGIN
       Datenschutz.CheckLastContactStatus(FALSE);
+    END;
+
+    PROCEDURE ExportTypo3AccountUpdateStatus@1000000004();
+    VAR
+      _File@1000000001 : File;
+      _DatafileOutstream@1000000000 : OutStream;
+      _DatafileInstream@1000000003 : InStream;
+      IsExported@1000000002 : Boolean;
+    BEGIN
+      _File.CREATE('\\W2K8R2-FILESRV\it\Navision 2016\Live\Daten\Typo3 Account Update.txt');
+      _File.CREATEOUTSTREAM(_DatafileOutstream);
+      IsExported := XMLPORT.EXPORT(50041, _DatafileOutstream);
+      _File.CLOSE;
+
+      IF IsExported THEN BEGIN
+        IF ExecuteTypo3AccountUpdateScript() = 1 THEN
+          ImportTypo3AccountUpdateStatus();
+      END;
+    END;
+
+    PROCEDURE ImportTypo3AccountUpdateStatus@1000000003();
+    VAR
+      _File@1000000001 : File;
+      _DatafileInstream@1000000000 : InStream;
+    BEGIN
+      _File.OPEN('\\W2K8R2-FILESRV\it\Navision 2016\Live\Daten\Typo3 Account Update.txt');
+      _File.CREATEINSTREAM(_DatafileInstream);
+      IF _File.LEN() > 0 THEN BEGIN
+        XMLPORT.IMPORT(50041, _DatafileInstream);
+      END;
+      _File.CLOSE;
+    END;
+
+    LOCAL PROCEDURE ExecuteTypo3AccountUpdateScript@1000000010() : Integer;
+    VAR
+      ProcessShell@1000000004 : DotNet "'System, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.Process" SUPPRESSDISPOSE;
+      WshShell@1000000003 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{72C24DD5-D70A-438B-8A42-98424B88AFB8}:'Windows Script Host Object Model'.WshShell";
+      wshExec@1000000002 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{08FED191-BE19-11D3-A28B-00104BD35090}:'Windows Script Host Object Model'.WshExec";
+      wSHExecStatus@1000000001 : Integer;
+      mysql_program@1000000000 : Text;
+      ExitCode@1000000006 : Integer;
+    BEGIN
+      mysql_program := '"\\W2K8R2-FILESRV\Software\software\TOPAS eigen\MySQL\Typo3 Account Update\Typo3_Update_myTOPAS.exe"';
+      ProcessShell := ProcessShell.Process;
+      ProcessShell.StartInfo.UseShellExecute := FALSE;
+      ProcessShell.StartInfo.FileName := mysql_program;
+      ProcessShell.StartInfo.Arguments := '';
+      ProcessShell.StartInfo.CreateNoWindow := TRUE;
+      ProcessShell.Start();
+      ProcessShell.WaitForExit(60000);
+      IF ProcessShell.HasExited = FALSE THEN BEGIN
+        ProcessShell.Kill();
+        ExitCode := ProcessShell.ExitCode;
+        ERROR('Fehlercode: %1. Der Job musste nach einem Timeout beendet werden, scheinbar liegt ein Fehler im Update Script vor. Bitte wenden Sie sich an Ihren Administrator.',ExitCode);
+      END;
+      ExitCode := ProcessShell.ExitCode;
+      IF ExitCode > 1 THEN ERROR('Fehlercode: %1. Weitere Informationen hierzu finden Sie im Status.log.',ExitCode);
+      CLEAR(ProcessShell);
+      EXIT(1);
     END;
 
     BEGIN
