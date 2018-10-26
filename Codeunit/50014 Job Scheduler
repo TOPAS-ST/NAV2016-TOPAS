@@ -2,8 +2,8 @@ OBJECT Codeunit 50014 Job Scheduler
 {
   OBJECT-PROPERTIES
   {
-    Date=13.09.18;
-    Time=14:59:16;
+    Date=26.10.18;
+    Time=14:03:03;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -17,7 +17,7 @@ OBJECT Codeunit 50014 Job Scheduler
               'Service' :
                 CheckNewServiceAcc;
               'GWSystem' :
-                ExportServiceBETCrosslink;
+                ExportServiceBETCrosslinkAndSyncSystemeMB;
               'Datenschutz' :
                 DataPrivacySetStatus;
               'Typo3_Update' :
@@ -29,6 +29,7 @@ OBJECT Codeunit 50014 Job Scheduler
   CODE
   {
     VAR
+      FileMgt@1000000005 : Codeunit 419;
       TOPAS_API@1000000000 : Codeunit 50001;
       SMPTMail@1000000004 : Codeunit 400;
       mail_subject@1000000001 : Text;
@@ -54,15 +55,40 @@ OBJECT Codeunit 50014 Job Scheduler
       END;
     END;
 
-    LOCAL PROCEDURE ExportServiceBETCrosslink@1000000000();
+    LOCAL PROCEDURE ExportServiceBETCrosslinkAndSyncSystemeMB@1000000000();
     VAR
+      Wartungsvertrag@1000000003 : Record 50011;
       _File@1000000000 : File;
       _DatafileOutstream@1000000001 : OutStream;
+      FolderPath@1000000004 : Text;
+      IsExported@1000000002 : Boolean;
     BEGIN
       _File.CREATE('\\W2K8R2-FILESRV\it\Navision 2016\Live\Daten\Service-BET-Crosslink.txt');
       _File.CREATEOUTSTREAM(_DatafileOutstream);
-      XMLPORT.EXPORT(50040, _DatafileOutstream);
+      IsExported := XMLPORT.EXPORT(50040, _DatafileOutstream);
       _File.CLOSE;
+
+      IF  IsExported THEN BEGIN
+        ExecuteSystemeMailboxSyncScript();
+      END;
+
+      //Neu: Status "Ordner vorhanden" wird nun in den Wartungsvertr„gen synchronisiert
+      FolderPath := '\\W2K8R2-FILESRV\Daten\Daten NEU\Gemeinsame Ordner\Customer Service\AudioCodes\';
+      Wartungsvertrag.RESET;
+      IF Wartungsvertrag.FINDFIRST THEN
+        REPEAT
+          IF FileMgt.ServerDirectoryExists(FolderPath + FORMAT(Wartungsvertrag."Wartungsvertragsnr.")) THEN BEGIN
+            IF Wartungsvertrag."Ordner vorhanden" = FALSE THEN BEGIN
+              Wartungsvertrag."Ordner vorhanden" := TRUE;
+              Wartungsvertrag.MODIFY;
+            END;
+          END ELSE BEGIN
+            IF Wartungsvertrag."Ordner vorhanden" THEN BEGIN
+              Wartungsvertrag."Ordner vorhanden" := FALSE;
+              Wartungsvertrag.MODIFY;
+            END;
+          END;
+        UNTIL Wartungsvertrag.NEXT = 0;
     END;
 
     LOCAL PROCEDURE DataPrivacySetStatus@1000000001();
@@ -76,7 +102,6 @@ OBJECT Codeunit 50014 Job Scheduler
     VAR
       _File@1000000001 : File;
       _DatafileOutstream@1000000000 : OutStream;
-      _DatafileInstream@1000000003 : InStream;
       IsExported@1000000002 : Boolean;
     BEGIN
       _File.CREATE('\\W2K8R2-FILESRV\it\Navision 2016\Live\Daten\Typo3 Account Update.txt');
@@ -119,7 +144,35 @@ OBJECT Codeunit 50014 Job Scheduler
       ProcessShell.StartInfo.Arguments := '';
       ProcessShell.StartInfo.CreateNoWindow := TRUE;
       ProcessShell.Start();
-      ProcessShell.WaitForExit(60000);
+      ProcessShell.WaitForExit(60000 * 1); //1 Minute
+      IF ProcessShell.HasExited = FALSE THEN BEGIN
+        ProcessShell.Kill();
+        ExitCode := ProcessShell.ExitCode;
+        ERROR('Fehlercode: %1. Der Job musste nach einem Timeout beendet werden, scheinbar liegt ein Fehler im Update Script vor. Bitte wenden Sie sich an Ihren Administrator.',ExitCode);
+      END;
+      ExitCode := ProcessShell.ExitCode;
+      IF ExitCode > 1 THEN ERROR('Fehlercode: %1. Weitere Informationen hierzu finden Sie im Status.log.',ExitCode);
+      CLEAR(ProcessShell);
+      EXIT(1);
+    END;
+
+    LOCAL PROCEDURE ExecuteSystemeMailboxSyncScript@1000000011() : Integer;
+    VAR
+      ProcessShell@1000000004 : DotNet "'System, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.Process" SUPPRESSDISPOSE;
+      WshShell@1000000003 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{72C24DD5-D70A-438B-8A42-98424B88AFB8}:'Windows Script Host Object Model'.WshShell";
+      wshExec@1000000002 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{08FED191-BE19-11D3-A28B-00104BD35090}:'Windows Script Host Object Model'.WshExec";
+      wSHExecStatus@1000000001 : Integer;
+      sync_program@1000000000 : Text;
+      ExitCode@1000000006 : Integer;
+    BEGIN
+      sync_program := '"\\W2K8R2-FILESRV\Software\software\TOPAS eigen\GWAttachments\GWAttachmentsCollector.exe"';
+      ProcessShell := ProcessShell.Process;
+      ProcessShell.StartInfo.UseShellExecute := FALSE;
+      ProcessShell.StartInfo.FileName := sync_program;
+      ProcessShell.StartInfo.Arguments := 'auto';
+      ProcessShell.StartInfo.CreateNoWindow := TRUE;
+      ProcessShell.Start();
+      ProcessShell.WaitForExit(60000 * 5); //5 Minuten
       IF ProcessShell.HasExited = FALSE THEN BEGIN
         ProcessShell.Kill();
         ExitCode := ProcessShell.ExitCode;
