@@ -3,7 +3,7 @@ OBJECT Report 50182 Rechnung AB nach Linie Excel
   OBJECT-PROPERTIES
   {
     Date=30.10.18;
-    Time=16:18:46;
+    Time=16:55:19;
     Modified=Yes;
     Version List=fertig,FORNAV3.1.0.1460/1460;
   }
@@ -14,31 +14,41 @@ OBJECT Report 50182 Rechnung AB nach Linie Excel
                  END;
 
     OnPreReport=BEGIN
-                  CREATE (Excel, FALSE,TRUE);                                              //erzeugt excel
-                  Book := Excel.Workbooks.Add(-4167);                          //legt neue datei in excel an
-                  Sheet := Excel.ActiveSheet;                                  //definiert aktives worksheet
-                  Sheet.Range('A1').Value := 'Rechnung';                          // definiert die Beschriftung der berschriftszeile
-                  Sheet.Range('B1').Value := 'Artikel';
-                  Sheet.Range('C1').Value := 'Menge';
-                  Sheet.Range('D1').Value := '';
-                  Sheet.Range('E1').Value := '';
-                  Sheet.Range('F1').Value := '';
-                  Sheet.Range('G1').Value := '';
-                  Sheet.Range('H1').Value := '';
-                  Sheet.Range('I1').Value := '';
-                  Sheet.Range('J1').Value := '';
-                  Sheet.Range('K1').Value := '';
-                  Sheet.Range('L1').Value := '';
-                  Sheet.Range('M1').Value := '';
-                  Sheet.Range('N1').Value := '';
-                  Sheet.Range('O1').Value := '';
-                  Sheet.Range('P1').Value := '';
-                  j := '2';                                                    // <- Import in excel ab Zeile 2
+                  IF DoUpdateExistingWorksheet THEN BEGIN
+                    IF ServerFileName = '' THEN
+                      ServerFileName := FileMgt.UploadFile(Text002,ExcelFileExtensionTok);
+                    IF ServerFileName = '' THEN
+                      EXIT;
+                    SheetName := TempExcelBuffer.SelectSheetsName(ServerFileName);
+                    IF SheetName = '' THEN
+                      EXIT;
+                  END;
+
+                  Window.OPEN(
+                    Text000 +
+                    '@1@@@@@@@@@@@@@@@@@@@@@\');
+
+                  TempExcelBuffer.DELETEALL;
+                  CLEAR(TempExcelBuffer);
+
+                  //Header
+
+                  RecNo := 0;
+                  RowNo := 1;
+                  ColumnNo := 1;
+                  EnterCell(RowNo,ColumnNo,Text020,'',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+                  ColumnNo := ColumnNo + 1;
+                  EnterCell(RowNo,ColumnNo,Text021,'',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+                  ColumnNo := ColumnNo + 1;
+                  EnterCell(RowNo,ColumnNo,Text022,'',TRUE,FALSE,TRUE,'',TempExcelBuffer."Cell Type"::Text);
+                  RowNo := RowNo + 1;
+
                   ;ReportForNav.OpenDesigner:=ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
                 END;
 
     OnPostReport=BEGIN
-                   Excel.Visible(TRUE);
+                   FinishExcel;
+
                    ;ReportForNav.Post;
                  END;
 
@@ -160,21 +170,18 @@ OBJECT Report 50182 Rechnung AB nach Linie Excel
   CODE
   {
     VAR
-      Excel@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00024500-0000-0000-C000-000000000046}:Unknown Automation Server.Application";
-      Book@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";
-      Range@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";
-      Sheet@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020820-0000-0000-C000-000000000046}:Unknown Automation Server.Worksheet";
-      k@1140004 : Text[30];
-      j@1140005 : Text[30];
-      art2@1140007 : Text[15];
-      kreditor@1140008 : Record 23;
-      debitor@1140010 : Record 18;
-      Verkaufslieferkopf@1140011 : Record 110;
-      einkaufskopf@1140012 : Record 38;
-      artikel@1140013 : Record 27;
-      dc@1140014 : Decimal;
-      Var_nr@1140015 : Text[40];
-      Var_menge@1140016 : Decimal;
+      TempExcelBuffer@1000000010 : TEMPORARY Record 370;
+      TOPAS_API@1000000009 : Codeunit 50001;
+      FileMgt@1000000030 : Codeunit 419;
+      ServerFileName@1000000008 : Text;
+      SheetName@1000000007 : Text[250];
+      DoUpdateExistingWorksheet@1000000006 : Boolean;
+      Testmode@1000000005 : Boolean;
+      Window@1000000004 : Dialog;
+      RecNo@1000000003 : Integer;
+      TotalRecNo@1000000002 : Integer;
+      RowNo@1000000001 : Integer;
+      ColumnNo@1000000000 : Integer;
       VKGutKopf@1140009 : Record 114;
       vBuchungsdatum@1140017 : Date;
       ReportForNav@5000 : DotNet "'ForNav.Reports.3.1.0.1460, Version=3.1.0.1460, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
@@ -182,49 +189,100 @@ OBJECT Report 50182 Rechnung AB nach Linie Excel
       ReportForNavDialog@5001 : Dialog;
       ReportForNavOpenDesigner@5002 : Boolean;
       ReportForNavAllowDesign@5004 : Boolean INDATASET;
+      Text000@1000000029 : TextConst 'DEU=Daten werden analysiert ...\\;ENU=Analyzing Data...\\';
+      Text001@1000000028 : TextConst 'DEU=Statistik';
+      Text002@1000000027 : TextConst 'DEU=Arbeitsmappe aktualisieren;ENU=Update Workbook';
+      Text020@1000000026 : TextConst 'DEU=Rechnung;ENU=Invoice';
+      Text021@1000000025 : TextConst 'DEU=Artikel;ENU=Item';
+      Text022@1000000024 : TextConst 'DEU=Menge;ENU=Quantity';
+      ExcelFileExtensionTok@1000000011 : TextConst '@@@={Locked};DEU=.xlsx;ENU=.xlsx';
+
+    LOCAL PROCEDURE EnterCell@2(RowNo@1000 : Integer;ColumnNo@1001 : Integer;CellValue@1002 : Text[250];Formular@1000000000 : Text[250];Bold@1003 : Boolean;Italic@1004 : Boolean;UnderLine@1005 : Boolean;NumberFormat@1006 : Text[30];CellType@1007 : Option);
+    BEGIN
+      TempExcelBuffer.INIT;
+      TempExcelBuffer.VALIDATE("Row No.",RowNo);
+      TempExcelBuffer.VALIDATE("Column No.",ColumnNo);
+      TempExcelBuffer."Cell Value as Text" := CellValue;
+      TempExcelBuffer.Formula := Formular;
+      TempExcelBuffer.Bold := Bold;
+      TempExcelBuffer.Italic := Italic;
+      TempExcelBuffer.Underline := UnderLine;
+      TempExcelBuffer.NumberFormat := NumberFormat;
+      TempExcelBuffer."Cell Type" := CellType;
+      TempExcelBuffer.INSERT;
+    END;
+
+    LOCAL PROCEDURE FinishExcel@1000000000();
+    BEGIN
+      Window.CLOSE;
+      IF DoUpdateExistingWorksheet THEN BEGIN
+        TempExcelBuffer.UpdateBook(ServerFileName,SheetName);
+        TempExcelBuffer.WriteSheet('',COMPANYNAME,USERID);
+        TempExcelBuffer.CloseBook;
+        IF NOT Testmode THEN
+          TempExcelBuffer.DownloadAndOpenExcel;
+      END ELSE BEGIN
+        TempExcelBuffer.CreateBook(ServerFileName,Text001);
+        TempExcelBuffer.WriteSheet(
+          PADSTR(STRSUBSTNO('%1 %2',Text001,''),30),COMPANYNAME,USERID);
+          //hat bei OpenExcel nachfolgend keine Auswirkung, da hier Autofit drin ist
+          TempExcelBuffer.SetWidth(1,'A',16);
+          TempExcelBuffer.SetWidth(1,'B',20);
+          TempExcelBuffer.SetWidth(1,'C',16);
+        TempExcelBuffer.CloseBook;
+        IF NOT Testmode THEN BEGIN
+          TempExcelBuffer.OpenExcel; //hat Autofit drin der die Spaltenbreite wieder berschreibt, deshalb neue Fkt. nachfolgend
+          //TempExcelBuffer.OpenExcelWithoutAutoFit(Text001,Text001 + ExcelFileExtensionTok,'',TRUE);
+        END;
+      END;
+      IF NOT Testmode THEN
+        TempExcelBuffer.GiveUserControl;
+    END;
 
     LOCAL PROCEDURE OnPreSectionSalesInvoiceLine_Body2@5010(VAR "Sales Invoice Line"@1000000000 : Record 113);
     BEGIN
       WITH "Sales Invoice Line" DO BEGIN
-         // ReportForNav.ShowOutput((Verkaufsrechnungszeile.Art=Verkaufsrechnungszeile.Art::Artikel)AND(Menge<>0));
+         // ReportForNav.ShowOutput((Verkaufsrechnungszeile.Art=Verkaufsrechnungszeile.Art::Artikel) AND (Menge <> 0));
       END;
     END;
 
     LOCAL PROCEDURE OnPreSectionSalesInvoiceLine_GroupFooter3@5011(VAR "Sales Invoice Line"@1000000000 : Record 113);
     BEGIN
       WITH "Sales Invoice Line" DO BEGIN
-        Sheet.Range('B'+j).Value := "Sales Invoice Line"."No.";
-        Sheet.Range('C'+j).Value := "Sales Invoice Line".Quantity;
-        Sheet.Range('C'+j).NumberFormat:='########';
-        j := INCSTR (j);
+        ColumnNo := 2;
+        EnterCell(RowNo,ColumnNo,"Sales Invoice Line"."No.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+        ColumnNo := ColumnNo + 1;
+        EnterCell(RowNo,ColumnNo,FORMAT("Sales Invoice Line".Quantity),'',FALSE,FALSE,FALSE,'########',TempExcelBuffer."Cell Type"::Number);
+        RowNo := RowNo + 1;
       END;
     END;
 
     LOCAL PROCEDURE OnPreSectionSalesLine_Header4@5012(VAR "Sales Line"@1000000000 : Record 37);
     BEGIN
       WITH "Sales Line" DO BEGIN
-        Sheet.Range('A'+j).Value :='Auftrag:';
-        j := INCSTR (j);
+        ColumnNo := 1;
+        EnterCell(RowNo,ColumnNo,'Auftrag','',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+        RowNo := RowNo + 1;
       END;
     END;
 
     LOCAL PROCEDURE OnPreSectionSalesLine_GroupFooter6@5013(VAR "Sales Line"@1000000000 : Record 37);
     BEGIN
       WITH "Sales Line" DO BEGIN
-        Sheet.Range('B'+j).Value := "Sales Line"."No.";
-        //Sheet.Range('C'+j).Value := Verkaufszeile.Menge;
-        //Sheet.Range('C'+j).NumberFormat:='########';
-        Sheet.Range('C'+j).Value := "Sales Line"."Outstanding Quantity";
-        Sheet.Range('C'+j).NumberFormat:='########';
-        j := INCSTR (j);
+        ColumnNo := 2;
+        EnterCell(RowNo,ColumnNo,"Sales Line"."No.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+        ColumnNo := ColumnNo + 1;
+        EnterCell(RowNo,ColumnNo,FORMAT("Sales Line"."Outstanding Quantity"),'',FALSE,FALSE,FALSE,'########',TempExcelBuffer."Cell Type"::Number);
+        RowNo := RowNo + 1;
       END;
     END;
 
     LOCAL PROCEDURE OnPreSectionSalesCrMemoLine_Header7@5014(VAR "Sales Cr.Memo Line"@1000000000 : Record 115);
     BEGIN
       WITH "Sales Cr.Memo Line" DO BEGIN
-        Sheet.Range('A'+j).Value :='Gutschrift:';
-        j := INCSTR (j);
+        ColumnNo := 1;
+        EnterCell(RowNo,ColumnNo,'Gutschrift','',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+        RowNo := RowNo + 1;
       END;
     END;
 
@@ -242,10 +300,11 @@ OBJECT Report 50182 Rechnung AB nach Linie Excel
     LOCAL PROCEDURE OnPreSectionSalesCrMemoLine_GroupFooter9@5016(VAR "Sales Cr.Memo Line"@1000000000 : Record 115);
     BEGIN
       WITH "Sales Cr.Memo Line" DO BEGIN
-        Sheet.Range('B'+j).Value := "Sales Cr.Memo Line"."No.";
-        Sheet.Range('C'+j).Value := "Sales Cr.Memo Line".Quantity;
-        Sheet.Range('C'+j).NumberFormat:='########';
-        j := INCSTR (j);
+        ColumnNo := ColumnNo + 1;
+        EnterCell(RowNo,ColumnNo,"Sales Cr.Memo Line"."No.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+        ColumnNo := ColumnNo + 1;
+        EnterCell(RowNo,ColumnNo,FORMAT("Sales Cr.Memo Line".Quantity),'',FALSE,FALSE,FALSE,'########',TempExcelBuffer."Cell Type"::Number);
+        RowNo := RowNo + 1;
       END;
     END;
 
