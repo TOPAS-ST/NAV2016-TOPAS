@@ -2,8 +2,8 @@ OBJECT Report 50162 Projekt - Weekly Info
 {
   OBJECT-PROPERTIES
   {
-    Date=15.05.18;
-    Time=14:35:40;
+    Date=14.11.18;
+    Time=11:44:50;
     Modified=Yes;
     Version List=TOPAS, BT šbergabe Fkt.!,FORNAV3.1.0.1460/1460;
   }
@@ -83,6 +83,37 @@ OBJECT Report 50162 Projekt - Weekly Info
                       END;
                     UNTIL Memokopf.NEXT = 0;
                   END;
+                  // ab hier neuer Vorschlag: letzte Zeile wird ersetzt und Rest ausgefhrt. Das gleiche gilt auch fr die Kontaktmemos
+
+                  IF (Startdatum <> 0D) AND (Enddatum = 0D) THEN
+                    Memokopf.SETFILTER(Memodatum,'>=%1',Startdatum);
+                  IF (Startdatum <> 0D) AND (Enddatum <> 0D) THEN
+                    Memokopf.SETFILTER(Memodatum,'>=%1&<=%2',Startdatum,Enddatum);
+                  IF (Startdatum = 0D) AND (Enddatum <> 0D) THEN
+                    Memokopf.SETFILTER(Memodatum,'<=%1',Enddatum);
+                  IF Memokopf.FINDFIRST THEN BEGIN
+                    REPEAT
+                      Projekt.RESET;
+                      Projekt.SETFILTER("No.",Memokopf."Kampagnennr.");
+                      Projekt.SETFILTER("Betreuer Innendienst",betreuer);
+                      Projekt.SETFILTER("Salesperson Code",verk„ufer);
+                      Projekt.SETFILTER(Teams,teams);
+                      Projekt.SETFILTER("Territory Code",gebiet);
+                      IF Projekt.FINDFIRST THEN BEGIN
+                        IF hstcode <> '' THEN BEGIN
+                          Linien.RESET;
+                          Linien.SETFILTER("Kampagnennr.",Projekt."No.");
+                          Linien.SETFILTER(Linienkrzel,hstcode);
+                          IF Linien.FINDFIRST THEN
+                            Projektmemo_fllen;
+                        END ELSE BEGIN
+                          Projektmemo_fllen;
+                        END;
+                      END;
+                    UNTIL Memokopf.NEXT = 0;
+                  END;
+
+
 
                   //*******************************************************************************************************
                   //                                   Kontaktmemos werden durchsucht
@@ -114,6 +145,28 @@ OBJECT Report 50162 Projekt - Weekly Info
                       END;
                     UNTIL Memokopf.NEXT = 0;
                   END;
+
+                  IF (Startdatum <> 0D) AND (Enddatum = 0D) THEN
+                    Memokopf.SETFILTER(Memodatum,'>=%1',Startdatum);
+                  IF (Startdatum <> 0D) AND (Enddatum <> 0D) THEN
+                    Memokopf.SETFILTER(Memodatum,'>=%1&<=%2',Startdatum,Enddatum);
+                  IF (Startdatum = 0D) AND (Enddatum <> 0D) THEN
+                    Memokopf.SETFILTER(Memodatum,'<=%1',Enddatum);
+                  IF Memokopf.FINDFIRST THEN BEGIN
+                    REPEAT
+                      IF hstcode <> '' THEN BEGIN
+                        Linien.RESET;
+                        Linien.SETRANGE("Memonr.",Memokopf."Memonr.");
+                        Linien.SETFILTER(Linienkrzel,hstcode);
+                        IF Linien.FINDFIRST THEN
+                          Kontaktmemo_fllen;
+                      END ELSE BEGIN
+                        Kontaktmemo_fllen;
+                      END;
+                    UNTIL Memokopf.NEXT = 0;
+                  END;
+
+
 
                   Berichtstabelle_Kontakte.COPY(Berichtstabelle,TRUE);
                   Berichtstabelle_zeilen.COPY(Berichtstabelle,TRUE);
@@ -459,82 +512,102 @@ OBJECT Report 50162 Projekt - Weekly Info
 
     PROCEDURE Projektmemo_fllen@1140001();
     BEGIN
-      Berichtstabelle.INIT;
-      Berichtstabelle.Tabelle := 'PROJEKTMEMO';
-      Berichtstabelle.Index := Memokopf."Memonr.";
-      Berichtstabelle.Datum := Memokopf.Anlagedatum;
-      Berichtstabelle."Belegnr." := Memokopf."Memonr.";
-      Berichtstabelle."Feld 1" := Memokopf.Memokurztext;
-      Berichtstabelle."Feld 2" := Memokopf."Kampagnennr.";
-      Berichtstabelle."Feld 15" := Memokopf."Angelegt von";
-      Berichtstabelle."Feld 18" := Memokopf.Memodatum;
-      Berichtstabelle."Feld 19" := Memokopf.Kontaktart;
-      IF Memokopf.ISO THEN Berichtstabelle."Feld 19" += ' | ISO';
-      IF Projekt_Info.GET(Memokopf."Kampagnennr.") THEN BEGIN
-        Berichtstabelle."Feld 4" := Projekt_Info.Projektvolumen;
-        Berichtstabelle."Feld 5" := Projekt_Info.Projektwert;
-        Berichtstabelle."Feld 6" := Projekt_Info."Betreuer Innendienst";
-        Berichtstabelle."Feld 7" := Projekt_Info."Salesperson Code";
-        Berichtstabelle."Feld 8" := Projekt_Info.Projektstatus;
-        Berichtstabelle."Feld 9" := Projekt_Info.Projektklasse;
-        Berichtstabelle."Feld 11" := Projekt_Info.Description;
-        Ansprech.RESET;
-        Ansprech.SETRANGE("Kampagnennr.",Projekt_Info."No.");
-        Ansprech.SETRANGE(Fhrungsrolle,TRUE);
-        IF Ansprech.FINDFIRST THEN BEGIN
-          Ansprech.CALCFIELDS(Mandantenname);
-          Berichtstabelle."Feld 10" := Ansprech.Mandantenname;
-          IF Cont_temp.GET(Ansprech."Kontaktnr.") THEN BEGIN
-            Berichtstabelle."Feld 3" := Cont_temp."Post Code";
-            Berichtstabelle."Feld 13" := Cont_temp.City;
+      Berichtstabelle.RESET;
+      Berichtstabelle.SETRANGE(Tabelle,'PROJEKTMEMO');
+      Berichtstabelle.SETRANGE("Belegnr.",Memokopf."Memonr.");
+      IF Berichtstabelle.FINDFIRST THEN BEGIN
+      END ELSE BEGIN
+        Berichtstabelle.INIT;
+        Berichtstabelle.Tabelle := 'PROJEKTMEMO';
+        Berichtstabelle.Index := Memokopf."Memonr.";
+        Berichtstabelle.Datum := Memokopf.Anlagedatum;
+        Berichtstabelle."Belegnr." := Memokopf."Memonr.";
+        Berichtstabelle."Feld 1" := Memokopf.Memokurztext;
+        Berichtstabelle."Feld 2" := Memokopf."Kampagnennr.";
+        Berichtstabelle."Feld 15" := Memokopf."Angelegt von";
+        Berichtstabelle."Feld 18" := Memokopf.Memodatum;
+        Berichtstabelle."Feld 19" := Memokopf.Kontaktart;
+        IF Memokopf.ISO THEN Berichtstabelle."Feld 19" += ' | ISO';
+        IF Projekt_Info.GET(Memokopf."Kampagnennr.") THEN BEGIN
+          Berichtstabelle."Feld 4" := Projekt_Info.Projektvolumen;
+          Berichtstabelle."Feld 5" := Projekt_Info.Projektwert;
+          Berichtstabelle."Feld 6" := Projekt_Info."Betreuer Innendienst";
+          Berichtstabelle."Feld 7" := Projekt_Info."Salesperson Code";
+          Berichtstabelle."Feld 8" := Projekt_Info.Projektstatus;
+          Berichtstabelle."Feld 9" := Projekt_Info.Projektklasse;
+          Berichtstabelle."Feld 11" := Projekt_Info.Description;
+          Ansprech.RESET;
+          Ansprech.SETRANGE("Kampagnennr.",Projekt_Info."No.");
+          Ansprech.SETRANGE(Fhrungsrolle,TRUE);
+          IF Ansprech.FINDFIRST THEN BEGIN
+            Ansprech.CALCFIELDS(Mandantenname);
+            Berichtstabelle."Feld 10" := Ansprech.Mandantenname;
+            IF Cont_temp.GET(Ansprech."Kontaktnr.") THEN BEGIN
+              Berichtstabelle."Feld 3" := Cont_temp."Post Code";
+              Berichtstabelle."Feld 13" := Cont_temp.City;
+            END;
+          END ELSE BEGIN
+            Berichtstabelle."Feld 14" := 'Kein Hauptbeteiligter im Projekt';
           END;
-        END ELSE BEGIN
-          Berichtstabelle."Feld 14" := 'Kein Hauptbeteiligter im Projekt';
+          Linien.RESET;
+          Linien.SETRANGE("Memonr.",Memokopf."Memonr.");
+          IF Linien.FINDFIRST THEN BEGIN
+            REPEAT
+              IF Hersteller.GET(Linien.Linienkrzel) THEN
+                Berichtstabelle."Feld 12" := Berichtstabelle."Feld 12" + ' ' + Hersteller.Herstellerkurzname;
+            UNTIL Linien.NEXT = 0;
+          END;
         END;
-        Linien.RESET;
-        Linien.SETRANGE("Memonr.",Memokopf."Memonr.");
-        IF Linien.FINDFIRST THEN BEGIN
-          REPEAT
-            IF Hersteller.GET(Linien.Linienkrzel) THEN
-              Berichtstabelle."Feld 12" := Berichtstabelle."Feld 12" + ' ' + Hersteller.Herstellerkurzname;
-          UNTIL Linien.NEXT = 0;
-        END;
-      END;
       Berichtstabelle.User := USERID;
       Berichtstabelle.Uhrzeit := CURRENTDATETIME;
       Berichtstabelle.INSERT;
+      END;
       Ansprech.RESET;
       Ansprech.SETRANGE("Memonr.",Memokopf."Memonr.");
       IF Ansprech.FINDFIRST THEN
         REPEAT
-          Berichtstabelle.INIT;
-          Berichtstabelle.Tabelle := 'ANSPRECHPARTNER';
-          Berichtstabelle.Index := Ansprech."Memonr.";
-          Berichtstabelle."Belegnr." := Ansprech."Kontaktnr.";
-          Berichtstabelle."Feld 2" := Ansprech."Kontaktnr.";
-          Ansprech.CALCFIELDS(Mandantenname,Kontaktname);
-          Cont_temp.RESET;
-          IF Cont_temp.GET(Ansprech."Kontaktnr.") THEN
-            Berichtstabelle."Feld 6" := Cont_temp."Organizational Level Code";
-          Berichtstabelle."Feld 10" := Ansprech.Mandantenname;
-          Berichtstabelle."Feld 12" := Ansprech.Kontaktname;
-          Berichtstabelle.User := USERID;
-          Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-          Berichtstabelle.INSERT;
+          Berichtstabelle.RESET;
+          Berichtstabelle.SETRANGE(Tabelle,'ANSPRECHPARTNER');
+          Berichtstabelle.SETRANGE("Belegnr.",Memokopf."Memonr.");
+          Berichtstabelle.SETRANGE("Belegnr.",Ansprech."Kontaktnr.");
+          IF Berichtstabelle.FINDFIRST THEN BEGIN
+          END ELSE BEGIN
+            Berichtstabelle.INIT;
+            Berichtstabelle.Tabelle := 'ANSPRECHPARTNER';
+            Berichtstabelle.Index := Ansprech."Memonr.";
+            Berichtstabelle."Belegnr." := Ansprech."Kontaktnr.";
+            Berichtstabelle."Feld 2" := Ansprech."Kontaktnr.";
+            Ansprech.CALCFIELDS(Mandantenname,Kontaktname);
+            Cont_temp.RESET;
+            IF Cont_temp.GET(Ansprech."Kontaktnr.") THEN
+              Berichtstabelle."Feld 6" := Cont_temp."Organizational Level Code";
+            Berichtstabelle."Feld 10" := Ansprech.Mandantenname;
+            Berichtstabelle."Feld 12" := Ansprech.Kontaktname;
+            Berichtstabelle.User := USERID;
+            Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+            Berichtstabelle.INSERT;
+          END;
         UNTIL Ansprech.NEXT = 0;
       Memozeile.RESET;
       Memozeile.SETRANGE("Memonr.",Memokopf."Memonr.");
       IF Memozeile.FINDFIRST THEN
         REPEAT
-          Berichtstabelle.INIT;
-          Berichtstabelle.Tabelle := 'MEMOZEILE';
-          Berichtstabelle.Index := Memozeile."Memonr.";
-          Berichtstabelle."Belegnr." := Memozeile."Memonr.";
-          Berichtstabelle."Zeilennr." := Memozeile."Zeilennr.";
-          Berichtstabelle."Feld 1" := Memozeile.Bemerkung;
-          Berichtstabelle.User := USERID;
-          Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-          Berichtstabelle.INSERT;
+          Berichtstabelle.RESET;
+          Berichtstabelle.SETRANGE(Tabelle,'MEMOZEILE');
+          Berichtstabelle.SETRANGE("Belegnr.",Memokopf."Memonr.");
+          Berichtstabelle.SETRANGE("Zeilennr.",Memozeile."Zeilennr.");
+          IF Berichtstabelle.FINDFIRST THEN BEGIN
+          END ELSE BEGIN
+            Berichtstabelle.INIT;
+            Berichtstabelle.Tabelle := 'MEMOZEILE';
+            Berichtstabelle.Index := Memozeile."Memonr.";
+            Berichtstabelle."Belegnr." := Memozeile."Memonr.";
+            Berichtstabelle."Zeilennr." := Memozeile."Zeilennr.";
+            Berichtstabelle."Feld 1" := Memozeile.Bemerkung;
+            Berichtstabelle.User := USERID;
+            Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+            Berichtstabelle.INSERT;
+          END;
         UNTIL Memozeile.NEXT = 0;
     END;
 
@@ -547,67 +620,73 @@ OBJECT Report 50162 Projekt - Weekly Info
       Contact.SETFILTER(Teams,teams);
       Contact.SETFILTER("Territory Code",gebiet);
       IF Contact.FINDFIRST THEN BEGIN
-        Berichtstabelle.INIT;
-        Berichtstabelle.Tabelle := 'KONTAKTMEMO';
-        Berichtstabelle.Index := Memokopf."Memonr.";
-        Berichtstabelle.Datum := Memokopf.Anlagedatum;
-        Berichtstabelle."Belegnr." := Memokopf."Memonr.";
-        Berichtstabelle."Feld 1" := Memokopf.Memokurztext;
-        Berichtstabelle."Feld 2" := Memokopf."Mandantennr.";
-        Berichtstabelle."Feld 15" := Memokopf."Angelegt von";
-        Berichtstabelle."Feld 18" := Memokopf.Memodatum;
-        Berichtstabelle."Feld 19" := Memokopf.Kontaktart;
-        IF Memokopf.ISO THEN Berichtstabelle."Feld 19" += ' | ISO';
-        IF Cont_temp.GET(Memokopf."Mandantennr.") THEN BEGIN
-          Berichtstabelle."Feld 3" := Cont_temp."Post Code";
-          Berichtstabelle."Feld 6" := Cont_temp."Betreuer Innendienst";
-          Berichtstabelle."Feld 7" := Cont_temp."Salesperson Code";
-          Berichtstabelle."Feld 10" := Cont_temp.Name;
-          Berichtstabelle."Feld 13" := Cont_temp.City;
+        Berichtstabelle.RESET;
+        Berichtstabelle.SETFILTER(Berichtstabelle."Belegnr.",'%1',Memokopf."Memonr.");
+        IF Berichtstabelle.FINDFIRST THEN BEGIN
+        END ELSE BEGIN
+          Berichtstabelle.INIT;
+          Berichtstabelle.Tabelle := 'KONTAKTMEMO';
+          Berichtstabelle.Index := Memokopf."Memonr.";
+          Berichtstabelle.Datum := Memokopf.Anlagedatum;
+          Berichtstabelle."Belegnr." := Memokopf."Memonr.";
+          Berichtstabelle."Feld 1" := Memokopf.Memokurztext;
+          Berichtstabelle."Feld 2" := Memokopf."Mandantennr.";
+          Berichtstabelle."Feld 15" := Memokopf."Angelegt von";
+          Berichtstabelle."Feld 18" := Memokopf.Memodatum;
+          Berichtstabelle."Feld 19" := Memokopf.Kontaktart;
+          IF Memokopf.ISO THEN Berichtstabelle."Feld 19" += ' | ISO';
+          IF Cont_temp.GET(Memokopf."Mandantennr.") THEN BEGIN
+            Berichtstabelle."Feld 3" := Cont_temp."Post Code";
+            Berichtstabelle."Feld 6" := Cont_temp."Betreuer Innendienst";
+            Berichtstabelle."Feld 7" := Cont_temp."Salesperson Code";
+            Berichtstabelle."Feld 10" := Cont_temp.Name;
+            Berichtstabelle."Feld 13" := Cont_temp.City;
+          END;
+          Linien.RESET;
+          Linien.SETRANGE("Memonr.",Memokopf."Memonr.");
+          IF Linien.FINDFIRST THEN
+            REPEAT
+              Hersteller.SETFILTER(Code,Linien.Linienkrzel);
+              IF Hersteller.FINDFIRST THEN
+                Berichtstabelle."Feld 12" := Berichtstabelle."Feld 12" + ' ' + Hersteller.Herstellerkurzname;
+            UNTIL Linien.NEXT = 0;
+          Berichtstabelle.User := USERID;
+          Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+          Berichtstabelle.INSERT;
+
+          Ansprech.RESET;
+          Ansprech.SETRANGE("Memonr.",Memokopf."Memonr.");
+          IF Ansprech.FINDFIRST THEN
+            REPEAT
+              Berichtstabelle.INIT;
+              Berichtstabelle.Tabelle := 'ANSPRECHPARTNER';
+              Berichtstabelle.Index := Ansprech."Memonr.";
+              Berichtstabelle."Belegnr." := Ansprech."Kontaktnr.";
+              Berichtstabelle."Feld 2" := Ansprech."Kontaktnr.";
+              Ansprech.CALCFIELDS(Mandantenname,Kontaktname);
+              IF Cont_temp.GET(Ansprech."Kontaktnr.") THEN
+                Berichtstabelle."Feld 6" := Cont_temp."Organizational Level Code";
+              Berichtstabelle."Feld 10" := Ansprech.Mandantenname;
+              Berichtstabelle."Feld 12" := Ansprech.Kontaktname;
+              Berichtstabelle.User := USERID;
+              Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+              Berichtstabelle.INSERT;
+            UNTIL Ansprech.NEXT = 0;
+          Memozeile.RESET;
+          Memozeile.SETRANGE("Memonr.",Memokopf."Memonr.");
+          IF Memozeile.FINDFIRST THEN
+            REPEAT
+              Berichtstabelle.INIT;
+              Berichtstabelle.Tabelle := 'MEMOZEILE';
+              Berichtstabelle.Index := Memozeile."Memonr.";
+              Berichtstabelle."Belegnr." := Memozeile."Memonr.";
+              Berichtstabelle."Zeilennr." := Memozeile."Zeilennr.";
+              Berichtstabelle."Feld 1" := Memozeile.Bemerkung;
+              Berichtstabelle.User := USERID;
+              Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+              Berichtstabelle.INSERT;
+            UNTIL Memozeile.NEXT = 0;
         END;
-        Linien.RESET;
-        Linien.SETRANGE("Memonr.",Memokopf."Memonr.");
-        IF Linien.FINDFIRST THEN
-          REPEAT
-            Hersteller.SETFILTER(Code,Linien.Linienkrzel);
-            IF Hersteller.FINDFIRST THEN
-              Berichtstabelle."Feld 12" := Berichtstabelle."Feld 12" + ' ' + Hersteller.Herstellerkurzname;
-          UNTIL Linien.NEXT = 0;
-        Berichtstabelle.User := USERID;
-        Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-        Berichtstabelle.INSERT;
-        Ansprech.RESET;
-        Ansprech.SETRANGE("Memonr.",Memokopf."Memonr.");
-        IF Ansprech.FINDFIRST THEN
-          REPEAT
-            Berichtstabelle.INIT;
-            Berichtstabelle.Tabelle := 'ANSPRECHPARTNER';
-            Berichtstabelle.Index := Ansprech."Memonr.";
-            Berichtstabelle."Belegnr." := Ansprech."Kontaktnr.";
-            Berichtstabelle."Feld 2" := Ansprech."Kontaktnr.";
-            Ansprech.CALCFIELDS(Mandantenname,Kontaktname);
-            IF Cont_temp.GET(Ansprech."Kontaktnr.") THEN
-              Berichtstabelle."Feld 6" := Cont_temp."Organizational Level Code";
-            Berichtstabelle."Feld 10" := Ansprech.Mandantenname;
-            Berichtstabelle."Feld 12" := Ansprech.Kontaktname;
-            Berichtstabelle.User := USERID;
-            Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-            Berichtstabelle.INSERT;
-          UNTIL Ansprech.NEXT = 0;
-        Memozeile.RESET;
-        Memozeile.SETRANGE("Memonr.",Memokopf."Memonr.");
-        IF Memozeile.FINDFIRST THEN
-          REPEAT
-            Berichtstabelle.INIT;
-            Berichtstabelle.Tabelle := 'MEMOZEILE';
-            Berichtstabelle.Index := Memozeile."Memonr.";
-            Berichtstabelle."Belegnr." := Memozeile."Memonr.";
-            Berichtstabelle."Zeilennr." := Memozeile."Zeilennr.";
-            Berichtstabelle."Feld 1" := Memozeile.Bemerkung;
-            Berichtstabelle.User := USERID;
-            Berichtstabelle.Uhrzeit := CURRENTDATETIME;
-            Berichtstabelle.INSERT;
-          UNTIL Memozeile.NEXT = 0;
       END;
     END;
 
