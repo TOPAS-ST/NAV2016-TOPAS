@@ -2,8 +2,8 @@ OBJECT Report 50093 Build to Order
 {
   OBJECT-PROPERTIES
   {
-    Date=20.03.18;
-    Time=16:30:38;
+    Date=23.11.18;
+    Time=14:27:50;
     Modified=Yes;
     Version List=Autom. Job;
   }
@@ -16,13 +16,16 @@ OBJECT Report 50093 Build to Order
 
                   //Die eigentliche Build to Order Search
                   //Test:
-                  //SearchFolderBuildtoOrder('\\W2K8R2-FILESRV\Doku\DOKU\Audiocodes\Build to Order\Test\');
+                  debug_modus := FALSE;
+                  IF debug_modus THEN
+                    SearchFolderBuildtoOrder('\\W2K8R2-FILESRV\Doku\DOKU\Audiocodes\Build to Order\Test\')
                   //Produktiv:
-                  SearchFolderBuildtoOrder('\\W2K8R2-FILESRV\Doku\DOKU\Audiocodes\Build to Order\');
+                  ELSE
+                    SearchFolderBuildtoOrder('\\W2K8R2-FILESRV\Doku\DOKU\Audiocodes\Build to Order\');
                 END;
 
     OnPostReport=BEGIN
-                   MESSAGE('50093 Ordner Scan abgeschlossen');
+                   IF debug_modus = FALSE THEN MESSAGE('50093 Ordner Scan abgeschlossen');
                  END;
 
     UseRequestPage=No;
@@ -46,6 +49,7 @@ OBJECT Report 50093 Build to Order
   {
     VAR
       TOPAS_API@1000000000 : Codeunit 50001;
+      debug_modus@1000000001 : Boolean;
 
     PROCEDURE SearchFolderBuildtoOrder@1140003(Path@1140001 : Text[250]);
     VAR
@@ -109,6 +113,10 @@ OBJECT Report 50093 Build to Order
       anzahl_systeme_set@1140056 : Integer;
       Spalte_Artikelnr_Prot@1000000002 : TextConst 'DEU=A';
       Spalte_Fehler_Prot@1000000001 : TextConst 'DEU=D';
+      anzahl_durchlauf_protokoll_zeile@1000000006 : Integer;
+      artikelnr_korrektur@1000000005 : Code[20];
+      decstr@1000000007 : Integer;
+      Spalte_Druchlauf@1000000008 : TextConst 'DEU=H';
     BEGIN
       CLEAR(Quelle_Excel);
       CLEAR(Quelle_Sheet);
@@ -126,7 +134,8 @@ OBJECT Report 50093 Build to Order
       //********************************************************************************************
 
       IF ISCLEAR(Protokoll_Excel) THEN
-        IF CREATE(Protokoll_Excel,FALSE, TRUE) THEN BEGIN END ELSE ERROR('Cannot start Excel Application.');
+        IF CREATE(Protokoll_Excel,FALSE, TRUE) THEN BEGIN END
+          ELSE ERROR('Cannot start Excel Application.');
 
       IF NOT FileMgt.ClientFileExists(Protokollpfaddatei) THEN BEGIN
         Protokoll_Book := Protokoll_Excel.Workbooks.Add(-4167);                // legt neue datei in excel an
@@ -147,7 +156,7 @@ OBJECT Report 50093 Build to Order
         Protokoll_Sheet.Range('F1').Value:= 'Dateiname';
         Protokoll_Sheet.Range('F:F').ColumnWidth := 40;
         Protokoll_Sheet.Range('G1').Value:= 'Bemerkung';
-        Protokoll_Book.SaveAs(Protokollpfaddatei,51);
+        Protokoll_Book._SaveAs(Protokollpfaddatei,51);
       END ELSE BEGIN
         Protokoll_Book := Protokoll_Excel.Workbooks._Open(Protokollpfaddatei,0,FALSE);
         Protokoll_Sheet := Protokoll_Book.Worksheets.Item(1);
@@ -165,19 +174,6 @@ OBJECT Report 50093 Build to Order
 
         //Bestimmt die Einfge-Zeilennr., damit vorhandene Datens„tze nicht berschrieben werden
         Protokoll_j := FORMAT(Protokoll_Sheet.UsedRange.Rows.Count + 1);
-
-        {
-        Protokoll_j_neu := FORMAT(Protokoll_Sheet.UsedRange.Rows.Count + 1);
-        REPEAT
-          Protokoll_j := INCSTR(Protokoll_j);
-          Inhalt_Spalte_F := FORMAT(Protokoll_Sheet.Range('F' + Protokoll_j).Value);
-          IF Inhalt_Spalte_F <> ''  THEN
-            Letzte_Datei := FORMAT(Protokoll_Sheet.Range('F' + Protokoll_j).Value);
-        UNTIL (Inhalt_Spalte_F = '');// AND (leerzeilen > excel_datens„tze);
-
-        IF Protokoll_j_neu <> Protokoll_j THEN
-          ERROR('Protokoll_j: %1, User Range: %2',Protokoll_j, Protokoll_j_neu);
-        }
 
       END;
 
@@ -202,9 +198,13 @@ OBJECT Report 50093 Build to Order
           IF CREATE (Quelle_Excel,FALSE, TRUE) THEN BEGIN END ELSE ERROR('Cannot start Excel Application.');
 
         //Performance Test Excel
-        Quelle_Excel.ScreenUpdating := FALSE;
-        Quelle_Excel.DisplayStatusBar := FALSE;
-        Quelle_Excel.EnableEvents := FALSE;
+        IF debug_modus THEN BEGIN
+          Quelle_Excel.Visible(TRUE);
+        END ELSE BEGIN
+          Quelle_Excel.ScreenUpdating := FALSE;
+          Quelle_Excel.DisplayStatusBar := FALSE;
+          Quelle_Excel.EnableEvents := FALSE;
+        END;
 
         REPEAT
 
@@ -260,6 +260,7 @@ OBJECT Report 50093 Build to Order
             temp_artikelnr := '';
             temp_seriennr := '';
             temp_fehler := '';
+            artikelnr_korrektur := '';
             Board_ini := '';
 
             REPEAT
@@ -271,6 +272,7 @@ OBJECT Report 50093 Build to Order
               IF Spalte_Artikelnr = '' THEN BEGIN
                 FOR k := 1 TO 6 DO BEGIN
                   IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)) <= 40 THEN BEGIN
+                    temp_artikelnr := FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value);
                     //Ausnahme, wenn nur Module in der Excelliste stehen, dann wird der Status auf OK gesetzt
                     IF (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'nur_module') <> 0)
                     OR (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'nur module') <> 0) THEN
@@ -286,10 +288,10 @@ OBJECT Report 50093 Build to Order
                     //Ausnahme, wenn "keine Board.ini" in der Excelliste steht, dann wird der Status auf OK gesetzt
                     IF (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'keine board.ini') <> 0)
                     OR (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'keine board ini') <> 0)
-                    OR (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'keine boardini') <> 0) THEN
+                    OR (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'keine boardini') <> 0)
+                    OR (temp_artikelnr = 'MS-CCE') THEN
                       keine_board_ini := TRUE;
 
-                    temp_artikelnr := FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value);
                     //Sonderfall Mediant 2600
                     Artikel.SETFILTER("No. 2",'%1',temp_artikelnr);
                     //Sonderfall Schaeffler
@@ -317,10 +319,29 @@ OBJECT Report 50093 Build to Order
                       //Ansonsten nimm die benachbarte Spalte, damit die Spalte gefllt ist, Fehlermeldung wird dann sp„ter gesetzt
                       IF Spalte_Seriennr = '' THEN
                         IF (STRPOS(FORMAT(Quelle_Sheet.Range(Spalte[k + 1] + Quelle_j).Value),'GTPM') = 0) AND
-                        (STRPOS(FORMAT(Quelle_Sheet.Range(Spalte[k + 1] + Quelle_j).Value),'GGWU') = 0) THEN
+                           (STRPOS(FORMAT(Quelle_Sheet.Range(Spalte[k + 1] + Quelle_j).Value),'GGWU') = 0) AND
+                           (STRPOS(FORMAT(Quelle_Sheet.Range(Spalte[k + 1] + Quelle_j).Value),':') = 0) THEN
                           Spalte_Seriennr := Spalte[k + 1]
                         ELSE
                           Spalte_Seriennr := Spalte[k + 2];
+                    END ELSE BEGIN
+                      IF Spalte_Seriennr = '' THEN BEGIN
+                        //Kann sein, dass die Seriennr. nicht benachbart steht
+                        FOR i := 1 TO 4 DO BEGIN
+                          IF (FORMAT(Quelle_Sheet.Range(Spalte[k + i] + Quelle_j).Value) <> '') AND
+                          (STRLEN(FORMAT(Quelle_Sheet.Range(Spalte[k + i] + Quelle_j).Value)) <= 20) THEN BEGIN
+                            excel_test_seriennr := FORMAT(Quelle_Sheet.Range(Spalte[k + i] + Quelle_j).Value);   //temp Hilfe
+                            SystemPos.RESET;
+                            SystemPos.SETFILTER(Art,'%1',SystemPos.Art::System);
+                            SystemPos.SETFILTER("Seriennr.",'%1',excel_test_seriennr);
+                            IF SystemPos.FINDFIRST THEN BEGIN
+                              Spalte_Seriennr := Spalte[k + i];
+                              Spalte_Artikelnr := Spalte[k];
+                              artikelnr_korrektur := SystemPos."Artikelnr.";
+                            END;
+                          END;
+                        END;
+                      END;
                     END;
                   END;
                 END;
@@ -346,11 +367,19 @@ OBJECT Report 50093 Build to Order
               IF (Spalte_Artikelnr <> '') AND (Spalte_Seriennr <> '') THEN BEGIN
 
                 IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value)) <= 40 THEN BEGIN
+                  Artikel.RESET;
                   Artikel.SETFILTER("No. 2",'%1',FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value));
                   //Sonderfall Schaeffler
                   IF (NOT Artikel.FINDFIRST) AND (STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value)) <= 20) THEN BEGIN
                     Artikel.RESET;
                     Artikel.SETFILTER("No.",'%1',FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value));
+                  END;
+                  IF (NOT Artikel.FINDFIRST) AND (STRLEN(artikelnr_korrektur) <= 20) AND (artikelnr_korrektur <> '') THEN BEGIN
+                    Artikel.RESET;
+                    Artikel.SETFILTER("No.",'%1',artikelnr_korrektur);
+                    IF Artikel.FINDFIRST THEN
+                      Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'Andere Artikelnr.: ' + artikelnr_korrektur;
+                      artikelnr_korrektur := '';
                   END;
                   IF (Artikel.FINDFIRST) AND (Artikel."No." <> '') AND ((Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS')
                   OR (Artikel.Serviceklassifizierung = 'SYSTEM FLAT')) THEN BEGIN
@@ -358,20 +387,14 @@ OBJECT Report 50093 Build to Order
                       anzahl_systeme_set += 1;
                     temp_artikelnr := FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value);
                     temp_seriennr := FORMAT(Quelle_Sheet.Range(Spalte_Seriennr+Quelle_j).Value);
-                    IF (FORMAT(Quelle_Sheet.Range(Spalte_Seriennr+Quelle_j).Value) <> temp_seriennr)
-                    AND (temp_artikelnr <> '') AND (temp_seriennr <> '') AND ((Board_ini = '') OR
-                    (STRPOS(Board_ini,'X') = 0)) THEN BEGIN
+                    IF (set) AND (anzahl_systeme_set = 1) THEN BEGIN
                       Protokoll_Sheet.Range(Spalte_Artikelnr_Prot+Protokoll_j).Value := temp_artikelnr;
                       Protokoll_Sheet.Range('B'+Protokoll_j).Value := temp_seriennr;
-                      Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := 'Board ini nicht gefunden';
-                      IF is_slave THEN BEGIN
-                        Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'OK';
-                        Protokoll_Sheet.Range('G'+Protokoll_j).Value := 'slave';
-                      END ELSE
-                        Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'Offen';
+                      Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'Offen';
                       Protokoll_Sheet.Range('F'+Protokoll_j).Value := File.Name;
                       Protokoll_j := INCSTR(Protokoll_j);
                     END;
+
                     excel_test_seriennr := FORMAT(Quelle_Sheet.Range(Spalte_Seriennr + Quelle_j).Value);
                     SystemPos.RESET;
                     SystemPos.SETFILTER(Art,'%1',SystemPos.Art::System);
@@ -401,7 +424,7 @@ OBJECT Report 50093 Build to Order
                 END;
               END;
 
-              IF (Spalte_BoardIni <> '') THEN BEGIN
+              IF (Spalte_BoardIni <> '') AND (temp_artikelnr <> '') THEN BEGIN
                 IF (STRPOS((UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte_BoardIni+Quelle_j).Value))),'BOARD') <> 0) OR
                 (STRPOS((UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte_BoardIni+Quelle_j).Value))),'BOARD:') <> 0) THEN BEGIN
                   IF (Spalte_Artikelnr = '') OR (Spalte_Seriennr = '') THEN
@@ -410,12 +433,19 @@ OBJECT Report 50093 Build to Order
                   Protokoll_Sheet.Range('A'+Protokoll_j).Value := temp_artikelnr;
                   Protokoll_Sheet.Range('B'+Protokoll_j).Value := temp_seriennr;
                   Protokoll_Sheet.Range('F'+Protokoll_j).Value := File.Name;
-                  EVALUATE(Board_ini,FORMAT(Quelle_Sheet.Range(Spalte_BoardIni_inhalt+Quelle_j).Value));
+                  EVALUATE(Board_ini,DELCHR(FORMAT(Quelle_Sheet.Range(Spalte_BoardIni_inhalt+Quelle_j).Value),'<','D'));
                   Board_ini := DELCHR(Board_ini,'=','.');
 
                   IF fehler_in_syntax = FALSE THEN BEGIN
+                    IF (set) AND (anzahl_systeme_set = 2) THEN BEGIN
+                      EVALUATE(decstr,Protokoll_j);
+                      Protokoll_j := FORMAT(decstr -1);
+                      Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(Board_ini);
+                      temp_seriennr := FORMAT(Protokoll_Sheet.Range('B'+Protokoll_j).Value); //wird so getan als w„re es die SN des Hauptsystems
+                      Protokoll_j := INCSTR(Protokoll_j);
+                    END;
                     SystemPos.RESET;
-                    SystemPos.SETFILTER(Art,'%1',SystemPos.Art :: System);
+                    SystemPos.SETFILTER(Art,'%1',SystemPos.Art::System);
                     SystemPos.SETFILTER(Inaktiv,'%1',FALSE);
                     //Sonderfall Mediant 2600
                     IF temp_artikelnr = 'M2600-11/100/Red/AC' THEN temp_artikelnr := 'M26-11/100/R/AC';
@@ -441,7 +471,7 @@ OBJECT Report 50093 Build to Order
                     END;
 
                     IF Board_ini <> '' THEN
-                      Protokoll_Sheet.Range('C'+Protokoll_j).Value := Board_ini
+                      Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(Board_ini)
                     ELSE BEGIN
                       temp_fehler := 'Board ini leer ' + temp_fehler;
                       Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := temp_fehler;
@@ -451,11 +481,17 @@ OBJECT Report 50093 Build to Order
                       Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'OK';
                       Protokoll_Sheet.Range('G'+Protokoll_j).Value := 'slave';
                       is_slave := FALSE;
-                    END
+                    END;
                   END ELSE BEGIN
                     Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := 'Syntaxfehler in Datei';
                     Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'Offen';
                   END;
+
+                  IF (anzahl_systeme_set > 1) AND (set) THEN BEGIN
+                    Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := 'Set';
+                    Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'OK';
+                  END;
+
                   Protokoll_j := INCSTR(Protokoll_j);
                   temp_artikelnr := '';
                   temp_seriennr := '';
@@ -491,15 +527,22 @@ OBJECT Report 50093 Build to Order
 
               Quelle_j := INCSTR(Quelle_j);                                    // n„chste Zeile Importdatei
 
-              IF (anzahl_systeme_set > 1) AND (set) THEN BEGIN
-                Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := 'Set';
-                Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'OK';
-              END;
-
               IF (leere_zeilen + 1 = max_leere_zeilen) AND ((Spalte_BoardIni = '')
               OR ((temp_seriennr <> '') AND (temp_artikelnr <> '') AND (Board_ini = ''))) THEN BEGIN
-                Protokoll_Sheet.Range('A'+Protokoll_j).Value := temp_artikelnr;
-                Protokoll_Sheet.Range('B'+Protokoll_j).Value := temp_seriennr;
+                IF STRLEN(temp_artikelnr) <= 40 THEN BEGIN
+                  Artikel.RESET;
+                  Artikel.SETFILTER("No. 2",'%1',temp_artikelnr);
+                  //Sonderfall Schaeffler
+                  IF (NOT Artikel.FINDFIRST) AND (STRLEN(temp_artikelnr) <= 20) THEN BEGIN
+                    Artikel.RESET;
+                    Artikel.SETFILTER("No.",'%1',temp_artikelnr);
+                  END;
+                  IF (Artikel.FINDFIRST) AND (Artikel."No." <> '') AND ((Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS')
+                  OR (Artikel.Serviceklassifizierung = 'SYSTEM FLAT')) THEN BEGIN
+                    Protokoll_Sheet.Range('A'+Protokoll_j).Value := temp_artikelnr;
+                    Protokoll_Sheet.Range('B'+Protokoll_j).Value := temp_seriennr;
+                  END;
+                END;
                 IF (nur_module) OR (schaeffler) OR (keine_board_ini) THEN BEGIN
                   IF nur_module THEN
                     Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := 'Nur Module';
@@ -509,7 +552,10 @@ OBJECT Report 50093 Build to Order
                     Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := 'Keine Board ini n”tig';
                   Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'OK';
                 END ELSE BEGIN
-                  Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := 'Board ini nicht gefunden';
+                  IF FORMAT(Protokoll_Sheet.Range('A'+Protokoll_j).Value) <> '' THEN
+                    Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := 'Board ini nicht gefunden'
+                  ELSE
+                    Protokoll_Sheet.Range(Spalte_Fehler_Prot+Protokoll_j).Value := 'Kein System gefunden';
                   IF (Spalte_BoardIni = '') AND (Artikel.Serviceklassifizierung = 'SYSTEM FLAT') THEN BEGIN
                     Protokoll_Sheet.Range('E'+Protokoll_j).Value := 'OK';
                     Protokoll_Sheet.Range('G'+Protokoll_j).Value := 'ohne Board ini';
@@ -558,7 +604,7 @@ OBJECT Report 50093 Build to Order
           IF FORMAT(Protokoll_Sheet.Range('E'+temp_Protokoll_j).Value) = 'Offen' THEN BEGIN
             temp_artikelnr := FORMAT(Protokoll_Sheet.Range('A'+temp_Protokoll_j).Value);
             temp_seriennr  := FORMAT(Protokoll_Sheet.Range('B'+temp_Protokoll_j).Value);
-            EVALUATE(Board_ini,FORMAT(Protokoll_Sheet.Range('C'+temp_Protokoll_j).Value));
+            EVALUATE(Board_ini,DELCHR(FORMAT(Protokoll_Sheet.Range('C'+temp_Protokoll_j).Value),'<','D'));
             Board_ini := DELCHR(Board_ini,'=','.');
 
             //Schaut nach, ob dies ein SOR Beleg ist und setzt die Position auf OK, da SOR Auftr„ge keine Systemvertr„ge werden
@@ -590,11 +636,12 @@ OBJECT Report 50093 Build to Order
               SystemPos.MODIFY;
               Protokoll_Sheet.Range('E'+temp_Protokoll_j).Value := 'OK';
               suchstring := 'Systempos. noch nicht vorhanden';
-              IF STRPOS(FORMAT(Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value),suchstring) <> 0 THEN BEGIN
-                Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value :=
-                TOPAS_API.trim_text(FORMAT(Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value),suchstring);
-              END;
+              IF STRPOS(FORMAT(Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value),suchstring) <> 0 THEN
+                Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := TOPAS_API.trim_text(FORMAT(Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value),suchstring);
             END ELSE BEGIN
+
+              IF (FORMAT(Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value) = '') AND (Board_ini <> '') AND (temp_seriennr <> '') THEN
+                Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := 'Systempos. noch nicht vorhanden'; //k”nnte bei SET Build to Order mal leer bleiben
 
               //Sucht die Build ini in der Quelldatei neu!!!!!!!!!!!!!!!!!!
               //****************** In Entwicklung**************************
@@ -643,12 +690,14 @@ OBJECT Report 50093 Build to Order
                 temp_artikelnr := '';
                 temp_seriennr := '';
                 temp_fehler := '';
+                artikelnr_korrektur := '';
 
                 REPEAT
 
                   IF Spalte_Artikelnr = '' THEN BEGIN
                     FOR k := 1 TO 6 DO BEGIN
                       IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)) <= 40 THEN BEGIN
+                        temp_artikelnr := FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value);
                         //Ausnahme, wenn "nur Module" in der Excelliste stehen, dann wird der Status auf OK gesetzt
                         IF (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'nur_module') <> 0)
                         OR (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'nur module') <> 0) THEN
@@ -662,10 +711,10 @@ OBJECT Report 50093 Build to Order
                         //Ausnahme, wenn "keine Board.ini" in der Excelliste steht, dann wird der Status auf OK gesetzt
                         IF (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'keine board.ini') <> 0)
                         OR (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'keine board ini') <> 0)
-                        OR (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'keine boardini') <> 0) THEN
+                        OR (STRPOS(LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value)),'keine boardini') <> 0)
+                        OR (temp_artikelnr = 'MS-CCE') THEN
                           keine_board_ini := TRUE;
 
-                        temp_artikelnr := FORMAT(Quelle_Sheet.Range(Spalte[k]+Quelle_j).Value);
                         //Sonderfall Mediant 2600
                         Artikel.SETFILTER("No. 2",'%1',temp_artikelnr);
                         //Sonderfall Schaeffler
@@ -681,8 +730,7 @@ OBJECT Report 50093 Build to Order
                           FOR i := 1 TO 4 DO BEGIN
                             IF (FORMAT(Quelle_Sheet.Range(Spalte[k + i] + Quelle_j).Value) <> '') AND
                             (STRLEN(FORMAT(Quelle_Sheet.Range(Spalte[k + i] + Quelle_j).Value)) <= 20) THEN BEGIN
-                              excel_test_seriennr := FORMAT(Quelle_Sheet.Range(
-                              Spalte[k + i] + Quelle_j).Value);   //temp Hilfe
+                              excel_test_seriennr := FORMAT(Quelle_Sheet.Range(Spalte[k + i] + Quelle_j).Value);   //temp Hilfe
                               SystemPos.RESET;
                               SystemPos.SETFILTER(Art,'%1',SystemPos.Art::System);
                               SystemPos.SETFILTER("Seriennr.",'%1',excel_test_seriennr);
@@ -693,11 +741,30 @@ OBJECT Report 50093 Build to Order
                           //Ansonsten nimm die benachbarte Spalte, damit die Spalte gefllt ist,
                           //Fehlermeldung wird dann sp„ter gesetzt
                           IF Spalte_Seriennr = '' THEN
-                            IF (STRPOS(FORMAT(Quelle_Sheet.Range(Spalte[k+1]+Quelle_j).Value),'GTPM') = 0) AND
-                            (STRPOS(FORMAT(Quelle_Sheet.Range(Spalte[k+1]+Quelle_j).Value),'GGWU') = 0) THEN
+                            IF (STRPOS(FORMAT(Quelle_Sheet.Range(Spalte[k + 1] + Quelle_j).Value),'GTPM') = 0) AND
+                               (STRPOS(FORMAT(Quelle_Sheet.Range(Spalte[k + 1] + Quelle_j).Value),'GGWU') = 0) AND
+                               (STRPOS(FORMAT(Quelle_Sheet.Range(Spalte[k + 1] + Quelle_j).Value),':') = 0) THEN
                               Spalte_Seriennr := Spalte[k + 1]
                             ELSE
                               Spalte_Seriennr := Spalte[k + 2];
+                        END ELSE BEGIN
+                          IF Spalte_Seriennr = '' THEN BEGIN
+                            //Kann sein, dass die Seriennr. nicht benachbart steht
+                            FOR i := 1 TO 4 DO BEGIN
+                              IF (FORMAT(Quelle_Sheet.Range(Spalte[k + i] + Quelle_j).Value) <> '') AND
+                              (STRLEN(FORMAT(Quelle_Sheet.Range(Spalte[k + i] + Quelle_j).Value)) <= 20) THEN BEGIN
+                                excel_test_seriennr := FORMAT(Quelle_Sheet.Range(Spalte[k + i] + Quelle_j).Value);   //temp Hilfe
+                                SystemPos.RESET;
+                                SystemPos.SETFILTER(Art,'%1',SystemPos.Art::System);
+                                SystemPos.SETFILTER("Seriennr.",'%1',excel_test_seriennr);
+                                IF SystemPos.FINDFIRST THEN BEGIN
+                                  Spalte_Seriennr := Spalte[k + i];
+                                  Spalte_Artikelnr := Spalte[k];
+                                  artikelnr_korrektur := SystemPos."Artikelnr.";
+                                END;
+                              END;
+                            END;
+                          END;
                         END;
                       END;
                     END;
@@ -729,14 +796,22 @@ OBJECT Report 50093 Build to Order
                         Artikel.RESET;
                         Artikel.SETFILTER("No.",'%1',FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value));
                       END;
+                      IF (NOT Artikel.FINDFIRST) AND (STRLEN(artikelnr_korrektur) <= 20) AND (artikelnr_korrektur <> '') THEN BEGIN
+                        Artikel.RESET;
+                        Artikel.SETFILTER("No.",'%1',artikelnr_korrektur);
+                        IF Artikel.FINDFIRST THEN
+                          Protokoll_Sheet.Range('G'+temp_Protokoll_j).Value := 'Andere Artikelnr.: ' + artikelnr_korrektur;
+                          artikelnr_korrektur := '';
+                      END;
                       IF (Artikel.FINDFIRST) AND (Artikel."No." <> '') AND ((Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS')
                       OR (Artikel.Serviceklassifizierung = 'SYSTEM FLAT')) THEN BEGIN
                         anzahl_systeme_quelle += 1;
                         IF set THEN
                           anzahl_systeme_set += 1;
                         temp_artikelnr := FORMAT(Quelle_Sheet.Range(Spalte_Artikelnr+Quelle_j).Value);
-                        IF (set = FALSE) OR ((set) AND (anzahl_systeme_set = anzahl_systeme_prot)) THEN
-                          temp_seriennr := FORMAT(Quelle_Sheet.Range(Spalte_Seriennr+Quelle_j).Value);
+                        temp_seriennr  := FORMAT(Quelle_Sheet.Range(Spalte_Seriennr+Quelle_j).Value);
+                        //IF (set = FALSE) OR ((set) AND (anzahl_systeme_set = anzahl_systeme_prot)) THEN
+                        //  temp_seriennr := FORMAT(Quelle_Sheet.Range(Spalte_Seriennr+Quelle_j).Value);
                         IF (anzahl_systeme_quelle = anzahl_systeme_prot) THEN BEGIN
                           Protokoll_Sheet.Range('A'+temp_Protokoll_j).Value := temp_artikelnr;
                           Protokoll_Sheet.Range('B'+temp_Protokoll_j).Value := temp_seriennr;
@@ -744,18 +819,30 @@ OBJECT Report 50093 Build to Order
                       END;
                     END;
 
-                    IF (Spalte_BoardIni <> '') THEN BEGIN
+                    IF (Spalte_BoardIni <> '') AND (temp_artikelnr <> '') THEN BEGIN
                       IF ((STRPOS((UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte_BoardIni+Quelle_j).Value))),'BOARD') <> 0)
                       OR (STRPOS((UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte_BoardIni+Quelle_j).Value))),'BOARD:') <> 0))
                       AND ((anzahl_systeme_quelle = anzahl_systeme_prot)
-                      OR  ((set = TRUE) AND (anzahl_systeme_prot = 1))) THEN BEGIN
+                      OR  ((set = TRUE) AND (anzahl_systeme_set = 2))) THEN BEGIN
 
-                        EVALUATE(Board_ini,FORMAT(Quelle_Sheet.Range(Spalte_BoardIni_inhalt+Quelle_j).Value));
+                        EVALUATE(Board_ini,DELCHR(FORMAT(Quelle_Sheet.Range(Spalte_BoardIni_inhalt+Quelle_j).Value),'<','D'));
                         Board_ini := DELCHR(Board_ini,'=','.');
+
+                        IF (set) AND (anzahl_systeme_set = 2) AND (anzahl_systeme_quelle = anzahl_systeme_prot) THEN BEGIN
+                          EVALUATE(decstr,temp_Protokoll_j);
+                          temp_Protokoll_j := FORMAT(decstr -1);
+                          //nachtr„gliche Korrektur fr ein Set System, wenn die Board ini aktualisiert werden kann fr das Hauptsystem
+                          IF FORMAT(Protokoll_Sheet.Range('E'+temp_Protokoll_j).Value) = 'Offen' THEN BEGIN
+                            Protokoll_Sheet.Range('C'+temp_Protokoll_j).Value := FORMAT(Board_ini);
+                            Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := 'Systempos. noch nicht vorhanden';
+                            temp_seriennr := FORMAT(Protokoll_Sheet.Range('B'+temp_Protokoll_j).Value); //wird so getan als w„re es die SN des Hauptsystems
+                          END;
+                          temp_Protokoll_j := INCSTR(temp_Protokoll_j);
+                        END;
 
                         IF (Board_ini <> '') AND (STRPOS(Board_ini,'X') = 0) THEN BEGIN
                           SystemPos.RESET;
-                          SystemPos.SETFILTER(Art,'%1',SystemPos.Art :: System);
+                          SystemPos.SETFILTER(Art,'%1',SystemPos.Art::System);
                           SystemPos.SETFILTER(Inaktiv,'%1',FALSE);
                           //Sonderfall M2600
                           //IF temp_artikelnr <> 'M2600' THEN
@@ -766,44 +853,50 @@ OBJECT Report 50093 Build to Order
                               Protokoll_Sheet.Range('G'+temp_Protokoll_j).Value := 'Board ini bereits vorhanden';
                             SystemPos."Board ini" := Board_ini;
                             SystemPos.MODIFY(TRUE);
-                            Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := ''; //setzt Fehler zurck
-                            Protokoll_Sheet.Range('E'+temp_Protokoll_j).Value := 'OK';
+                            IF (set) AND (anzahl_systeme_set = 2)  AND (anzahl_systeme_quelle = anzahl_systeme_prot) THEN BEGIN
+                              EVALUATE(decstr,temp_Protokoll_j);
+                              temp_Protokoll_j := FORMAT(decstr -1);
+                              Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := ''; //setzt Fehler zurck
+                              Protokoll_Sheet.Range('E'+temp_Protokoll_j).Value := 'OK';
+                              temp_Protokoll_j := INCSTR(temp_Protokoll_j);
+                            END ELSE BEGIN
+                              Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := ''; //setzt Fehler zurck
+                              Protokoll_Sheet.Range('E'+temp_Protokoll_j).Value := 'OK';
+                            END;
                             system_eingetragen := TRUE;
                             IF SystemPos.COUNT > 1 THEN
                               Protokoll_Sheet.Range('J'+temp_Protokoll_j).Value := 'SN mehrmals vorhanden ' +
                               FORMAT(SystemPos.COUNT);
-                          END ELSE
-                            Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := 'Systempos. noch nicht vorhanden';
-
-                          IF Board_ini <> '' THEN BEGIN
-                            Protokoll_Sheet.Range('C'+temp_Protokoll_j).Value := Board_ini;
-                            suchstring := 'Board ini leer';
-                            IF STRPOS(FORMAT(Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value),suchstring) <> 0 THEN BEGIN
-                              Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := TOPAS_API.trim_text(
-                              FORMAT(Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value),suchstring);
-                            END;
+                          END ELSE BEGIN
+                            IF (set = FALSE) OR  ((set) AND (anzahl_systeme_set = 1) AND (anzahl_systeme_prot = anzahl_systeme_quelle)) THEN
+                              Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := 'Systempos. noch nicht vorhanden';
                           END;
-                        END ELSE BEGIN
-                          Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := 'Board ini unvollst„ndig';
-                        END;
-
-                        temp_artikelnr := '';
-
-                        IF set THEN BEGIN
-                          IF (anzahl_systeme_prot >= anzahl_systeme_set) AND (anzahl_systeme_set > 1) THEN BEGIN
-                            temp_seriennr := '';
+                          IF Board_ini <> '' THEN BEGIN
+                            IF (set = FALSE) OR ((set) AND (anzahl_systeme_prot = anzahl_systeme_quelle)) THEN BEGIN
+                              Protokoll_Sheet.Range('C'+temp_Protokoll_j).Value := Board_ini;
+                              suchstring := 'Board ini leer';
+                              IF STRPOS(FORMAT(Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value),suchstring) <> 0 THEN BEGIN
+                                Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := TOPAS_API.trim_text(
+                                FORMAT(Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value),suchstring);
+                              END;
+                            END;
+                            temp_artikelnr := '';
                             Board_ini := '';
                           END;
                         END ELSE BEGIN
-                          temp_seriennr := '';
-                          Board_ini := '';
+                          IF (set = FALSE) OR ((set) AND (anzahl_systeme_prot = anzahl_systeme_quelle) AND (anzahl_systeme_set = 1)) THEN
+                              Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := 'Board ini unvollst„ndig';
                         END;
                       END;
 
-                      IF (anzahl_systeme_set > 1) AND (anzahl_systeme_prot >= anzahl_systeme_set) AND (set) THEN BEGIN
+                      IF (anzahl_systeme_set > 1) AND (anzahl_systeme_quelle = anzahl_systeme_prot) AND (set) THEN BEGIN
                         Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := 'Set';
                         Protokoll_Sheet.Range('E'+temp_Protokoll_j).Value := 'OK';
                       END;
+                    END ELSE BEGIN
+                      IF (set = FALSE) OR  ((set) AND (anzahl_systeme_set > 1) AND (anzahl_systeme_prot = anzahl_systeme_quelle)) THEN
+                        IF (FORMAT(Protokoll_Sheet.Range('A'+temp_Protokoll_j).Value) <> '') AND (FORMAT(Protokoll_Sheet.Range('B'+temp_Protokoll_j).Value) <> '') THEN
+                          Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := 'Board ini nicht gefunden';
                     END;
 
                     IF nur_module THEN BEGIN
@@ -821,9 +914,16 @@ OBJECT Report 50093 Build to Order
                       Protokoll_Sheet.Range('E'+temp_Protokoll_j).Value := 'OK';
                     END;
 
+                    IF (anzahl_systeme_set > 1) AND (anzahl_systeme_quelle = anzahl_systeme_prot) AND (set) THEN BEGIN
+                      Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := 'Set';
+                      Protokoll_Sheet.Range('E'+temp_Protokoll_j).Value := 'OK';
+                    END;
+
                     Protokoll_Sheet.Range('G'+temp_Protokoll_j).Font.Color := 0;
 
                   END;
+
+                  //temp_artikelnr := '';
 
                   //*********************************************************************************************
                   //                                       Abbruchbedingung
@@ -842,6 +942,20 @@ OBJECT Report 50093 Build to Order
                       OR (system_eingetragen);
 
                 Quelle_Book.Close;
+
+                IF FORMAT(Protokoll_Sheet.Range(Spalte_Druchlauf+temp_Protokoll_j).Value) = '' THEN
+                  Protokoll_Sheet.Range(Spalte_Druchlauf+temp_Protokoll_j).Value := 1
+                ELSE BEGIN
+                  EVALUATE(anzahl_durchlauf_protokoll_zeile,FORMAT(Protokoll_Sheet.Range(Spalte_Druchlauf+temp_Protokoll_j).Value));
+                  Protokoll_Sheet.Range(Spalte_Druchlauf+temp_Protokoll_j).Value := anzahl_durchlauf_protokoll_zeile +1;
+                END;
+
+                IF anzahl_systeme_quelle = 0 THEN BEGIN
+                  Protokoll_Sheet.Range(Spalte_Fehler_Prot+temp_Protokoll_j).Value := 'Kein System gefunden';
+                  //Nach 5 erfolglosen Durchl„ufen bei Build to Orders ohne System wird der Status automatisch auf OK gesetzt
+                  IF FORMAT(Protokoll_Sheet.Range(Spalte_Druchlauf+temp_Protokoll_j).Value) = '5' THEN
+                    Protokoll_Sheet.Range('E'+temp_Protokoll_j).Value := 'OK';
+                END;
 
                 IF Spalte_Artikelnr <> '' THEN BEGIN
                   Artikel.SETFILTER("No. 2",'%1',FORMAT(Protokoll_Sheet.Range(Spalte_Artikelnr_Prot+temp_Protokoll_j).Value));
@@ -869,14 +983,18 @@ OBJECT Report 50093 Build to Order
         END;
 
         Protokoll_Book.Save;
-        //Protokoll_Excel.Visible(TRUE);
-        Protokoll_Book.Close;
-        Quelle_Excel.Quit;
+        IF debug_modus THEN
+          Protokoll_Excel.Visible(TRUE)
+        ELSE
+          Protokoll_Book.Close;
+
+        IF debug_modus = FALSE THEN
+          Quelle_Excel.Quit;
 
       END;
     END;
 
-    PROCEDURE FindRow@1000000005(PL_Sheet@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020820-0000-0000-C000-000000000046}:'Microsoft Excel 14.0 Object Library'.Worksheet";What@1140000 : Text;Spalte@1140001 : Code[10]) : Text[30];
+    PROCEDURE FindRow@1000000005(PL_Sheet@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020820-0000-0000-C000-000000000046}:Unknown Automation Server.Worksheet";What@1140000 : Text;Spalte@1140001 : Code[10]) : Text[30];
     VAR
       Range1@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";
       Cell@1140003 : Code[40];
