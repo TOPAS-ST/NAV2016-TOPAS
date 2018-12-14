@@ -2,8 +2,8 @@ OBJECT Page 50104 Belegausgabe per Batch
 {
   OBJECT-PROPERTIES
   {
-    Date=18.10.18;
-    Time=13:42:08;
+    Date=07.12.18;
+    Time=10:29:57;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -17,7 +17,7 @@ OBJECT Page 50104 Belegausgabe per Batch
              AttachmentPath := 'F:\Daten NEU\Gemeinsame Ordner\Customer Service\EMailVersand\';
              LagerortcodeFilter := 'ZENT';
              //Performance Tests - Umstellung auf lokalen Pfad tempor„r:
-             //AttachmentPath := 'D:\EMailVersand\';
+             //AttachmentPath := 'O:\EMailVersand\';
 
              IF TOPAS_API.NewFolder(AttachmentPath) = FALSE THEN
                ERROR('Abbruch, Pfad nicht verfgbar: %1',AttachmentPath);
@@ -180,7 +180,8 @@ OBJECT Page 50104 Belegausgabe per Batch
       sales_arch_header@1140023 : Record 5107;
       inv_header@1140003 : Record 112;
       purch_header@1140028 : Record 38;
-      Ship_Header@1000000008 : Record 110;
+      ship_header@1000000008 : Record 110;
+      ship_line@1000000022 : Record 111;
       Wartungsvertrag@1000000007 : Record 50011;
       Servicepositionen@1000000006 : Record 50024;
       FileServer@1000000021 : Record 2000000022;
@@ -289,6 +290,7 @@ OBJECT Page 50104 Belegausgabe per Batch
           Bullzip_PDF.BullzipPDF_Order(sales_header,AttachmentPath,50075);
 
           //14.11.14 ST - Rahmenauftrag hinzu, wenn im Rahmen kein Haken im Feld "keine Rahmen-AB via Email" gesetzt ist
+          sales_header.FINDFIRST;
           REPEAT
             sales_line.RESET;
             sales_line.SETFILTER(Type,'%1',sales_line.Type::Item);
@@ -343,9 +345,10 @@ OBJECT Page 50104 Belegausgabe per Batch
           Bullzip_PDF.BullzipPDF_Order(sales_header,AttachmentPath,50098);
 
           //14.11.14 ST - Rahmenauftrag hinzu, wenn im Rahmen kein Haken im Feld "keine Rahmen-AB via Email" gesetzt ist
+          sales_header.FINDFIRST;
           REPEAT
             sales_line.RESET;
-            sales_line.SETFILTER(Type,'%1',sales_line.Type :: Item);
+            sales_line.SETFILTER(Type,'%1',sales_line.Type::Item);
             sales_line.SETFILTER("Document No.",'%1',sales_header."No.");
             sales_line.SETFILTER("Blanket Order No.",'<>%1','');
             IF sales_line.FINDFIRST THEN
@@ -375,6 +378,20 @@ OBJECT Page 50104 Belegausgabe per Batch
         inv_header.SETFILTER("No.",belegnr);
         IF inv_header.FINDFIRST THEN BEGIN
           Bullzip_PDF.BullzipPDF_Invoice(inv_header,AttachmentPath,50076);
+          //Fr Ger„te von ACS und FER werden die Lieferscheine erzeugt und zus„tzlich angehangen
+          inv_header.FINDFIRST;
+          REPEAT
+            ship_header.RESET;
+            ship_header.SETRANGE("Order No.",inv_header."Order No.");
+            IF ship_header.FINDLAST THEN BEGIN
+              ship_line.RESET;
+              ship_line.SETRANGE("Document No.",ship_header."No.");
+              ship_line.SETFILTER("Manufacturer Code",'59|85');
+              ship_line.SETFILTER(Quantity,'>%1',0);
+              IF ship_line.FINDFIRST THEN
+                Bullzip_PDF.BullzipPDF_Shipment(ship_header,AttachmentPath,50078);
+            END;
+          UNTIL inv_header.NEXT = 0;
         END;
       END;
 
@@ -408,12 +425,11 @@ OBJECT Page 50104 Belegausgabe per Batch
 
       //Servicevertr„ge per PDF
       IF Servicevertr„ge_PDF THEN BEGIN
-        Ship_Header.RESET;
-        Ship_Header.SETFILTER("Posting Date",'%1',Tagesdatum);
-        IF Ship_Header.FINDFIRST THEN
-          Bullzip_PDF.BullzipPDF_ServiceContract(Ship_Header,AttachmentPath,50178);
+        ship_header.RESET;
+        ship_header.SETFILTER("Posting Date",'%1',Tagesdatum);
+        IF ship_header.FINDFIRST THEN
+          Bullzip_PDF.BullzipPDF_ServiceContract(ship_header,AttachmentPath,50178);
       END;
-
 
 
 
@@ -454,7 +470,7 @@ OBJECT Page 50104 Belegausgabe per Batch
 
               //14.11.14 ST - Rahmenauftrag hinzu, wenn im Rahmen kein Haken im Feld "keine Rahmen-AB via Email" gesetzt ist
               sales_line.RESET;
-              sales_line.SETFILTER(Type,'%1',sales_line.Type :: Item);
+              sales_line.SETFILTER(Type,'%1',sales_line.Type::Item);
               sales_line.SETFILTER("Document No.",'%1',sales_header."No.");
               sales_line.SETFILTER("Blanket Order No.",'<>%1','');
               IF sales_line.FINDFIRST THEN
@@ -515,7 +531,7 @@ OBJECT Page 50104 Belegausgabe per Batch
 
               //14.11.14 ST - Rahmenauftrag hinzu, wenn im Rahmen kein Haken im Feld "keine Rahmen-AB via Email" gesetzt ist
               sales_line.RESET;
-              sales_line.SETFILTER(Type,'%1',sales_line.Type :: Item);
+              sales_line.SETFILTER(Type,'%1',sales_line.Type::Item);
               sales_line.SETFILTER("Document No.",'%1',sales_header."No.");
               sales_line.SETFILTER("Blanket Order No.",'<>%1','');
               IF sales_line.FINDFIRST THEN
@@ -557,9 +573,9 @@ OBJECT Page 50104 Belegausgabe per Batch
             subject := '';
             body := '';
             email_addr := '';
+            attach_files := '';
             Customer.GET(inv_header."Bill-to Customer No.");
             IF (Customer."Rech via EMail" = TRUE) OR (belegnr <> '') THEN BEGIN
-
               IF inv_header."Language Code" <> 'ENU' THEN BEGIN
                 body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
                         'anbei erhalten Sie Ihre Rechnung.' + FORMAT(chr);
@@ -570,16 +586,22 @@ OBJECT Page 50104 Belegausgabe per Batch
                 subject := 'Invoice for your order: ' + inv_header."External Document No.";
               END;
 
-              Ship_Header.RESET;
-              Ship_Header.SETFILTER("Order No.",'%1',inv_header."Order No.");
-              Ship_Header.SETFILTER("Posting Date",'%1',Tagesdatum);
-              IF Ship_Header.FINDLAST THEN BEGIN
+              attach_files := inv_header."No." + '.pdf';
+
+              ship_header.RESET;
+              ship_header.SETFILTER("Order No.",'%1',inv_header."Order No.");
+              ship_header.SETFILTER("Posting Date",'%1',Tagesdatum);
+              IF ship_header.FINDLAST THEN BEGIN
                 IF inv_header."Language Code" <> 'ENU' THEN
-                  body += 'Das Paket wurde mit ' + Ship_Header."Shipping Agent Code" + ': ' +
-                   Ship_Header."Package Tracking No." + ' verschickt.'
-              ELSE
-                body += 'The packet was sent via ' + Ship_Header."Shipping Agent Code" + ': ' +
-                 Ship_Header."Package Tracking No.";
+                  body += 'Das Paket wurde mit ' + ship_header."Shipping Agent Code" + ': ' + ship_header."Package Tracking No." + ' verschickt.'
+                ELSE
+                  body += 'The packet was sent via ' + ship_header."Shipping Agent Code" + ': ' + ship_header."Package Tracking No.";
+                ship_line.RESET;
+                ship_line.SETRANGE("Document No.",ship_header."No.");
+                ship_line.SETFILTER("Manufacturer Code",'59|85');
+                ship_line.SETFILTER(Quantity,'>%1',0);
+                IF ship_line.FINDFIRST THEN
+                    attach_files := attach_files + ',' + AttachmentPath + ship_header."No." + '.pdf';
               END;
 
               //Email-Adresse wird ausfindig gemacht, wird keine gefunden, wird dennoch eine E-Mail generiert
@@ -596,7 +618,7 @@ OBJECT Page 50104 Belegausgabe per Batch
                   email_addr := Customer."Rech EMail-Adresse";
               END;
 
-              TOPAS_API.NewMail(email_addr,'','',subject,body,AttachmentPath,inv_header."No." + '.pdf');
+              TOPAS_API.NewMail(email_addr,'','',subject,body,AttachmentPath,attach_files);
             END;
           UNTIL inv_header.NEXT = 0;
         END;
@@ -671,9 +693,9 @@ OBJECT Page 50104 Belegausgabe per Batch
       wartungsnr_save[5] := '';
       t := 1;
       IF Servicevertr„ge_PDF = TRUE THEN BEGIN
-        Ship_Header.RESET;
-        Ship_Header.SETFILTER("Posting Date",'%1',Tagesdatum);
-        IF Ship_Header.FINDFIRST THEN
+        ship_header.RESET;
+        ship_header.SETFILTER("Posting Date",'%1',Tagesdatum);
+        IF ship_header.FINDFIRST THEN
           REPEAT
             vertrag_gedruckt := FALSE;
             au_wartungsnr[1] := '';
@@ -682,11 +704,11 @@ OBJECT Page 50104 Belegausgabe per Batch
             au_wartungsnr[4] := '';
             au_wartungsnr[5] := '';
             i := 1;
-            Customer.GET(Ship_Header."Sell-to Customer No.");
+            Customer.GET(ship_header."Sell-to Customer No.");
             IF Customer."Service via EMail" = TRUE THEN BEGIN
               Servicepositionen.RESET;
-              Servicepositionen.SETFILTER(Art,'%1',Servicepositionen.Art :: Service);
-              Servicepositionen.SETFILTER("Nr.",'%1',Ship_Header."No.");
+              Servicepositionen.SETFILTER(Art,'%1',Servicepositionen.Art::Service);
+              Servicepositionen.SETFILTER("Nr.",'%1',ship_header."No.");
               Servicepositionen.SETFILTER(Inaktiv,'%1',FALSE);
               IF Servicepositionen.FINDFIRST THEN BEGIN
                 REPEAT
@@ -699,8 +721,8 @@ OBJECT Page 50104 Belegausgabe per Batch
                   IF vertrag_gedruckt = FALSE THEN BEGIN
                     Wartungsvertrag.RESET;
                     Wartungsvertrag.SETFILTER("Wartungsvertragsnr.",Servicepositionen."Wartungsvertragsnr.");
-                    Wartungsvertrag.SETFILTER(Status,'<>%1&<>%2',Wartungsvertrag.Status :: ACTS,
-                                              Wartungsvertrag.Status :: "Champs Partner");
+                    Wartungsvertrag.SETFILTER(Status,'<>%1&<>%2',Wartungsvertrag.Status::ACTS,
+                                              Wartungsvertrag.Status::"Champs Partner");
                     IF Wartungsvertrag.FINDFIRST THEN BEGIN
                       vertrag_gedruckt := TRUE;
                       IF STRLEN(wartungsnr_save[t] + Servicepositionen."Wartungsvertragsnr.") > 1024 THEN
@@ -721,7 +743,7 @@ OBJECT Page 50104 Belegausgabe per Batch
                   IF au_wartungsnr[k] <> '' THEN BEGIN
                     subject := '';
                     body := '';
-                    IF Ship_Header."Language Code" <> 'ENU' THEN BEGIN
+                    IF ship_header."Language Code" <> 'ENU' THEN BEGIN
                       IF STRPOS(au_wartungsnr[k],',') = 0 THEN
                         body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
                               'anbei erhalten Sie Ihren Servicevertrag.' + FORMAT(chr)
@@ -738,13 +760,13 @@ OBJECT Page 50104 Belegausgabe per Batch
                                 'attached you will find your service contracts.' + FORMAT(chr);
                       subject := 'Your reference: ';
                     END;
-                    TOPAS_API.NewMail(Ship_Header."Service EMail-Adresse",'','',subject+
-                    Ship_Header."External Document No.",body,AttachmentPath,au_wartungsnr[k]);
+                    TOPAS_API.NewMail(ship_header."Service EMail-Adresse",'','',subject+
+                    ship_header."External Document No.",body,AttachmentPath,au_wartungsnr[k]);
                   END;
                 END;
               END;
             END;
-          UNTIL Ship_Header.NEXT = 0;
+          UNTIL ship_header.NEXT = 0;
       END;
 
 
@@ -756,7 +778,7 @@ OBJECT Page 50104 Belegausgabe per Batch
         AttachmentPath := '\\W2K8R2-FILESRV\Daten\Daten NEU\Gemeinsame Ordner\Customer Service\AudioCodes\';
         IF TOPAS_API.ChangeProxy(Account) <> '' THEN ERROR(Proxy_Error,Account);
 
-        CLEAR(Ship_Header);
+        CLEAR(ship_header);
         cached_processes := '';
         Servicepositionen.RESET;
         Servicepositionen.SETRANGE(Art,Servicepositionen.Art::Service);
@@ -765,10 +787,10 @@ OBJECT Page 50104 Belegausgabe per Batch
           REPEAT
             IF STRPOS(cached_processes,Servicepositionen."ACO Nr.") = 0 THEN BEGIN
               attach_files := '';
-              Ship_Header.SETFILTER("No.",Servicepositionen."Nr.");
-              IF Ship_Header.FINDFIRST THEN BEGIN
-                Bullzip_PDF.BullzipPDF_Shipment(Ship_Header,AttachmentPath + '_Lieferscheine',50078);
-                attach_files += AttachmentPath + '_Lieferscheine\' + Ship_Header."No." + '.pdf';
+              ship_header.SETFILTER("No.",Servicepositionen."Nr.");
+              IF ship_header.FINDFIRST THEN BEGIN
+                Bullzip_PDF.BullzipPDF_Shipment(ship_header,AttachmentPath + '_Lieferscheine',50078);
+                attach_files += AttachmentPath + '_Lieferscheine\' + ship_header."No." + '.pdf';
                 //CurrPage.LANGUAGE := Language.GetLanguageID(Ship_Header."Language Code");
               END;
 
@@ -795,8 +817,8 @@ OBJECT Page 50104 Belegausgabe per Batch
 
               chr := 13;
               body:= STRSUBSTNO(Body_Text,FORMAT(chr));
-              subject := STRSUBSTNO(Subject_Text,Servicepositionen."System Projektinfos",Ship_Header."External Document No.") ;
-              WshShell.Exec(Program_SearchAndForward + ' "' + Account + '"' + ' ""' + ' "' + Servicepositionen."ACO Nr." + '"' + ' "' + Ship_Header."Service EMail-Adresse" + '"' + ' "' + subject + '"' +
+              subject := STRSUBSTNO(Subject_Text,Servicepositionen."System Projektinfos",ship_header."External Document No.") ;
+              WshShell.Exec(Program_SearchAndForward + ' "' + Account + '"' + ' ""' + ' "' + Servicepositionen."ACO Nr." + '"' + ' "' + ship_header."Service EMail-Adresse" + '"' + ' "' + subject + '"' +
               ' "' + body + '"' + ' "' + attach_files + '"');
               IF STRPOS(cached_processes,Servicepositionen."ACO Nr.") = 0 THEN cached_processes += Servicepositionen."ACO Nr." + '|';
 
