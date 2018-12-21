@@ -2,8 +2,8 @@ OBJECT Page 6510 Item Tracking Lines
 {
   OBJECT-PROPERTIES
   {
-    Date=17.12.18;
-    Time=11:38:43;
+    Date=21.12.18;
+    Time=15:07:18;
     Modified=Yes;
     Version List=NAVW19.00.00.50682,TOP1.00;
   }
@@ -470,6 +470,21 @@ OBJECT Page 6510 Item Tracking Lines
                                  ItemTrackingDataCollection.RefreshLotSNAvailability(Rec,TRUE);
                                END;
                                 }
+      { 1000000004;2 ;Action    ;
+                      Name=AutoFillProductKeys;
+                      CaptionML=[DEU=Automatisch Auffllen;
+                                 ENU=Auto Fill];
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=ItemTrackingLedger;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 //TOPAS 20.12.18 ST - Zum automatisch Auffllen der Zeilen bis die vorgebene Menge erreicht ist +
+                                 CurrPage.SAVERECORD;
+                                 IF AutoFillProductKeys(Rec) = FALSE THEN MESSAGE(Text50008,FIELDCAPTION("Product Key"));
+                                 //TOPAS -
+                               END;
+                                }
     }
   }
   CONTROLS
@@ -924,6 +939,8 @@ OBJECT Page 6510 Item Tracking Lines
       ProductKeyOnly@1000000009 : Boolean;
       Text50005@1000000011 : TextConst 'DEU=Sie haben die Auswahl abgebrochen, der Standardwert wird auf %1 festgelegt.';
       Text50006@1000000012 : TextConst 'DEU=Sie drfen fr Artikelverfolgungscode %1 keine(n) %2 vergeben, wenn die Auswahl %3 getroffen wurde.';
+      Text50007@1000000014 : TextConst 'DEU=M”chten Sie die Restmenge von %1 Stck auffllen lassen?';
+      Text50008@1000000013 : TextConst 'DEU=Der Vorgang konnte nicht durchgefhrt werden. Es muss mindestens eine Zeile mit einer gltigen %1 vorbelegt und die Restmenge darf nicht 0 sein.';
 
     PROCEDURE SetFormRunMode@19(Mode@1000 : ',Reclass,Combined Ship/Rcpt,Drop Shipment');
     BEGIN
@@ -2656,6 +2673,46 @@ OBJECT Page 6510 Item Tracking Lines
     BEGIN
       //TOPAS 01.07.17 ST +
       CurrPage.UPDATE;
+      //TOPAS -
+    END;
+
+    LOCAL PROCEDURE AutoFillProductKeys@1000000004(TrackingSpecification@1000000000 : Record 336) : Boolean;
+    VAR
+      CreateReservEntry@1000000004 : Codeunit 99000830;
+      NewTrackingSpecification@1000000001 : Record 336;
+      Item@1000000002 : Record 27;
+      i@1000000003 : Integer;
+    BEGIN
+      //TOPAS 21.12.18 ST +
+      TrackingSpecification.TESTFIELD("Product Key");
+      TrackingSpecification.TESTFIELD(Ursprungsland);
+      TrackingSpecification.TESTFIELD("Quantity (Base)");
+      TrackingSpecification.TESTFIELD("Item No.");
+      Item.GET(TrackingSpecification."Item No.");
+      IF (Item.Serviceklassifizierung = 'SOFTWARE') AND (ItemTrackingCode.Code = 'PRODUCTKEY') THEN BEGIN
+        IF (TrackingSpecification.COUNT > 0) AND (TrackingSpecification."Product Key" <> '') AND (UndefinedQtyArray[1] > 0) THEN BEGIN
+          IF CONFIRM(Text50007,TRUE,UndefinedQtyArray[1]) = TRUE THEN BEGIN
+            FOR i := 1 TO UndefinedQtyArray[1] DO BEGIN
+              INIT;
+              TRANSFERFIELDS(TrackingSpecification);
+              "Entry No." := NextEntryNo;
+              "Serial No." := '';
+              "Serial No." := GetVSNForProductKey("Product Key");
+              INSERT;
+              TempItemTrackLineInsert.INIT;
+              IF (NOT InsertIsBlocked) AND (NOT ZeroLineExists) THEN
+                IF NOT TestTempSpecificationExists THEN BEGIN
+                  TempItemTrackLineInsert.TRANSFERFIELDS(Rec);
+                  TempItemTrackLineInsert.INSERT;
+                  ItemTrackingDataCollection.UpdateLotSNDataSetWithChange(
+                    TempItemTrackLineInsert,CurrentSignFactor * SourceQuantityArray[1] < 0,CurrentSignFactor,0);
+                END;
+            END;
+            CalculateSums;
+            EXIT(TRUE);
+          END;
+        END;
+      END;
       //TOPAS -
     END;
 
