@@ -2,9 +2,10 @@ OBJECT Codeunit 900 Assembly-Post
 {
   OBJECT-PROPERTIES
   {
-    Date=26.01.18;
-    Time=12:00:00;
-    Version List=NAVW19.00.00.49968;
+    Date=17.12.18;
+    Time=11:48:06;
+    Modified=Yes;
+    Version List=NAVW19.00.00.50682,TOP1.00;
   }
   PROPERTIES
   {
@@ -30,7 +31,7 @@ OBJECT Codeunit 900 Assembly-Post
             Window.UPDATE(1,STRSUBSTNO('%1 %2',"Document Type","No."));
 
             InitPost(AssemblyHeader);
-            Post(AssemblyHeader,ItemJnlPostLine,ResJnlPostLine,WhseJnlRegisterLine);
+            Post(AssemblyHeader,ItemJnlPostLine,ResJnlPostLine,WhseJnlRegisterLine,FALSE);
             FinalizePost(AssemblyHeader);
             COMMIT;
 
@@ -111,7 +112,7 @@ OBJECT Codeunit 900 Assembly-Post
       END;
     END;
 
-    LOCAL PROCEDURE Post@18(VAR AssemblyHeader@1000 : Record 900;VAR ItemJnlPostLine@1001 : Codeunit 22;VAR ResJnlPostLine@1002 : Codeunit 212;VAR WhseJnlRegisterLine@1003 : Codeunit 7301);
+    LOCAL PROCEDURE Post@18(VAR AssemblyHeader@1000 : Record 900;VAR ItemJnlPostLine@1001 : Codeunit 22;VAR ResJnlPostLine@1002 : Codeunit 212;VAR WhseJnlRegisterLine@1003 : Codeunit 7301;NeedUpdateUnitCost@1005 : Boolean);
     VAR
       AssemblyLine@1011 : Record 901;
       PostedAssemblyHeader@1010 : Record 910;
@@ -147,7 +148,7 @@ OBJECT Codeunit 900 Assembly-Post
         AssembledItem.GET("Item No.");
         TESTFIELD("Document Type","Document Type"::Order);
         PostLines(AssemblyHeader,AssemblyLine,PostedAssemblyHeader,ItemJnlPostLine,ResJnlPostLine,WhseJnlRegisterLine);
-        PostHeader(AssemblyHeader,PostedAssemblyHeader,ItemJnlPostLine,WhseJnlRegisterLine);
+        PostHeader(AssemblyHeader,PostedAssemblyHeader,ItemJnlPostLine,WhseJnlRegisterLine,NeedUpdateUnitCost);
       END;
     END;
 
@@ -428,7 +429,7 @@ OBJECT Codeunit 900 Assembly-Post
       END;
     END;
 
-    LOCAL PROCEDURE PostHeader@25(VAR AssemblyHeader@1000 : Record 900;VAR PostedAssemblyHeader@1001 : Record 910;VAR ItemJnlPostLine@1006 : Codeunit 22;VAR WhseJnlRegisterLine@1005 : Codeunit 7301);
+    LOCAL PROCEDURE PostHeader@25(VAR AssemblyHeader@1000 : Record 900;VAR PostedAssemblyHeader@1001 : Record 910;VAR ItemJnlPostLine@1006 : Codeunit 22;VAR WhseJnlRegisterLine@1005 : Codeunit 7301;NeedUpdateUnitCost@1007 : Boolean);
     VAR
       WhseAssemblyRelease@1004 : Codeunit 904;
       ItemLedgEntryNo@1008 : Integer;
@@ -437,6 +438,10 @@ OBJECT Codeunit 900 Assembly-Post
     BEGIN
       WITH AssemblyHeader DO BEGIN
         GetHeaderQtys(QtyToOutput,QtyToOutputBase,AssemblyHeader);
+        IF NeedUpdateUnitCost THEN
+          IF NOT IsStandardCostItem THEN
+            UpdateUnitCost;
+
         ItemLedgEntryNo :=
           PostItemOutput(
             AssemblyHeader,"Posting No. Series",
@@ -561,7 +566,7 @@ OBJECT Codeunit 900 Assembly-Post
         ItemJnlLine.VALIDATE("Location Code","Location Code");
         ItemJnlLine."Bin Code" := "Bin Code";
         ItemJnlLine."Indirect Cost %" := "Indirect Cost %";
-        ItemJnlLine."Overhead Rate" := "Overhead Rate" / "Qty. per Unit of Measure";
+        ItemJnlLine."Overhead Rate" := "Overhead Rate";
         ItemJnlLine."Unit Cost" := "Unit Cost";
         ItemJnlLine.VALIDATE("Unit Amount",
           ROUND(("Unit Cost" - "Overhead Rate") / (1 + "Indirect Cost %" / 100),
@@ -1235,8 +1240,12 @@ OBJECT Codeunit 900 Assembly-Post
               CreateReservEntry.CreateReservEntryFor(
                 SourceType,DocType,"Order No.",'',0,"Order Line No.",
                 "Qty. per Unit of Measure",0,ABS(Quantity),
+                //TOPAS CTM-TRE 17.12.18 - šbergabe neuer Parameter Artikelverfolgung +
+                {
                 "Serial No.","Lot No.");
-
+                }
+                "Serial No.","Lot No.",Ursprungsland,"Product Key","Serial No. 2");
+                //TOPAS -
               IF IsATOHeader THEN BEGIN
                 ATOLink.GET(AsmHeader."Document Type",AsmHeader."No.");
                 ATOLink.TESTFIELD(Type,ATOLink.Type::Sale);
@@ -1246,7 +1255,12 @@ OBJECT Codeunit 900 Assembly-Post
                 CreateReservEntry.SetBinding(ReservEntry.Binding::"Order-to-Order");
                 CreateReservEntry.CreateReservEntryFrom(
                   DATABASE::"Sales Line",SalesLine."Document Type",SalesLine."Document No.",'',0,SalesLine."Line No.",
+                  //TOPAS CTM-TRE 17.12.18 - šbergabe neuer Parameter Artikelverfolgung +
+                  {
                   "Qty. per Unit of Measure","Serial No.","Lot No.");
+                  }
+                  "Qty. per Unit of Measure","Serial No.","Lot No.",Ursprungsland,"Product Key","Serial No. 2");
+                  //TOPAS -
                 ReservStatus := ReservStatus::Reservation;
               END ELSE
                 ReservStatus := ReservStatus::Surplus;
@@ -1267,7 +1281,7 @@ OBJECT Codeunit 900 Assembly-Post
     PROCEDURE PostATO@15(VAR AssemblyHeader@1000 : Record 900;VAR ItemJnlPostLine@1001 : Codeunit 22;VAR ResJnlPostLine@1002 : Codeunit 212;VAR WhseJnlRegisterLine@1003 : Codeunit 7301);
     BEGIN
       IF AssemblyHeader.IsAsmToOrder THEN
-        Post(AssemblyHeader,ItemJnlPostLine,ResJnlPostLine,WhseJnlRegisterLine);
+        Post(AssemblyHeader,ItemJnlPostLine,ResJnlPostLine,WhseJnlRegisterLine,TRUE);
     END;
 
     PROCEDURE FinalizePostATO@16(VAR AssemblyHeader@1000 : Record 900);
@@ -1384,6 +1398,11 @@ OBJECT Codeunit 900 Assembly-Post
     END;
 
     BEGIN
+    {
+      Lfd.Nr. Version   Datum       User   Beschreibung
+      ===========================================================================
+      1       TOP1.00   17.12.18    CTMTRE TOPAS Felder an Artikelposten
+    }
     END.
   }
 }
