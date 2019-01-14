@@ -2,8 +2,8 @@ OBJECT Page 50023 Service Kalkulationsblatt
 {
   OBJECT-PROPERTIES
   {
-    Date=17.10.18;
-    Time=14:01:54;
+    Date=08.01.19;
+    Time=16:26:50;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -585,8 +585,9 @@ OBJECT Page 50023 Service Kalkulationsblatt
       splicecom_controls_zeigen@1000000003 : Boolean;
       hinweis_ahr_zeigen@1000000013 : Boolean;
       Text024@1000000015 : TextConst 'DEU=Service Verl„ngerung + NEU hinzu: AHR  - das Start- und Ablaufdatum MUSS manuell vergeben werden!,Nachtr„gliche Erweiterung des AHR''s - Laufzeit wird automatisch anhand des bestehenden Vertrages vorgeschlagen';
-      Text024_Instruktion@1000000018 : TextConst 'DEU=Es wurde bisher kein AHR im Vertrag abgeschlossen.\Folgende M”glichkeiten:';
+      Text024_Instruktion@1000000018 : TextConst 'DEU=Fr %1 mit SN %2 wurde bisher kein AHR im Vertrag abgeschlossen.\Folgende M”glichkeiten:';
       Text025@1000000016 : TextConst 'DEU=M”chten Sie das Ablaufdatum auf das aktuelle Vertragsende %1 festlegen lassen?';
+      start_ablaufdatum_nachtragen@1000000014 : Boolean;
 
     PROCEDURE HoleArtikelPos@1140007();
     BEGIN
@@ -1151,6 +1152,7 @@ OBJECT Page 50023 Service Kalkulationsblatt
           CheckServRelaDoc.RESET;
           CheckServRelaDoc.SETRANGE(Art,ServRelaDoc.Art);
           CheckServRelaDoc.SETRANGE("Nr.",SalesLine_Service."Document No.");
+          CheckServRelaDoc.SETRANGE("Belegnr.",ServRelaDoc."Belegnr.");
           CheckServRelaDoc.SETRANGE("Zeilennr.",ServRelaDoc."Zeilennr.");
           CheckServRelaDoc.SETRANGE(Fremderwerb,TRUE);
           IF NOT CheckServRelaDoc.FINDLAST THEN
@@ -1651,6 +1653,11 @@ OBJECT Page 50023 Service Kalkulationsblatt
         IF ServRelaDoc.FINDFIRST THEN
           hinweistext := Text013;
       END;
+
+      IF (hinweistext_AHR = '') AND (start_ablaufdatum_nachtragen) THEN BEGIN
+        hinweis_ahr_zeigen := TRUE;
+        hinweistext_AHR := 'Bitte Start- und Ablaufdatum eintragen!'
+      END;
     END;
 
     PROCEDURE MengeKalkPrfen@1140008();
@@ -1785,7 +1792,7 @@ OBJECT Page 50023 Service Kalkulationsblatt
       TotalRecNo@1000000002 : Integer;
       RowNo@1000000001 : Integer;
       ColumnNo@1000000000 : Integer;
-      text_array@1000000007 : ARRAY [5] OF Text[255];
+      text_array@1000000007 : ARRAY [5] OF Text;
       v_wartungsnr@1000000006 : Code[20];
       k@1000000005 : Integer;
     BEGIN
@@ -2064,59 +2071,70 @@ OBJECT Page 50023 Service Kalkulationsblatt
       Dialog_Auswahl@1000000004 : Integer;
     BEGIN
       WITH ServiceKalkulation DO BEGIN
-        AHR_gefunden := FALSE;
-        IF Ablaufdatum <> 0D THEN
+        IF ServiceKalkulation.ISEMPTY = FALSE THEN
+          FINDFIRST
+        ELSE
           EXIT(FALSE);
-        TroubleshootingSetup.SETRANGE(Type,TroubleshootingSetup.Type::Item);
-        TroubleshootingSetup.SETRANGE("No.","SUP Artikelnr.");
-        TroubleshootingSetup.SETRANGE("Troubleshooting No.",'AHR');
-        IF TroubleshootingSetup.FINDFIRST THEN BEGIN
-          TroubleshootingSetup.RESET;
+        REPEAT
+          AHR_gefunden := FALSE;
+          start_ablaufdatum_nachtragen := FALSE;
+          IF Ablaufdatum <> 0D THEN
+            EXIT(FALSE);
           TroubleshootingSetup.SETRANGE(Type,TroubleshootingSetup.Type::Item);
+          TroubleshootingSetup.SETRANGE("No.","SUP Artikelnr.");
           TroubleshootingSetup.SETRANGE("Troubleshooting No.",'AHR');
           IF TroubleshootingSetup.FINDFIRST THEN BEGIN
-            REPEAT
+            TroubleshootingSetup.RESET;
+            TroubleshootingSetup.SETRANGE(Type,TroubleshootingSetup.Type::Item);
+            TroubleshootingSetup.SETRANGE("Troubleshooting No.",'AHR');
+            IF TroubleshootingSetup.FINDFIRST THEN BEGIN
+              REPEAT
+                ServicePositionen.RESET;
+                ServicePositionen.SETCURRENTKEY("Ablaufdatum Serviceleistung","SUP Artikelnr.",Gruppierung);
+                ServicePositionen.ASCENDING(FALSE);
+                ServicePositionen.SETRANGE(Inaktiv,FALSE);
+                ServicePositionen.SETRANGE(Art,ServicePositionen.Art::Service);
+                ServicePositionen.SETRANGE("Artikelnr.","Ger„te Artikelnr.");
+                ServicePositionen.SETRANGE("SUP Artikelnr.",TroubleshootingSetup."No.");
+                ServicePositionen.SETRANGE("Urspr. Lieferscheinnr.","Belegnr.");
+                ServicePositionen.SETRANGE("Urspr. Lieferscheinzeilennr.","Belegzeilennr.");
+                IF ServicePositionen.FINDFIRST THEN BEGIN
+                  AHR_gefunden := TRUE;
+                END;
+              UNTIL (TroubleshootingSetup.NEXT = 0) OR (AHR_gefunden);
+            END;
+            IF AHR_gefunden = FALSE THEN BEGIN
               ServicePositionen.RESET;
               ServicePositionen.SETCURRENTKEY("Ablaufdatum Serviceleistung","SUP Artikelnr.",Gruppierung);
               ServicePositionen.ASCENDING(FALSE);
               ServicePositionen.SETRANGE(Inaktiv,FALSE);
               ServicePositionen.SETRANGE(Art,ServicePositionen.Art::Service);
               ServicePositionen.SETRANGE("Artikelnr.","Ger„te Artikelnr.");
-              ServicePositionen.SETRANGE("SUP Artikelnr.",TroubleshootingSetup."No.");
               ServicePositionen.SETRANGE("Urspr. Lieferscheinnr.","Belegnr.");
               ServicePositionen.SETRANGE("Urspr. Lieferscheinzeilennr.","Belegzeilennr.");
               IF ServicePositionen.FINDFIRST THEN BEGIN
-                AHR_gefunden := TRUE;
-              END;
-            UNTIL (TroubleshootingSetup.NEXT = 0) OR (AHR_gefunden);
-          END;
-          IF AHR_gefunden = FALSE THEN BEGIN
-            ServicePositionen.RESET;
-            ServicePositionen.SETCURRENTKEY("Ablaufdatum Serviceleistung","SUP Artikelnr.",Gruppierung);
-            ServicePositionen.ASCENDING(FALSE);
-            ServicePositionen.SETRANGE(Inaktiv,FALSE);
-            ServicePositionen.SETRANGE(Art,ServicePositionen.Art::Service);
-            ServicePositionen.SETRANGE("Artikelnr.","Ger„te Artikelnr.");
-            ServicePositionen.SETRANGE("Urspr. Lieferscheinnr.","Belegnr.");
-            ServicePositionen.SETRANGE("Urspr. Lieferscheinzeilennr.","Belegzeilennr.");
-            IF ServicePositionen.FINDFIRST THEN BEGIN
-              AHR_angleichungs_datum := ServicePositionen."Ablaufdatum Serviceleistung";
-              IF AHR_angleichungs_datum <> 0D THEN BEGIN
-                Dialog_Auswahl := STRMENU(Text024,1,Text024_Instruktion);
-                IF Dialog_Auswahl = 2 THEN BEGIN
-                  IF CONFIRM(Text025,TRUE,AHR_angleichungs_datum) THEN BEGIN
-                    CurrPage.SAVERECORD;
-                    ServRelaDoc.RESET;
-                    ServRelaDoc.SETRANGE(Art,ServRelaDoc.Art::"SUP-AU");
-                    ServRelaDoc.SETRANGE("Nr.",ServiceKalkulation."Nr.");
-                    ServRelaDoc.SETRANGE("Zeilennr.",ServiceKalkulation."Zeilennr.");
-                    IF ServRelaDoc.FINDFIRST THEN BEGIN
-                      REPEAT
-                        ServRelaDoc.Startdatum := WORKDATE;
-                        ServRelaDoc."Laufzeit ab Buchungsdatum" := TRUE;
-                        ServRelaDoc.VALIDATE(Ablaufdatum,AHR_angleichungs_datum);
-                        ServRelaDoc.MODIFY;
-                      UNTIL ServRelaDoc.NEXT = 0;
+                IF (Artikel.GET("Ger„te Artikelnr.")) AND (Artikel.Serviceklassifizierung <> 'SOFTWARE') AND (Artikel.Serviceklassifizierung <> 'KEINE') THEN BEGIN
+                  AHR_angleichungs_datum := ServicePositionen."Ablaufdatum Serviceleistung";
+                  IF AHR_angleichungs_datum <> 0D THEN BEGIN
+                    Dialog_Auswahl := STRMENU(Text024,1,STRSUBSTNO(Text024_Instruktion,ServicePositionen."Artikelnr.",ServicePositionen."Seriennr."));
+                    IF (Dialog_Auswahl = 0) OR (Dialog_Auswahl = 1) THEN
+                      start_ablaufdatum_nachtragen := TRUE;
+                    IF Dialog_Auswahl = 2 THEN BEGIN
+                      IF CONFIRM(Text025,TRUE,AHR_angleichungs_datum) THEN BEGIN
+                        CurrPage.SAVERECORD;
+                        ServRelaDoc.RESET;
+                        ServRelaDoc.SETRANGE(Art,ServRelaDoc.Art::"SUP-AU");
+                        ServRelaDoc.SETRANGE("Nr.",ServiceKalkulation."Nr.");
+                        ServRelaDoc.SETRANGE("Zeilennr.",ServiceKalkulation."Zeilennr.");
+                        IF ServRelaDoc.FINDFIRST THEN BEGIN
+                          REPEAT
+                            ServRelaDoc.Startdatum := WORKDATE;
+                            ServRelaDoc."Laufzeit ab Buchungsdatum" := TRUE;
+                            ServRelaDoc.VALIDATE(Ablaufdatum,AHR_angleichungs_datum);
+                            ServRelaDoc.MODIFY;
+                          UNTIL ServRelaDoc.NEXT = 0;
+                        END;
+                      END;
                     END;
                     CurrPage.UPDATE;
                     EXIT(TRUE);
@@ -2125,7 +2143,7 @@ OBJECT Page 50023 Service Kalkulationsblatt
               END;
             END;
           END;
-        END;
+        UNTIL NEXT = 0;
       END;
       EXIT(FALSE);
     END;
