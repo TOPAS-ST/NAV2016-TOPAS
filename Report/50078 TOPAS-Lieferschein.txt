@@ -2,8 +2,8 @@ OBJECT Report 50078 TOPAS-Lieferschein
 {
   OBJECT-PROPERTIES
   {
-    Date=21.12.18;
-    Time=11:09:42;
+    Date=08.01.19;
+    Time=16:32:12;
     Modified=Yes;
     Version List=Beleg,FORNAV3.1.0.1460/1460;
   }
@@ -370,11 +370,22 @@ OBJECT Report 50078 TOPAS-Lieferschein
     { 61  ;4   ;DataItem;                    ;
                DataItemTable=Table32;
                DataItemTableView=WHERE(Item Tracking=FILTER(<>None));
+               OnPreDataItem=BEGIN
+                               posten_durchlauf := 0;
+                             END;
+
                OnAfterGetRecord=BEGIN
                                   //TOPAS 21.12.18 ST - verhindert den Andruck von berflssigen und identischen Product Keys fr Software Artikel +
-                                  IF (Item.Serviceklassifizierung = 'SOFTWARE') AND ((Item."Item Tracking Code" = 'SN-ODER-PK') OR (Item."Item Tracking Code" = 'PRODUCTKEY'))
-                                    AND (STRPOS("Item Ledger Entry"."Serial No.",'VT') <> 0) OR (STRPOS("Item Ledger Entry"."Serial No.",'NODATA') <> 0) THEN
-                                    CurrReport.BREAK;
+                                  posten_menge := FORMAT("Item Ledger Entry".Quantity * (-1),0,1);
+                                  IF (Item.Serviceklassifizierung = 'SOFTWARE') AND ((Item."Item Tracking Code" = 'SN-ODER-PK') OR (Item."Item Tracking Code" = 'PRODUCTKEY')
+                                  OR (Item."Item Tracking Code" = 'SERIENNR')) AND (STRPOS(Item."No. 2",'OVOC') = 0) AND ("Sales Shipment Line".Quantity > 1) THEN BEGIN
+                                  //AND (STRPOS("Item Ledger Entry"."Serial No.",'VT') <> 0) OR (STRPOS("Item Ledger Entry"."Serial No.",'NODATA') <> 0) THEN BEGIN
+                                    posten_menge := '';
+                                    IF posten_durchlauf > 0 THEN
+                                      CurrReport.BREAK;
+                                  END;
+
+                                  posten_durchlauf += 1;
                                   //TOPAS -
                                 END;
 
@@ -390,11 +401,11 @@ OBJECT Report 50078 TOPAS-Lieferschein
 
     { 66  ;5   ;Column  ;ItemLedgerEntryQuantity_1;
                DecimalPlaces=0:0;
-               SourceExpr="Item Ledger Entry".Quantity*(-1) }
+               SourceExpr=posten_menge }
 
     { 1000000017;5;Column;BarcodeQty_ItemLedgerEntryQuantity_1;
                DecimalPlaces=0:0;
-               SourceExpr=FORMAT("Item Ledger Entry".Quantity*(-1),0,1) }
+               SourceExpr=posten_menge }
 
     { 67  ;5   ;Column  ;SerialNo_ItemLedgerEntry;
                SourceExpr="Serial No." }
@@ -526,6 +537,8 @@ OBJECT Report 50078 TOPAS-Lieferschein
       seite@1140033 : Text[30];
       einheiten_text@1140034 : Text[30];
       Account@1140041 : Text[90];
+      posten_menge@1000000006 : Text;
+      posten_durchlauf@1000000005 : Integer;
       ReportForNav@5000 : DotNet "'ForNav.Reports.3.1.0.1460, Version=3.1.0.1460, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
       ReportForNavClient@5003 : DotNet "'ForNav.Reports.3.1.0.1460, Version=3.1.0.1460, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
       ReportForNavDialog@5001 : Dialog;
@@ -547,7 +560,7 @@ OBJECT Report 50078 TOPAS-Lieferschein
         END;
         //20.03.18 ST - šbergangsweise fr Formwandlung AG wird das TOPAS Logo generell gerendert, da das "alte" Briefpapier mit Logo nicht mehr verwendet werden soll
         Firmendaten.CALCFIELDS(Picture);
-        //TOPAS Ende
+        //TOPAS -
       END;
     END;
 
