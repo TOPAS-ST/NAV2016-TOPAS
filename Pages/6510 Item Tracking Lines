@@ -2,10 +2,10 @@ OBJECT Page 6510 Item Tracking Lines
 {
   OBJECT-PROPERTIES
   {
-    Date=21.12.18;
-    Time=15:07:18;
+    Date=15.01.19;
+    Time=11:32:47;
     Modified=Yes;
-    Version List=NAVW19.00.00.50682,TOP1.00;
+    Version List=NAVW19.00.00.50682,TOP1.02;
   }
   PROPERTIES
   {
@@ -75,6 +75,10 @@ OBJECT Page 6510 Item Tracking Lines
                    IF selection = 2 THEN
                      ProductKeyOnly := TRUE;
                  END;
+
+                 AutoFillAvail := FALSE;
+                 IF ((ItemTrackingCode.Code = 'SN-ODER-PK') OR (ItemTrackingCode.Code = 'PRODUCTKEY')) AND (CurrentSourceType = 39) THEN
+                   AutoFillAvail := TRUE;
 
                  //Soll Buchung von Chargennr. oder Seriennr. bei Artikelverfolgungscode KEINE verhindern
                  IF ItemTrackingCode.Code = 'KEINE' THEN
@@ -471,17 +475,18 @@ OBJECT Page 6510 Item Tracking Lines
                                END;
                                 }
       { 1000000004;2 ;Action    ;
-                      Name=AutoFillProductKeys;
+                      Name=AutoFillTrackingSpecification;
                       CaptionML=[DEU=Automatisch Auffllen;
                                  ENU=Auto Fill];
                       Promoted=Yes;
+                      Enabled=AutoFillAvail;
                       PromotedIsBig=Yes;
                       Image=ItemTrackingLedger;
                       PromotedCategory=Process;
                       OnAction=BEGIN
                                  //TOPAS 20.12.18 ST - Zum automatisch Auffllen der Zeilen bis die vorgebene Menge erreicht ist +
                                  CurrPage.SAVERECORD;
-                                 IF AutoFillProductKeys(Rec) = FALSE THEN MESSAGE(Text50008,FIELDCAPTION("Product Key"));
+                                 IF AutoFillTrackingSpec(Rec) = FALSE THEN MESSAGE(Text50008,FIELDCAPTION("Serial No."),FIELDCAPTION("Product Key"));
                                  //TOPAS -
                                END;
                                 }
@@ -940,7 +945,8 @@ OBJECT Page 6510 Item Tracking Lines
       Text50005@1000000011 : TextConst 'DEU=Sie haben die Auswahl abgebrochen, der Standardwert wird auf %1 festgelegt.';
       Text50006@1000000012 : TextConst 'DEU=Sie drfen fr Artikelverfolgungscode %1 keine(n) %2 vergeben, wenn die Auswahl %3 getroffen wurde.';
       Text50007@1000000014 : TextConst 'DEU=M”chten Sie die Restmenge von %1 Stck auffllen lassen?';
-      Text50008@1000000013 : TextConst 'DEU=Der Vorgang konnte nicht durchgefhrt werden. Es muss mindestens eine Zeile mit einer gltigen %1 vorbelegt und die Restmenge darf nicht 0 sein.';
+      Text50008@1000000013 : TextConst 'DEU=Der Vorgang konnte nicht durchgefhrt werden. Es muss mindestens eine Zeile mit einer gltige(n) %1 bzw. %2 vorbelegt und die Restmenge darf nicht 0 sein.';
+      AutoFillAvail@1000000015 : Boolean;
 
     PROCEDURE SetFormRunMode@19(Mode@1000 : ',Reclass,Combined Ship/Rcpt,Drop Shipment');
     BEGIN
@@ -2676,28 +2682,46 @@ OBJECT Page 6510 Item Tracking Lines
       //TOPAS -
     END;
 
-    LOCAL PROCEDURE AutoFillProductKeys@1000000004(TrackingSpecification@1000000000 : Record 336) : Boolean;
+    LOCAL PROCEDURE AutoFillTrackingSpec@1000000004(TrackingSpecification@1000000000 : Record 336) : Boolean;
     VAR
+      CopyTrackingSpecification@1000000001 : TEMPORARY Record 336;
       CreateReservEntry@1000000004 : Codeunit 99000830;
-      NewTrackingSpecification@1000000001 : Record 336;
       Item@1000000002 : Record 27;
+      start_serialno@1000000006 : Code[20];
+      highest_index@1000000005 : Integer;
       i@1000000003 : Integer;
     BEGIN
       //TOPAS 21.12.18 ST +
-      TrackingSpecification.TESTFIELD("Product Key");
       TrackingSpecification.TESTFIELD(Ursprungsland);
       TrackingSpecification.TESTFIELD("Quantity (Base)");
       TrackingSpecification.TESTFIELD("Item No.");
       Item.GET(TrackingSpecification."Item No.");
-      IF (Item.Serviceklassifizierung = 'SOFTWARE') AND (ItemTrackingCode.Code = 'PRODUCTKEY') THEN BEGIN
-        IF (TrackingSpecification.COUNT > 0) AND (TrackingSpecification."Product Key" <> '') AND (UndefinedQtyArray[1] > 0) THEN BEGIN
+      IF (Item.Serviceklassifizierung = 'SOFTWARE') AND ((ItemTrackingCode.Code = 'PRODUCTKEY') OR ((ItemTrackingCode.Code = 'SN-ODER-PK'))) THEN BEGIN
+        IF (TrackingSpecification.COUNT > 0) AND (UndefinedQtyArray[1] > 0)
+        AND ((TrackingSpecification."Product Key" <> '') AND (ProductKeyOnly) OR ((TrackingSpecification."Serial No." <> '') AND (SerialNoOnly))) THEN BEGIN
           IF CONFIRM(Text50007,TRUE,UndefinedQtyArray[1]) = TRUE THEN BEGIN
             FOR i := 1 TO UndefinedQtyArray[1] DO BEGIN
               INIT;
               TRANSFERFIELDS(TrackingSpecification);
               "Entry No." := NextEntryNo;
-              "Serial No." := '';
-              "Serial No." := GetVSNForProductKey("Product Key");
+              IF ProductKeyOnly THEN BEGIN
+                "Serial No." := '';
+                "Serial No." := GetVSNForProductKey("Product Key");
+              END;
+              IF SerialNoOnly THEN BEGIN
+                IF highest_index = 0 THEN BEGIN
+                  CopyTrackingSpecification.COPY(Rec,TRUE);
+                  CopyTrackingSpecification.FINDFIRST;
+                  start_serialno :=  CopyTrackingSpecification."Serial No.";
+                  REPEAT
+                    IF COPYSTR(CopyTrackingSpecification."Serial No.", STRPOS(CopyTrackingSpecification."Serial No.", '_LIC') +4) >= FORMAT(highest_index) THEN
+                      EVALUATE(highest_index,COPYSTR(CopyTrackingSpecification."Serial No.", STRPOS(CopyTrackingSpecification."Serial No.", '_LIC') +4));
+                  UNTIL CopyTrackingSpecification.NEXT = 0;
+                  highest_index += 1;
+                END;
+                "Serial No." := start_serialno + FORMAT(highest_index);
+                highest_index += 1;
+              END;
               INSERT;
               TempItemTrackLineInsert.INIT;
               IF (NOT InsertIsBlocked) AND (NOT ZeroLineExists) THEN
@@ -2722,9 +2746,11 @@ OBJECT Page 6510 Item Tracking Lines
       Function buttons Line and Function both exist in two overlayed versions to make dynamic show/hide/enable of
       individual menu items possible.
 
-      Lfd.Nr. Version   Datum       User  Beschreibung
+      Lfd.Nr. Version   Datum       User    Beschreibung
       ===========================================================================
-      1       TOP1.00   27.03.17    CTMTRE TOPAS Felder "Serial No. 2", "Product Key" und Ursprungsland eingebaut, C/AL erg„nzt
+      1       TOP1.00   27.03.17    CTMTRE  TOPAS Felder "Serial No. 2", "Product Key" und Ursprungsland eingebaut, C/AL erg„nzt
+      2       TOP1.01   04.06.18    ST      Abfrage Vorbelegung fr Bestellungen mit Artikelverfolgung SN-ODER-PK wird nun angezeigt, autom. SN oder PK generiert
+      3       TOP1.02   21.12.18    ST      Funktion zum autom. Auffllen von Restmengen ist nun fr Artikelverfolgung PRODUCTKEY oder SN-ODER-PK verfgbar
     }
     END.
   }
