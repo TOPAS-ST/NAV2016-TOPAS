@@ -2,8 +2,8 @@ OBJECT Page 50023 Service Kalkulationsblatt
 {
   OBJECT-PROPERTIES
   {
-    Date=14.01.19;
-    Time=14:41:06;
+    Date=29.01.19;
+    Time=12:11:28;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -588,6 +588,7 @@ OBJECT Page 50023 Service Kalkulationsblatt
       Text024_Instruktion@1000000018 : TextConst 'DEU=Fr %1 mit SN %2 wurde bisher kein AHR im Vertrag abgeschlossen.\Folgende M”glichkeiten:';
       Text025@1000000016 : TextConst 'DEU=M”chten Sie das Ablaufdatum auf das aktuelle Vertragsende %1 festlegen lassen?';
       start_ablaufdatum_nachtragen@1000000014 : Boolean;
+      TextExport@1000000017 : TextConst 'DEU=Daten werden analysiert ...\\';
 
     PROCEDURE HoleArtikelPos@1140007();
     BEGIN
@@ -1818,7 +1819,7 @@ OBJECT Page 50023 Service Kalkulationsblatt
       IF ServRelaDoc.FINDFIRST THEN BEGIN
 
         Window.OPEN(
-          Text000 +
+          TextExport +
           '@1@@@@@@@@@@@@@@@@@@@@@\');
 
         TempExcelBuffer.DELETEALL;
@@ -1835,7 +1836,7 @@ OBJECT Page 50023 Service Kalkulationsblatt
         text_array[3] := '';
         text_array[4] := 'Vertragsnr.: ';
 
-         Wartungsvertrag.GET(v_wartungsnr);
+        Wartungsvertrag.GET(v_wartungsnr);
         IF Wartungsvertrag.Endkunde = '' THEN
           RowNo := 6
         ELSE
@@ -1858,36 +1859,6 @@ OBJECT Page 50023 Service Kalkulationsblatt
                 ELSE
                   text_array[1] := text_array[1] + ServicePos."Urspr. Lieferscheinnr.";
             END;
-
-            k := 1;
-            text_array[3] := ServRelaDoc."Ger„te Artikelnr.";
-
-            REPEAT
-
-              seriennr_productkey := ServicePos."Seriennr.";
-              IF Artikel.GET(ServRelaDoc."Ger„te Artikelnr.") THEN BEGIN
-                IF (Artikel."Item Tracking Code" = 'PRODUCTKEY') OR ((Artikel."Item Tracking Code" = 'SN-ODER-PK') AND ((STRPOS(ServicePos."Seriennr.",'NODATA') <> 0) OR (STRPOS(ServicePos."Seriennr.",'VT') = 1))) THEN
-                  seriennr_productkey := ServicePos."Product Key";
-
-                IF STRLEN(text_array[3]) = STRLEN(ServRelaDoc."Ger„te Artikelnr.") THEN
-                  text_array[3] := FORMAT(ServRelaDoc."Menge kalk.") + 'x ' + text_array[3];
-                IF STRPOS(text_array[3],seriennr_productkey) = 0 THEN BEGIN
-                  IF k = 1 THEN
-                    text_array[3] := text_array[3] + '  ' + seriennr_productkey
-                  ELSE
-                    text_array[3] := text_array[3] + ', ' + seriennr_productkey;
-                  k += 1;
-                END;
-              END;
-
-            UNTIL ServicePos.NEXT = 0;
-
-            REPEAT
-              temp_text := Trim_Text(text_array[3],MAXSTRLEN(temp_text));
-              text_array[3] := COPYSTR(text_array[3],STRLEN(temp_text) +1);
-              EnterCell(RowNo,1,temp_text,FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
-              RowNo := RowNo + 1;
-            UNTIL STRLEN(text_array[3]) <= 1;
 
           END;
 
@@ -1913,11 +1884,73 @@ OBJECT Page 50023 Service Kalkulationsblatt
 
         UNTIL ServRelaDoc.NEXT = 0;
 
-        EnterCell(2,1,text_array[1],FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
-        EnterCell(3,1,text_array[2],FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
-        EnterCell(4,1,text_array[4],FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
-        IF Wartungsvertrag.Endkunde <> '' THEN
-          EnterCell(5,1,'Endkunde: ' + Wartungsvertrag.Endkunde,FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+        RowNo := 3;
+        EnterCell(RowNo,1,text_array[2],FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+        RowNo := RowNo + 1;
+        EnterCell(RowNo,1,text_array[4],FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+        RowNo := RowNo + 1;
+
+        REPEAT
+          temp_text := Trim_Text(text_array[1],MAXSTRLEN(temp_text));
+          text_array[1] := COPYSTR(text_array[1],STRLEN(temp_text) +1);
+          IF temp_text <> '' THEN BEGIN
+            EnterCell(RowNo,1,temp_text,FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            RowNo := RowNo + 1;
+          END;
+        UNTIL (STRLEN(text_array[1]) <= 1) OR (temp_text = '');
+
+        //RowNo := RowNo + 1;
+        IF Wartungsvertrag.Endkunde <> '' THEN BEGIN
+          EnterCell(RowNo,1,'Endkunde: ' + Wartungsvertrag.Endkunde,FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          RowNo := RowNo + 1;
+        END;
+
+        RowNo := RowNo + 1;
+
+        CLEAR(CheckServRelaDoc);
+        CheckServRelaDoc.COPY(ServRelaDoc);
+        IF CheckServRelaDoc.FINDFIRST THEN BEGIN
+          REPEAT
+            ServicePos.RESET;
+            ServicePos.SETRANGE(Art,ServicePos.Art::Service);
+            ServicePos.SETRANGE("Wartungsvertragsnr.",v_wartungsnr);
+            ServicePos.SETRANGE("Urspr. Lieferscheinnr.",CheckServRelaDoc."Belegnr.");
+            ServicePos.SETRANGE("Urspr. Lieferscheinzeilennr.",CheckServRelaDoc."Belegzeilennr.");
+            ServicePos.SETRANGE(Inaktiv,FALSE);
+            ServicePos.SETFILTER(Lizenzdatum,'<>%1',0D);
+            IF ServicePos.FINDFIRST THEN BEGIN
+              k := 1;
+              text_array[3] := CheckServRelaDoc."Ger„te Artikelnr.";
+              REPEAT
+                seriennr_productkey := ServicePos."Seriennr.";
+                IF Artikel.GET(CheckServRelaDoc."Ger„te Artikelnr.") THEN BEGIN
+                  IF (Artikel."Item Tracking Code" = 'PRODUCTKEY') OR ((Artikel."Item Tracking Code" = 'SN-ODER-PK') AND ((STRPOS(ServicePos."Seriennr.",'NODATA') <> 0) OR (STRPOS(ServicePos."Seriennr.",'VT') = 1))) THEN
+                    seriennr_productkey := ServicePos."Product Key";
+
+                  IF STRLEN(text_array[3]) = STRLEN(CheckServRelaDoc."Ger„te Artikelnr.") THEN
+                    text_array[3] := FORMAT(CheckServRelaDoc."Menge kalk.") + 'x ' + text_array[3];
+                  IF STRPOS(text_array[3],seriennr_productkey) = 0 THEN BEGIN
+                    IF k = 1 THEN
+                      text_array[3] := text_array[3] + '  ' + seriennr_productkey
+                    ELSE
+                      text_array[3] := text_array[3] + ', ' + seriennr_productkey;
+                    k += 1;
+                  END;
+                END;
+              UNTIL ServicePos.NEXT = 0;
+
+              REPEAT
+                temp_text := Trim_Text(text_array[3],MAXSTRLEN(temp_text));
+                text_array[3] := COPYSTR(text_array[3],STRLEN(temp_text) +1);
+                IF temp_text <> '' THEN BEGIN
+                  EnterCell(RowNo,1,temp_text,FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                  RowNo := RowNo + 1;
+                END;
+              UNTIL (STRLEN(text_array[3]) <= 1) OR (temp_text = '');
+
+            END;
+          UNTIL CheckServRelaDoc.NEXT = 0;
+        END;
 
         Window.CLOSE;
 
