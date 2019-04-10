@@ -2,8 +2,8 @@ OBJECT Page 50104 Belegausgabe per Batch
 {
   OBJECT-PROPERTIES
   {
-    Date=07.12.18;
-    Time=10:29:57;
+    Date=05.04.19;
+    Time=11:01:49;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -217,12 +217,14 @@ OBJECT Page 50104 Belegausgabe per Batch
       t@1000000000 : Integer;
       Subject_Text@1000000015 : TextConst 'DEU=Support Service Certificate fr %1  - Ihre Bestellung %2;ENU=Support Service Certificate for %1  - Your Order %2';
       Body_Text@1000000014 : TextConst 'DEU=Sehr geehrte Damen und Herren%1%1anbei finden Sie den ACTS-Servicevertrag zu Ihrer o.g. Bestellung. Bitte senden Sie diesen an Ihren Endkunden weiter.%1%1Bei weiteren Fragen stehen wir Ihnen gerne zur Verfgung.%1%1Mit freundlichen Gráen,%1%1;ENU=Dear Ladies and Gentlemen,%1%1attached you will find the ACTS service contract for your order mentioned above. Please send it to your End Customer.%1%1For further questions please do not hesitate to contact us.%1%1With kind regards,%1%1';
-      Result_Text@1000000013 : TextConst 'DEU=Es wurde(n) insgesamt %1 Support Certificate(s) abgearbeitet. Bitte prfen Sie, ob genauso viele E-Mails erstellt wurden.';
+      Result_Text@1000000013 : TextConst 'DEU=Es wurde(n) insgesamt %1 Support Certificate(s) abgearbeitet. Bitte prfen Sie, ob genauso viele E-Mails erstellt wurden.\\Aktueller Hinweis: Bitte schneiden Sie die Service E-Mail Adresse aus dem Text aus und fgen sie es in das E-Mail Feld ein. Es gibt aktuell Probleme mit der GroupWise 18 Version.';
       Proxy_Error@1000000012 : TextConst 'DEU=Bitte nehmen Sie das Konto %1 in Ihre GroupWise Vertretung auf, damit das Programm richtig ausgefhrt werden kann.';
       attach_files@1000000016 : Text;
       Program_SearchAndForward@1000000020 : Text;
       Account@1000000019 : Text;
       cached_processes@1000000018 : Text;
+      Service_Infotext_deu@1000000023 : TextConst 'DEU=Nach erfolgreicher Anmeldung unter https://www.topas-systems.de/my-topas k”nnen Sie unsere Service Vertragsbedingungen einsehen.';
+      Service_Infotext_enu@1000000024 : TextConst 'DEU=After successful registration under https://www.topas-systems.de/my-topas you can see our service contract conditions.';
 
     PROCEDURE Run_Batch@1140010();
     BEGIN
@@ -383,7 +385,8 @@ OBJECT Page 50104 Belegausgabe per Batch
           REPEAT
             ship_header.RESET;
             ship_header.SETRANGE("Order No.",inv_header."Order No.");
-            IF ship_header.FINDLAST THEN BEGIN
+            ship_header.SETRANGE("Posting Date",inv_header."Posting Date");
+            IF ship_header.FINDFIRST THEN BEGIN
               ship_line.RESET;
               ship_line.SETRANGE("Document No.",ship_header."No.");
               ship_line.SETFILTER("Manufacturer Code",'59|85');
@@ -590,18 +593,20 @@ OBJECT Page 50104 Belegausgabe per Batch
 
               ship_header.RESET;
               ship_header.SETFILTER("Order No.",'%1',inv_header."Order No.");
-              ship_header.SETFILTER("Posting Date",'%1',Tagesdatum);
-              IF ship_header.FINDLAST THEN BEGIN
+              ship_header.SETFILTER("Posting Date",'%1',inv_header."Posting Date");
+              IF ship_header.FINDFIRST THEN BEGIN
                 IF inv_header."Language Code" <> 'ENU' THEN
                   body += 'Das Paket wurde mit ' + ship_header."Shipping Agent Code" + ': ' + ship_header."Package Tracking No." + ' verschickt.'
                 ELSE
                   body += 'The packet was sent via ' + ship_header."Shipping Agent Code" + ': ' + ship_header."Package Tracking No.";
-                ship_line.RESET;
-                ship_line.SETRANGE("Document No.",ship_header."No.");
-                ship_line.SETFILTER("Manufacturer Code",'59|85');
-                ship_line.SETFILTER(Quantity,'>%1',0);
-                IF ship_line.FINDFIRST THEN
-                    attach_files := attach_files + ',' + AttachmentPath + ship_header."No." + '.pdf';
+                REPEAT
+                  ship_line.RESET;
+                  ship_line.SETRANGE("Document No.",ship_header."No.");
+                  ship_line.SETFILTER("Manufacturer Code",'59|85');
+                  ship_line.SETFILTER(Quantity,'>%1',0);
+                  IF ship_line.FINDFIRST THEN
+                      attach_files := attach_files + ',' + AttachmentPath + ship_header."No." + '.pdf';
+                UNTIL ship_header.NEXT = 0;
               END;
 
               //Email-Adresse wird ausfindig gemacht, wird keine gefunden, wird dennoch eine E-Mail generiert
@@ -746,18 +751,22 @@ OBJECT Page 50104 Belegausgabe per Batch
                     IF ship_header."Language Code" <> 'ENU' THEN BEGIN
                       IF STRPOS(au_wartungsnr[k],',') = 0 THEN
                         body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
-                              'anbei erhalten Sie Ihren Servicevertrag.' + FORMAT(chr)
+                              'anbei erhalten Sie Ihren Servicevertrag.' + FORMAT(chr) +
+                              Service_Infotext_deu + FORMAT(chr)
                       ELSE
                         body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
-                              'anbei erhalten Sie Ihre Servicevertr„ge.' + FORMAT(chr);
+                              'anbei erhalten Sie Ihre Servicevertr„ge.' + FORMAT(chr) +
+                              Service_Infotext_deu + FORMAT(chr);
                       subject := 'Ihre Referenz: ';
                     END ELSE BEGIN
                       IF STRPOS(au_wartungsnr[k],',') = 0 THEN
                         body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
-                                'attached you will find your service contract.' + FORMAT(chr)
+                                'attached you will find your service contract.' + FORMAT(chr) +
+                                Service_Infotext_enu + FORMAT(chr)
                       ELSE
                         body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
-                                'attached you will find your service contracts.' + FORMAT(chr);
+                                'attached you will find your service contracts.' + FORMAT(chr) +
+                                Service_Infotext_enu + FORMAT(chr);
                       subject := 'Your reference: ';
                     END;
                     TOPAS_API.NewMail(ship_header."Service EMail-Adresse",'','',subject+
