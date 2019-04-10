@@ -2,10 +2,10 @@ OBJECT Page 6510 Item Tracking Lines
 {
   OBJECT-PROPERTIES
   {
-    Date=15.01.19;
-    Time=11:32:47;
+    Date=10.04.19;
+    Time=15:28:13;
     Modified=Yes;
-    Version List=NAVW19.00.00.50682,TOP1.02;
+    Version List=NAVW19.00.00.50682,TOP1.03;
   }
   PROPERTIES
   {
@@ -75,6 +75,8 @@ OBJECT Page 6510 Item Tracking Lines
                    IF selection = 2 THEN
                      ProductKeyOnly := TRUE;
                  END;
+                 IF ItemTrackingCode.Code = 'PRODUCTKEY' THEN
+                   ProductKeyOnly := TRUE;
 
                  AutoFillAvail := FALSE;
                  IF ((ItemTrackingCode.Code = 'SN-ODER-PK') OR (ItemTrackingCode.Code = 'PRODUCTKEY')) AND (CurrentSourceType = 39) THEN
@@ -138,11 +140,8 @@ OBJECT Page 6510 Item Tracking Lines
                            Ursprungsland := Item."Country/Region of Origin Code";
                      END;
 
-                     IF (ItemTrackingCode.Code = 'PRODUCTKEY') AND ("Product Key" <> '')
-                     AND ("Serial No." = '') AND ("New Serial No." = '') AND ("Quantity (Base)" <> 0) THEN "Serial No." := GetVSNForProductKey("Product Key");
-
-                     IF (ItemTrackingCode.Code = 'SN-ODER-PK') AND (ProductKeyOnly) AND ("Product Key" <> '')
-                     AND ("New Serial No." = '') AND ("Serial No." = '') AND ("Quantity (Base)" <> 0) THEN "Serial No." := GetNoDataforSNOrProductKey("Product Key");
+                     IF (((ItemTrackingCode.Code = 'SN-ODER-PK') AND (ProductKeyOnly) AND ("Product Key" <> '')) OR ((ItemTrackingCode.Code = 'PRODUCTKEY') AND ("Product Key" <> '')))
+                     AND ("Serial No." = '') AND ("New Serial No." = '') AND ("Quantity (Base)" <> 0) THEN "Serial No." := GetVSNforSNOrProductKey("Product Key");
 
                      //TOPAS -
 
@@ -2643,29 +2642,14 @@ OBJECT Page 6510 Item Tracking Lines
     BEGIN
     END;
 
-    LOCAL PROCEDURE GetVSNForProductKey@1000000002(PK@1000000001 : Code[40]) : Code[20];
-    VAR
-      no_series@1000000000 : Code[10];
-      sn_code@1000000002 : Code[20];
-    BEGIN
-      //TOPAS 30.06.17 ST +
-      IF PK = '' THEN EXIT('');
-      EVALUATE(no_series,'TOPAS-VSN');
-      IF "Serial No." = '' THEN BEGIN
-        NoSeriesMgt.InitSeries(no_series,no_series,TODAY,sn_code,no_series);
-        EXIT(sn_code);
-      END;
-      //TOPAS -
-    END;
-
-    LOCAL PROCEDURE GetNoDataforSNOrProductKey@1000000012(PK@1000000001 : Code[40]) : Code[20];
+    LOCAL PROCEDURE GetVSNforSNOrProductKey@1000000012(PK@1000000001 : Code[40]) : Code[20];
     VAR
       no_series@1000000003 : Code[10];
       sn_code@1000000002 : Code[20];
     BEGIN
       //TOPAS 04.06.18 ST +
       IF (PK = '') THEN EXIT('');
-      EVALUATE(no_series,'TOPAS-SOP');
+      EVALUATE(no_series,'TOPAS-VSN');
       IF (ProductKeyOnly) AND ("Serial No." = '') THEN BEGIN
         NoSeriesMgt.InitSeries(no_series,no_series,TODAY,sn_code,no_series);
         EXIT(sn_code);
@@ -2698,7 +2682,8 @@ OBJECT Page 6510 Item Tracking Lines
       Item.GET(TrackingSpecification."Item No.");
       IF (Item.Serviceklassifizierung = 'SOFTWARE') AND ((ItemTrackingCode.Code = 'PRODUCTKEY') OR ((ItemTrackingCode.Code = 'SN-ODER-PK'))) THEN BEGIN
         IF (TrackingSpecification.COUNT > 0) AND (UndefinedQtyArray[1] > 0)
-        AND ((TrackingSpecification."Product Key" <> '') AND (ProductKeyOnly) OR ((TrackingSpecification."Serial No." <> '') AND (SerialNoOnly))) THEN BEGIN
+        AND (((TrackingSpecification."Product Key" <> '') AND (ProductKeyOnly))
+        OR ((TrackingSpecification."Serial No." <> '') AND (SerialNoOnly) AND (STRPOS((TrackingSpecification."Serial No."),'LIC') <> 0))) THEN BEGIN
           IF CONFIRM(Text50007,TRUE,UndefinedQtyArray[1]) = TRUE THEN BEGIN
             FOR i := 1 TO UndefinedQtyArray[1] DO BEGIN
               INIT;
@@ -2706,7 +2691,7 @@ OBJECT Page 6510 Item Tracking Lines
               "Entry No." := NextEntryNo;
               IF ProductKeyOnly THEN BEGIN
                 "Serial No." := '';
-                "Serial No." := GetVSNForProductKey("Product Key");
+                "Serial No." := GetVSNforSNOrProductKey("Product Key");
               END;
               IF SerialNoOnly THEN BEGIN
                 IF highest_index = 0 THEN BEGIN
@@ -2751,6 +2736,7 @@ OBJECT Page 6510 Item Tracking Lines
       1       TOP1.00   27.03.17    CTMTRE  TOPAS Felder "Serial No. 2", "Product Key" und Ursprungsland eingebaut, C/AL erg„nzt
       2       TOP1.01   04.06.18    ST      Abfrage Vorbelegung fr Bestellungen mit Artikelverfolgung SN-ODER-PK wird nun angezeigt, autom. SN oder PK generiert
       3       TOP1.02   21.12.18    ST      Funktion zum autom. Auffllen von Restmengen ist nun fr Artikelverfolgung PRODUCTKEY oder SN-ODER-PK verfgbar
+      4       TOP1.03   10.04.19    ST      kleinere Fehler beim Auffllen von Restmengen behoben, Fkt. GetVSNForProductKey gel”scht
     }
     END.
   }
