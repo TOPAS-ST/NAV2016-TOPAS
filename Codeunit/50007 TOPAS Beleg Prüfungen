@@ -2,8 +2,8 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
 {
   OBJECT-PROPERTIES
   {
-    Date=06.02.19;
-    Time=11:03:15;
+    Date=22.03.19;
+    Time=10:00:00;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -59,6 +59,7 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
       TOPAS_API@1000000023 : Codeunit 50001;
       Text119@1000000026 : TextConst 'DEU=Fr Artikelnr. %1 in Zeile %2 stimmt die Kalkulation nicht mit der Auswahl der Seriennr. berein.\\Bitte berprfen Sie die Mengen Einteilung der Kalkulation bzw. die Auswahl der Seriennummern.';
       Text120@1000000025 : TextConst 'DEU=Fr Artikelnr. %1 in Zeile %2 bersteigt die gesamte kalkulierte Menge aus der dazugeh”rigen Kalkulation die tats„chliche Anzahl der vorgemerkten Seriennummern.\\Bitte berprfen Sie die Mengen Einteilung der Kalkulation bzw. die Auswahl der Seriennummern.';
+      Text121@1000000044 : TextConst 'DEU=Die %1 ist auf %2 gestellt und das Last Time Buy Datum (%3) wurde berschritten. Bitte geben Sie diesen Hinweis an den zust„ndigen Vertriebsmitarbeiter weiter und lassen Sie den Beleg komplett berarbeiten.';
       Text130@1000000024 : TextConst 'DEU=Die Kalkulation fr Service Artikel %1 in Zeile %2 hat sich ge„ndert, m”chten Sie den aktuelleren DC bernehmen?';
       Text140@1000000027 : TextConst 'DEU=Die Restmenge des Rahmenauftrages %1 ,in Zeilennr. %2 wurde mit %3 berschritten. Bitte passen Sie den Rahmenauftrag entsprechend an.';
 
@@ -66,8 +67,6 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
     VAR
       ReservEntry@1000000000 : Record 337;
     BEGIN
-      //TOPAS 01.07.17 ST
-
       //TOPAS 07.11.11 UB Beginn - šberprfung 13B2 'liefern'
       PurchaseLine.RESET;
       PurchaseLine.SETFILTER("Document No.",'%1',OrderNo);
@@ -193,6 +192,11 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
       menge_liefern_ges@1140008 : Decimal;
       menge_auswahl_ges@1140009 : Decimal;
       menge_auswahl_pos@1140011 : Decimal;
+      last_time_buy@1000000001 : Date;
+      actual_quartal@1000000005 : Date;
+      last_quartal@1000000004 : Date;
+      month_diff_actual@1000000003 : Integer;
+      month_diff_last@1000000002 : Integer;
       basisger„t_kollision_ok@1140015 : Boolean;
       v_artikelnr@1140020 : Code[20];
       v_basissystem@1140021 : Code[20];
@@ -212,6 +216,21 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
           //***************************************************************************************************
           //                                        Prfung Allgemein
           //***************************************************************************************************
+
+          //***************************************************************************************************
+          //        Preiskalkulation darf nicht auf alt stehen, wenn das Last Time Buy erreicht wurde
+          //***************************************************************************************************
+
+          AUkopf.GET(AUkopf."Document Type"::Order,AUzeile."Document No.");
+          actual_quartal := CALCDATE('<CQ>',WORKDATE);
+          last_quartal := CALCDATE('<-CQ-1D>',WORKDATE);
+          month_diff_actual := ABS((DATE2DMY(actual_quartal,3) - DATE2DMY(WORKDATE,3))*12 + DATE2DMY(actual_quartal,2)-DATE2DMY(WORKDATE,2));
+          month_diff_last := ABS((DATE2DMY(WORKDATE,3) - DATE2DMY(last_quartal,3))*12 + DATE2DMY(WORKDATE,2)-DATE2DMY(last_quartal,2));
+            IF month_diff_actual = 1 THEN
+          last_time_buy :=  CALCDATE('<+1D+1M-1D>',last_quartal);
+          IF (AUkopf."Preislisten Kalkulation" = AUkopf."Preislisten Kalkulation"::alt)
+          AND (WORKDATE > last_time_buy) AND (last_time_buy <> 0D) THEN
+            ERROR(Text121,AUkopf.FIELDCAPTION("Preislisten Kalkulation"),AUkopf."Preislisten Kalkulation",last_time_buy);
 
           //***************************************************************************************************
           //    Allgemeine šberprfung der Serviceklassifizierung, diese darf fr ACS Produkte nicht fehlen
@@ -599,7 +618,8 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
     PROCEDURE RefreshServiceDCinSalesOrder@1140003(DocNo@1140000 : Code[20]);
     VAR
       Artikel@1140004 : Record 27;
-      AUzeile@1140001 : Record 37;
+      SalesHeader@1000000000 : Record 36;
+      SalesLine@1140001 : Record 37;
       ServiceTab@1140006 : Record 50024;
       ServiceZuordnungHolen@1140005 : Record 50027;
       service_dc_einzeln_neu@1140002 : Decimal;
@@ -615,23 +635,24 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
 
       IF DocNo = '' THEN EXIT;
 
-      AUzeile.RESET;
-      AUzeile.SETFILTER(AUzeile."Document No.",'%1',DocNo);
-      AUzeile.SETFILTER(Type,'%1',AUzeile.Type::Item);
-      AUzeile.SETFILTER(AUzeile."Qty. to Ship",'>%1',0);
-      AUzeile.SETFILTER("Manufacturer Code",'%1|%2|%3|%4|%5|%6','53','57','59','98','5710','5720');
-      IF AUzeile.FINDFIRST THEN BEGIN
+      SalesLine.RESET;
+      SalesLine.SETFILTER(SalesLine."Document No.",'%1',DocNo);
+      SalesLine.SETFILTER(Type,'%1',SalesLine.Type::Item);
+      SalesLine.SETFILTER(SalesLine."Qty. to Ship",'>%1',0);
+      SalesLine.SETFILTER("Manufacturer Code",'%1|%2|%3|%4|%5|%6','53','57','59','98','5710','5720');
+      IF SalesLine.FINDFIRST THEN BEGIN
         REPEAT
+          SalesHeader.GET(SalesLine."Document Type",SalesLine."Document No.");
           service_dc_einzeln_neu := 0;
           service_dc_gesamt_neu := 0;
           kein_service_dc := FALSE;
-          Artikel.GET(AUzeile."No.");
+          Artikel.GET(SalesLine."No.");
           IF Artikel."Software Upgrade Protection" = TRUE THEN BEGIN
             ServiceZuordnungHolen.RESET;
             ServiceZuordnungHolen.SETCURRENTKEY(Art,"Nr.","Zeilennr.",Gruppierung);
             ServiceZuordnungHolen.SETFILTER(Art,'%1',ServiceZuordnungHolen.Art::"SUP-AU");
             ServiceZuordnungHolen.SETFILTER("Nr.",'%1',DocNo);
-            ServiceZuordnungHolen.SETFILTER("Zeilennr.",'%1',AUzeile."Line No.");
+            ServiceZuordnungHolen.SETFILTER("Zeilennr.",'%1',SalesLine."Line No.");
             IF ServiceZuordnungHolen.FINDFIRST THEN
               REPEAT
 
@@ -652,7 +673,7 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
 
                 service_dc_einzeln_neu := ServiceTab.ServicePreiseNeuKalkulieren(ServiceZuordnungHolen."Ger„te Artikelnr.",
                                     ServiceZuordnungHolen."SUP Artikelnr.",ServiceZuordnungHolen.Laufzeit,'DC',FALSE,
-                                    AUzeile.Einkaufsw„hrungscode,ServiceZuordnungHolen."Quotenr.");
+                                    SalesLine.Einkaufsw„hrungscode,ServiceZuordnungHolen."Quotenr.",SalesHeader."Preislisten Kalkulation");
 
                 //***************************************************************************************************
                 //    Prft, ob die Service Artikel in der Service Preisliste zu finden ist, wenn nein dann bricht
@@ -676,11 +697,11 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
             // Vergleicht Gesamt DC aus Kalkulation und Beleg DC, fhrt bei Abweichung eine Aktualisierung durch
             //***************************************************************************************************
 
-            IF (AUzeile."DC-Preis (EKW)" <> service_dc_gesamt_neu) AND (kein_service_dc = FALSE)
+            IF (SalesLine."DC-Preis (EKW)" <> service_dc_gesamt_neu) AND (kein_service_dc = FALSE)
             AND (Artikel."Software Upgrade Protection" = TRUE) THEN BEGIN
-              IF CONFIRM(Text130,TRUE,AUzeile."No.",AUzeile."Line No.") THEN BEGIN
-                AUzeile.VALIDATE(AUzeile."DC-Preis (EKW)",service_dc_gesamt_neu);
-                AUzeile.MODIFY;
+              IF CONFIRM(Text130,TRUE,SalesLine."No.",SalesLine."Line No.") THEN BEGIN
+                SalesLine.VALIDATE(SalesLine."DC-Preis (EKW)",service_dc_gesamt_neu);
+                SalesLine.MODIFY;
 
                 Window.OPEN('#1################################\\'+
                             'Fortschritt @2@@@@@@@@');
@@ -690,7 +711,7 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
               END;
             END;
           END;
-        UNTIL AUzeile.NEXT = 0;
+        UNTIL SalesLine.NEXT = 0;
       END;
     END;
 
@@ -935,7 +956,7 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
 
         SalesLine.RESET;
         SalesLine.SETFILTER("Document No.",'%1',"No.");
-        SalesLine.SETFILTER(Type,'%1',SalesLine.Type :: Item);
+        SalesLine.SETFILTER(Type,'%1',SalesLine.Type::Item);
         SalesLine.SETFILTER("Qty. to Ship",'>%1',0);
         IF SalesLine.FINDFIRST THEN
           REPEAT
