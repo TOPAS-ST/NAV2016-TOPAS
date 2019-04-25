@@ -2,10 +2,10 @@ OBJECT Codeunit 86 Sales-Quote to Order
 {
   OBJECT-PROPERTIES
   {
-    Date=16.01.18;
-    Time=13:53:34;
+    Date=25.04.19;
+    Time=15:00:00;
     Modified=Yes;
-    Version List=NAVW19.00.00.47042,NAVDACH9.00.00.47042,TOP1.00;
+    Version List=NAVW19.00.00.50221,NAVDACH9.00.00.50221,TOP1.02;
   }
   PROPERTIES
   {
@@ -25,11 +25,17 @@ OBJECT Codeunit 86 Sales-Quote to Order
 
             Cust.GET("Sell-to Customer No.");
             Cust.CheckBlockedCustOnDocs(Cust,"Document Type"::Order,TRUE,FALSE);
+            IF "Sell-to Customer No." <> "Bill-to Customer No." THEN BEGIN
+              Cust.GET("Bill-to Customer No.");
+              Cust.CheckBlockedCustOnDocs(Cust,"Document Type"::Order,TRUE,FALSE);
+            END;
             CALCFIELDS("Amount Including VAT");
             SalesOrderHeader := Rec;
             IF GUIALLOWED AND NOT HideValidationDialog THEN
               CustCheckCreditLimit.SalesHeaderCheck(SalesOrderHeader);
             SalesOrderHeader."Document Type" := SalesOrderHeader."Document Type"::Order;
+
+            ValidateSalesPersonOnSalesHeader(Rec,TRUE,FALSE);
 
             CheckAvailability(Rec);
             CheckInProgressOpportunities(Rec);
@@ -53,7 +59,7 @@ OBJECT Codeunit 86 Sales-Quote to Order
             IF SalesOrderHeader."Posting Date" = 0D THEN
               SalesOrderHeader."Posting Date" := WORKDATE;
 
-            //TOPAS 30.07.08 ST - Update der Aufgaben, šbernahme der Angebotsnr. und Vorschlag zur W„hrungsaktualisierung
+            //TOPAS 30.07.08 ST - Update der Aufgaben, šbernahme der Angebotsnr. und Vorschlag zur W„hrungsaktualisierung +
             ToDo.RESET;
             ToDo.SETFILTER(ToDo."Belegnr.",'%1',"No.");
             IF (ToDo.FINDFIRST) AND (ToDo."Belegnr." <> '') THEN BEGIN
@@ -73,7 +79,10 @@ OBJECT Codeunit 86 Sales-Quote to Order
                   SalesOrderHeader."Currency Factor" := CurrencyExch."Exchange Rate Amount";
               END;
             END;
-            //TOPAS ende
+
+            //25.04.19 ST - Preislisten Version wird validiert
+            SalesOrderHeader.VALIDATE("Preislisten Kalkulation");
+            //TOPAS -
 
             SalesOrderHeader.MODIFY;
             TransferQuoteToSalesOrderLines(SalesQuoteLine,Rec,SalesOrderLine,SalesOrderHeader,Cust);
@@ -128,8 +137,8 @@ OBJECT Codeunit 86 Sales-Quote to Order
 
             DELETELINKS;
             DELETE;
-            ApprovalsMgmt.CopyApprovalEntryQuoteToOrder(DATABASE::"Sales Header","No.",SalesOrderHeader."No.",SalesOrderHeader.RECORDID);
-            ApprovalsMgmt.DeleteApprovalEntry(DATABASE::"Sales Header","Document Type","No.");
+            ApprovalsMgmt.CopyApprovalEntryQuoteToOrder(RECORDID,SalesOrderHeader."No.",SalesOrderHeader.RECORDID);
+            ApprovalsMgmt.DeleteApprovalEntries(RECORDID);
 
             SalesQuoteLine.DELETEALL;
 
@@ -165,6 +174,7 @@ OBJECT Codeunit 86 Sales-Quote to Order
       Item@1000000005 : Record 27;
       Cust@1000000006 : Record 18;
       CurrencyExch@1000000003 : Record 330;
+      PreislistenStatus@1000000007 : Record 50001;
       currency_update@1000000004 : Boolean;
 
     PROCEDURE GetSalesOrderHeader@1(VAR SalesHeader2@1000 : Record 36);
@@ -268,12 +278,19 @@ OBJECT Codeunit 86 Sales-Quote to Order
     LOCAL PROCEDURE TransferQuoteToSalesOrderLines@5(VAR QuoteSalesLine@1000 : Record 37;VAR QuoteSalesHeader@1001 : Record 36;VAR OrderSalesLine@1004 : Record 37;VAR OrderSalesHeader@1005 : Record 36;Customer@1002 : Record 18);
     VAR
       ATOLink@1003 : Record 904;
+      Resource@1008 : Record 156;
     BEGIN
       QuoteSalesLine.RESET;
       QuoteSalesLine.SETRANGE("Document Type",QuoteSalesHeader."Document Type");
       QuoteSalesLine.SETRANGE("Document No.",QuoteSalesHeader."No.");
       IF QuoteSalesLine.FINDSET THEN
         REPEAT
+          IF QuoteSalesLine.Type = QuoteSalesLine.Type::Resource THEN
+            IF QuoteSalesLine."No." <> '' THEN
+              IF Resource.GET(QuoteSalesLine."No.") THEN BEGIN
+                Resource.CheckResourcePrivacyBlocked(FALSE);
+                Resource.TESTFIELD(Blocked,FALSE);
+              END;
           OrderSalesLine := QuoteSalesLine;
           OrderSalesLine."Document Type" := OrderSalesHeader."Document Type";
           OrderSalesLine."Document No." := OrderSalesHeader."No.";
@@ -316,9 +333,11 @@ OBJECT Codeunit 86 Sales-Quote to Order
 
     BEGIN
     {
-      Lfd.Nr.  Version  Datum       User   Beschreibung
+      Lfd.Nr.  Version  Datum       User    Beschreibung
       ===========================================================================
-      1       TOP1.00   26.06.17    ST     Update der Aufgaben, šbernahme der Angebotsnr. und Vorschlag zur W„hrungsaktualisierung
+      1       TOP1.00   26.06.17    ST      Update der Aufgaben, šbernahme der Angebotsnr. und Vorschlag zur W„hrungsaktualisierung
+      2       TOP1.01   16.01.18    ST      Dialog W„hrungsaktualisierung erscheint nun auch wieder bei EURO Angeboten
+      3       TOP1.02   25.04.19    ST      Preislisten Version wird validiert
     }
     END.
   }
