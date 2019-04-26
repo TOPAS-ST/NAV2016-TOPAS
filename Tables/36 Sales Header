@@ -2,10 +2,10 @@ OBJECT Table 36 Sales Header
 {
   OBJECT-PROPERTIES
   {
-    Date=25.10.18;
-    Time=12:00:00;
+    Date=23.04.19;
+    Time=17:30:00;
     Modified=Yes;
-    Version List=NAVW19.00.00.50682,NAVDACH9.00.00.50682,TOP1.02;
+    Version List=NAVW19.00.00.50682,NAVDACH9.00.00.50682,TOP1.04;
   }
   PROPERTIES
   {
@@ -259,6 +259,18 @@ OBJECT Table 36 Sales Header
                                                                   "Lizenz EMail-Adresse" := Cust."Lizenz EMail-Adresse";
                                                                 Spediteuraccount := Cust.Spediteuraccount;
                                                                 VALIDATE(Kontaktperson,'');
+                                                                //11.04.19 ST - Preisliste Version validieren
+                                                                IF "Territory Code" = 'SYSTEM' THEN BEGIN
+                                                                  PreislistenStatus.RESET;
+                                                                  PreislistenStatus.SETRANGE("Tabellen ID",36);
+                                                                  PreislistenStatus.SETRANGE("Feld ID",50351);
+                                                                  PreislistenStatus.SETRANGE(Code,'PREISLISTE');
+                                                                  PreislistenStatus.SETRANGE("Lfd.-Nr.","Preislisten Kalkulation" + 1); // 2= neue Preisliste
+                                                                  IF PreislistenStatus.FINDFIRST THEN
+                                                                    IF PreislistenStatus.Startdatum > WORKDATE THEN
+                                                                      "Preislisten Kalkulation" := "Preislisten Kalkulation"::alt;
+                                                                END;
+                                                                VALIDATE("Preislisten Kalkulation");
                                                                 //TOPAS -
                                                               END;
 
@@ -2366,6 +2378,27 @@ OBJECT Table 36 Sales Header
                                                    Description=TOPAS 16.05.08 ST - Email-Auswahl aus dem Debitor }
     { 50334;  ;Nicht rechnen       ;Boolean       ;Description=TOPAS 06.11.09 ST - Andruck auf AB-Kopie: Nicht berechnen, ist fix }
     { 50341;  ;Lizenz EMail-Adresse;Text80        ;Description=TOPAS 19.03.18 ST - Email-Auswahl aus dem Debitor }
+    { 50350;  ;Preislisten Kalkulation;Option     ;OnValidate=BEGIN
+                                                                //TOPAS 11.04.19 ST - Preislisten Version wird geholt und auf Gltigkeit validiert
+                                                                IF "Territory Code" = 'SYSTEM' THEN BEGIN
+                                                                  PreislistenStatus.RESET;
+                                                                  PreislistenStatus.SETRANGE("Tabellen ID",36);
+                                                                  PreislistenStatus.SETRANGE("Feld ID",50351);
+                                                                  PreislistenStatus.SETRANGE(Code,'PREISLISTE');
+                                                                  PreislistenStatus.SETRANGE("Lfd.-Nr.","Preislisten Kalkulation" + 1); // 1 = neue, 2 = alte Preisliste
+                                                                  IF PreislistenStatus.FINDFIRST THEN BEGIN
+                                                                    IF "Preislisten Kalkulation" = "Preislisten Kalkulation"::alt THEN
+                                                                      IF (PreislistenStatus.Enddatum < WORKDATE) AND (PreislistenStatus.Enddatum <> 0D) THEN
+                                                                        ERROR(Text139,FIELDCAPTION("Preislisten Kalkulation"),"Preislisten Kalkulation",PreislistenStatus.Enddatum);
+                                                                    Preisliste := PreislistenStatus."Nr.";
+                                                                  END;
+                                                                END;
+                                                              END;
+
+                                                   OptionString=neu,alt;
+                                                   Description=TOPAS 19.03.19 ST - Unterscheidung, ob neue oder noch šbergangs (alte) Preisliste als Grundlage verwendet werden soll }
+    { 50351;  ;Preisliste          ;Code10        ;DataClassification=ToBeClassified;
+                                                   Description=TOPAS 10.04.19 ST - Erfassung der zugrunde liegenden Preislisten Version, gesteuert durch Preislisten Kalkulation }
     { 60000;  ;Territory Code      ;Code10        ;TableRelation=Territory;
                                                    CaptionML=[DEU=Gebietscode;
                                                               ENU=Territory Code];
@@ -2505,6 +2538,7 @@ OBJECT Table 36 Sales Header
       Vkz@1000000031 : Record 37;
       ProjAnsprech@1000000032 : Record 50005;
       Standardtext@1000000005 : Record 7;
+      PreislistenStatus@1000000035 : Record 50001;
       Endkunde_Staat@1000000001 : Text[30];
       Text100@1000000006 : TextConst 'DEU=Soll die dazugeh”rige Aufgabe %1 (offen) auf erledigt gesetzt werden?';
       Text101@1000000002 : TextConst 'DEU=Sie mssen zuerst den Anredecode fr diese Kontaktperson ausfllen.';
@@ -2535,6 +2569,7 @@ OBJECT Table 36 Sales Header
       Text137@1000000024 : TextConst 'DEU=Falsche Mengenaufstellung in Kalkulation %1. Das Feld %2 (%3) im Auftrag und %4 (%5) in der Kalkulation drfen nicht gr”áer sein als %6 (%7).';
       Text138@1000000023 : TextConst 'DEU=Es empfiehlt sich nicht fremderworbene Basissysteme mit derselben Artikelnr. zu splitten. Bitte kumulieren Sie die Ger„te in einer Position und nutzen Sie die Mengen Angabe.';
       PosFilter@1000000033 : Text[250];
+      Text139@1000000036 : TextConst 'DEU=Die %1 ist auf %2 gestellt und das Last Time Buy Datum (%3) wurde berschritten.';
 
     PROCEDURE InitInsert@61();
     BEGIN
@@ -4727,6 +4762,8 @@ OBJECT Table 36 Sales Header
       3       TOP1.00   14.06.17    ST    Funktion "Projektnr. im AN berprfen" als CheckProjectNo bernommen
       4       TOP1.01   04.12.17    ST    šbernahme der Rechnungsadresse (Neue Felder) aus dem Debitor
       5       TOP1.02   13.03.18    ST    Neues Feld 50341 "Lizenz EMail-Adresse" angelegt, šbernahme aus Debitor
+      6       TOP1.03   19.03.19    ST    Neues Feld 50350 "Preislisten Kalkulation" zur Kennzeichnung der zugrunde liegenden Preisliste
+      7       TOP1.04   10.04.19    ST    Neues Feld 50351 Preisliste, Version wird aus Optionstabelle geholt
     }
     END.
   }
