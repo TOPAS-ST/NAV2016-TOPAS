@@ -2,10 +2,10 @@ OBJECT Codeunit 50006 TOPAS Funktionen
 {
   OBJECT-PROPERTIES
   {
-    Date=09.02.18;
-    Time=14:40:59;
+    Date=18.04.19;
+    Time=09:40:45;
     Modified=Yes;
-    Version List=TOPAS;
+    Version List=TOPAS, TOP1.05;
   }
   PROPERTIES
   {
@@ -58,7 +58,7 @@ OBJECT Codeunit 50006 TOPAS Funktionen
       END;
     END;
 
-    PROCEDURE FindItemSalesPrice@1000000001(Artikelnr@1140003 : Code[20];Startdatum@1140002 : Date;W„h@1140001 : Code[10];Stkcode@1140000 : Code[10];Qty@1000000000 : Decimal) : Decimal;
+    PROCEDURE FindItemSalesPrice@1000000001(Artikelnr@1140003 : Code[20];Startdatum@1140002 : Date;W„h@1140001 : Code[10];Stkcode@1140000 : Code[10];Qty@1000000000 : Decimal;preislisten_kalkulation@1000000001 : 'neu,alt') : Decimal;
     VAR
       FindSalesPrice@1140006 : Record 7002;
       BestPrice@1140005 : Decimal;
@@ -74,17 +74,18 @@ OBJECT Codeunit 50006 TOPAS Funktionen
         SETRANGE("Starting Date",0D,Startdatum);
         SETRANGE("Sales Type","Sales Type"::"All Customers");
         SETRANGE("Sales Code");
-        IF FINDLAST THEN BEGIN
+        IF FINDFIRST THEN BEGIN
           BestPrice := "Unit Price";
           BestDate := "Starting Date";
-          REPEAT
-            //IF BestPrice > "Unit Price" THEN
-            //Nicht mehr der beste, sondern der aktuellste Preis gesucht
-            IF "Starting Date" > BestDate THEN BEGIN
-              BestPrice := "Unit Price";
-              BestDate := "Starting Date";
-            END;
-          UNTIL NEXT = 0;
+          IF preislisten_kalkulation = preislisten_kalkulation::neu THEN
+            REPEAT
+             //IF BestPrice > "Unit Price" THEN
+              //Nicht mehr der beste, sondern der aktuellste Preis gesucht
+              IF "Starting Date" > BestDate THEN BEGIN
+                BestPrice := "Unit Price";
+                BestDate := "Starting Date";
+              END;
+            UNTIL NEXT = 0;
         END;
         EXIT(BestPrice);
       END;
@@ -159,6 +160,7 @@ OBJECT Codeunit 50006 TOPAS Funktionen
     PROCEDURE PrintSalesDocToPDFwithEmail@1000000003(SalesHeader@1000000010 : Record 36);
     VAR
       Contact@1000000009 : Record 5050;
+      SalutationFormula@1000000012 : Record 5069;
       SalesHeaderCopy@1000000011 : Record 36;
       Shell@1000000008 : Automation "{50A7E9B0-70EF-11D1-B75A-00A0C90564FE} 1.0:{13709620-C279-11CE-A49E-444553540000}:'Microsoft Shell Controls And Automation'.Shell";
       email_address@1000000007 : Text;
@@ -167,6 +169,7 @@ OBJECT Codeunit 50006 TOPAS Funktionen
       FileManagement@1000000004 : Codeunit 419;
       body@1000000003 : Text;
       subject@1000000002 : Text;
+      salutation@1000000013 : Text;
       chr@1000000001 : Char;
       selection@1000000000 : Integer;
     BEGIN
@@ -189,19 +192,35 @@ OBJECT Codeunit 50006 TOPAS Funktionen
               chr := 10;
               body := '';
               subject := '';
-              IF Contact.GET("Kontaktnr.") THEN
-                email_address := Contact."E-Mail"
-              ELSE
+              IF Contact.GET("Kontaktnr.") THEN BEGIN
+                email_address := Contact."E-Mail";
+              END ELSE
                 email_address := '';
+
+              SalutationFormula.SETRANGE("Salutation Type",SalutationFormula."Salutation Type"::Formal);
+              SalutationFormula.SETRANGE("Language Code",SalesHeader."Language Code");
+              IF ("Kontaktnr." = '' ) THEN
+                SalutationFormula.SETRANGE("Salutation Code",'MANDANT')
+              ELSE
+                SalutationFormula.SETRANGE("Salutation Code",Contact."Salutation Code");
+              IF SalutationFormula.FINDFIRST THEN BEGIN
+                salutation := STRSUBSTNO(SalutationFormula.Salutation,Contact.Surname);
+              END ELSE BEGIN
+                IF SalesHeader."Language Code" = 'DEU' THEN
+                  salutation := 'Sehr geehrte Damen und Herren,'
+                ELSE
+                  salutation := 'Dear Sir or Madam,';
+              END;
+
               IF "Language Code" = 'DEU' THEN BEGIN
                 IF "Document Type" = "Document Type"::Quote THEN BEGIN
-                  body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
+                  body := salutation + FORMAT(chr) + FORMAT(chr) +
                         'anbei erhalten Sie unser Angebot.' + FORMAT(chr);
                   subject := 'Unser Angebot ' + "No." + ' zu Ihrer Referenz: ' + "Your Reference";
                 END;
               END ELSE BEGIN
                 IF "Document Type" = "Document Type"::Quote THEN BEGIN
-                  body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
+                  body := salutation + FORMAT(chr) + FORMAT(chr) +
                             'attached you will find our Quote.' + FORMAT(chr);
                   subject := 'Our Quote ' + "No." + ' for your reference: ' + "Your Reference";
                 END;
@@ -267,6 +286,7 @@ OBJECT Codeunit 50006 TOPAS Funktionen
       4       TOP1.02   30.11.17    ST    Neue Funktion PrintSalesQuoteToPDFwithEmail
       5       TOP1.03   18.01.17    ST    Neue Funktion CheckUserSetup
       5       TOP1.04   09.02.17    ST    Neue Funktion GetCompanyInformation fr Berichtsandrucke benutzt
+      6       TOP1.05   21.03.19    ST    FindItemSalesPrice Anpassung fr MSPR Anzeige bzgl. Preislisten Kalkulation im Belegkopf
     }
     END.
   }
