@@ -1,0 +1,101 @@
+OBJECT Table 50001 Optionstabelle
+{
+  OBJECT-PROPERTIES
+  {
+    Date=13.03.17;
+    Time=11:58:39;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    LookupPageID=Page50001;
+    DrillDownPageID=Page50001;
+  }
+  FIELDS
+  {
+    { 1   ;   ;Tabellen ID         ;Integer       ;CaptionML=DEU=Tabellen ID;
+                                                   Description=ID }
+    { 2   ;   ;Feld ID             ;Integer       ;CaptionML=DEU=Feld ID }
+    { 3   ;   ;Lfd.-Nr.            ;Integer       ;CaptionML=DEU=Lfd.-Nr. }
+    { 4   ;   ;Code                ;Code20        ;CaptionML=DEU=Code;
+                                                   Description=01.04.08 TB - Verl„ngert auf Code 15,  26.10.10 ST - verl„ngert auf Code 20 }
+    { 5   ;   ;Beschreibung        ;Text120       ;CaptionML=DEU=Beschreibung }
+    { 6   ;   ;Feldzuordnung       ;Text30        ;CaptionML=DEU=Feldzuordnung }
+    { 7   ;   ;Zeile ausblenden    ;Boolean        }
+    { 8   ;   ;Pfad                ;Text180       ;Description=Fr Vorlagen, Dokumentenversand }
+    { 9   ;   ;Nr.                 ;Code20        ;Description=Fr Seriennr. Reservierung - Artikelnr. }
+    { 10  ;   ;Werte               ;Decimal       ;Description=25.08.11 ST - u.a. als Fixwert fr Service Kalkulation genutzt }
+    { 11  ;   ;Prozentsatz         ;Decimal       ;Description=28.09.11 ST - u.a. als Prozentsatz fr Service Kalkulation genutzt }
+    { 12  ;   ;Einordnung Servicegruppe;Integer   ;Description=23.04.12 ST - Definiert die Verl„ngerungsf„higkeit von Service Artikeln untereinander z.B. 0 kann nicht durch andere verl„ngert werden, nur durch sich selbst, 1 k”nnen sich untereinander verl„ngern usw. }
+  }
+  KEYS
+  {
+    {    ;Tabellen ID,Feld ID,Code,Nr.            ;Clustered=Yes }
+    {    ;Tabellen ID,Feld ID,Lfd.-Nr.             }
+  }
+  FIELDGROUPS
+  {
+    { 1   ;DropDown            ;Code,Beschreibung                        }
+  }
+  CODE
+  {
+
+    PROCEDURE Seriennr_Suche_Autorun@1140000(Seriennr@1140002 : Text[60]);
+    VAR
+      Berichtstabelle@1140000 : Record 50037;
+      Fenster@1140003 : Dialog;
+      counter@1140001 : Integer;
+    BEGIN
+      //*******************************************************************************************************
+      //16.12.11 ST - Allround Aufruf des Tools Seriennummer Suche Form 50096
+      //*******************************************************************************************************
+
+      //*******************************************************************************************************
+      //                    Sicherheitsabfrage ob Temp Tabelle auch Berichtstabelle ist
+      //*******************************************************************************************************
+
+      IF Berichtstabelle.TABLECAPTION <> 'Berichtstabelle' THEN
+        ERROR('Eine Sicherheitssperre verhindert die Ausfhrung dieses Berichtes.'+
+              'Stellen Sie sicher, dass die TABLECAPTION der Berichtstabelle auch auf Berichtstabelle lautet.');
+
+      Berichtstabelle.RESET;
+      IF Berichtstabelle.ISEMPTY = FALSE THEN BEGIN
+        Fenster.OPEN('Bitte warten ...');
+        REPEAT
+          IF Berichtstabelle.ISEMPTY = FALSE THEN BEGIN
+            Fenster.UPDATE;
+            SLEEP(500);
+            counter += 1;
+          END;
+
+          IF counter MOD 30 = 0 THEN BEGIN
+            Berichtstabelle.FINDFIRST;
+            IF CONFIRM('Die Berichtstabelle ist seit %1 durch Anwender %2 gesperrt. Wollen Sie die Anwendung abbrechen?',
+            TRUE,Berichtstabelle.Uhrzeit,Berichtstabelle.User,counter,TRUE) THEN
+              ERROR('');
+          END;
+
+        UNTIL Berichtstabelle.ISEMPTY = TRUE;
+        Fenster.CLOSE;
+      END;
+
+      //šbergabe der sp„ter ben”tigten Parameter
+      Berichtstabelle.INIT;
+      Berichtstabelle.Index := 'SN_SUCHE';
+      Berichtstabelle."Feld 1" := Seriennr;
+      Berichtstabelle.User := USERID;
+      Berichtstabelle.Uhrzeit := CURRENTDATETIME;
+      Berichtstabelle.INSERT;
+
+      COMMIT;
+
+      //Alles weitere geschieht auf der Form Seriennummer Suche
+      PAGE.RUNMODAL(50096);
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
