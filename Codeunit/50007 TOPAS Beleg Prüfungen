@@ -2,8 +2,8 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
 {
   OBJECT-PROPERTIES
   {
-    Date=22.03.19;
-    Time=10:00:00;
+    Date=12.04.19;
+    Time=14:00:00;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -172,12 +172,12 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
 
     PROCEDURE CheckSalesOrderCalculationsBeforePost@1140001(DocNo@1140000 : Code[20]);
     VAR
-      AUkopf@1140014 : Record 36;
-      AUzeile@1140001 : Record 37;
+      SalesHeader@1140014 : Record 36;
+      SalesLine@1140001 : Record 37;
       Artikel@1140002 : Record 27;
       Ger„teArtikel@1140019 : Record 27;
-      PrfeAUzeile@1140003 : Record 37;
-      PrfeLiefzeile@1140004 : Record 111;
+      CheckSalesLine@1140003 : Record 37;
+      CheckShipmentLine@1140004 : Record 111;
       HoleTempLizenzTab@1140005 : Record 50024;
       CheckSystemPos@1140013 : Record 50024;
       CheckServicePos@1140017 : Record 50024;
@@ -185,6 +185,7 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
       ServiceZuordnungHolen@1140006 : Record 50027;
       ServiceZuordnungBeleg@1140016 : Record 50027;
       Wartungsvertrag@1140012 : Record 50011;
+      PreislistenStatus@1000000006 : Record 50001;
       menge_kalk_ges@1140007 : Decimal;
       menge_kalk_pos@1140010 : Decimal;
       menge_basissystem_pos@1140018 : Decimal;
@@ -193,10 +194,10 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
       menge_auswahl_ges@1140009 : Decimal;
       menge_auswahl_pos@1140011 : Decimal;
       last_time_buy@1000000001 : Date;
-      actual_quartal@1000000005 : Date;
-      last_quartal@1000000004 : Date;
-      month_diff_actual@1000000003 : Integer;
-      month_diff_last@1000000002 : Integer;
+      actual_quartal@1000000002 : Date;
+      last_quartal@1000000003 : Date;
+      month_diff_actual@1000000004 : Integer;
+      month_diff_last@1000000005 : Integer;
       basisger„t_kollision_ok@1140015 : Boolean;
       v_artikelnr@1140020 : Code[20];
       v_basissystem@1140021 : Code[20];
@@ -205,12 +206,12 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
       //***************************************************************************************************
       //   TOPAS 01.03.11 ST - Prft, ob die Generierung von Lizenz Urkunden ACS m”glich ist (27.09.10)
       //***************************************************************************************************
-      AUzeile.RESET;
-      AUzeile.SETFILTER("Document No.",'%1',DocNo);
-      AUzeile.SETFILTER(Type,'%1',AUzeile.Type::Item);
-      AUzeile.SETFILTER("Qty. to Ship",'>%1',0);
-      AUzeile.SETFILTER("Manufacturer Code",'%1|%2|%3|%4|%5|%6','53','57','59','98','5710','5720');
-      IF AUzeile.FINDFIRST THEN BEGIN
+      SalesLine.RESET;
+      SalesLine.SETFILTER("Document No.",'%1',DocNo);
+      SalesLine.SETFILTER(Type,'%1',SalesLine.Type::Item);
+      SalesLine.SETFILTER("Qty. to Ship",'>%1',0);
+      SalesLine.SETFILTER("Manufacturer Code",'%1|%2|%3|%4|%5|%6','53','57','59','98','5710','5720');
+      IF SalesLine.FINDFIRST THEN BEGIN
         REPEAT
 
           //***************************************************************************************************
@@ -221,42 +222,59 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
           //        Preiskalkulation darf nicht auf alt stehen, wenn das Last Time Buy erreicht wurde
           //***************************************************************************************************
 
-          AUkopf.GET(AUkopf."Document Type"::Order,AUzeile."Document No.");
+          {
+          SalesHeader.GET(SalesHeader."Document Type"::Order,SalesLine."Document No.");
           actual_quartal := CALCDATE('<CQ>',WORKDATE);
           last_quartal := CALCDATE('<-CQ-1D>',WORKDATE);
           month_diff_actual := ABS((DATE2DMY(actual_quartal,3) - DATE2DMY(WORKDATE,3))*12 + DATE2DMY(actual_quartal,2)-DATE2DMY(WORKDATE,2));
           month_diff_last := ABS((DATE2DMY(WORKDATE,3) - DATE2DMY(last_quartal,3))*12 + DATE2DMY(WORKDATE,2)-DATE2DMY(last_quartal,2));
             IF month_diff_actual = 1 THEN
           last_time_buy :=  CALCDATE('<+1D+1M-1D>',last_quartal);
-          IF (AUkopf."Preislisten Kalkulation" = AUkopf."Preislisten Kalkulation"::alt)
+          IF (SalesHeader."Preislisten Kalkulation" = SalesHeader."Preislisten Kalkulation"::alt)
           AND (WORKDATE > last_time_buy) AND (last_time_buy <> 0D) THEN
-            ERROR(Text121,AUkopf.FIELDCAPTION("Preislisten Kalkulation"),AUkopf."Preislisten Kalkulation",last_time_buy);
+            ERROR(Text121,SalesHeader.FIELDCAPTION("Preislisten Kalkulation"),SalesHeader."Preislisten Kalkulation",last_time_buy);
+          }
+
+          //TOPAS 11.04.19 ST - Preislisten Version wird auf Gltigkeit validiert
+          SalesHeader.GET(SalesHeader."Document Type"::Order,SalesLine."Document No.");
+          IF SalesHeader."Territory Code" = 'SYSTEM' THEN BEGIN
+            PreislistenStatus.RESET;
+            PreislistenStatus.SETRANGE("Tabellen ID",36);
+            PreislistenStatus.SETRANGE("Feld ID",50351);
+            PreislistenStatus.SETRANGE(Code,'PREISLISTE');
+            PreislistenStatus.SETRANGE("Lfd.-Nr.",SalesHeader."Preislisten Kalkulation" + 1); // 1 = neue, 2 = alte Preisliste
+            IF PreislistenStatus.FINDFIRST THEN BEGIN
+              IF SalesHeader."Preislisten Kalkulation" = SalesHeader."Preislisten Kalkulation"::alt THEN
+                IF (PreislistenStatus.Enddatum < WORKDATE) AND (PreislistenStatus.Enddatum <> 0D) THEN
+                  ERROR(Text121,SalesHeader.FIELDCAPTION("Preislisten Kalkulation"),SalesHeader."Preislisten Kalkulation",PreislistenStatus.Enddatum);
+            END;
+          END;
 
           //***************************************************************************************************
           //    Allgemeine šberprfung der Serviceklassifizierung, diese darf fr ACS Produkte nicht fehlen
           //***************************************************************************************************
 
-          Artikel.GET(AUzeile."No.");
+          Artikel.GET(SalesLine."No.");
           IF (Artikel."Manufacturer Code" = '59' ) AND (Artikel."Software Upgrade Protection" = FALSE)
           AND (Artikel.Serviceklassifizierung = '') THEN
-            ERROR(Text100,AUzeile."No.");
+            ERROR(Text100,SalesLine."No.");
 
           //***************************************************************************************************
           //          Ein System Basisger„te darf nicht mit Menge Zu liefern > 1 ausgebucht werden
           //***************************************************************************************************
 
           IF Artikel.Serviceklassifizierung = 'SYSTEM CHAMPS' THEN BEGIN
-            IF AUzeile."Qty. to Ship" > 1 THEN
-              ERROR(Text101,AUzeile."Unit of Measure",AUzeile."No.",AUzeile."Line No.",AUzeile.FIELDCAPTION("Qty. to Ship"));
+            IF SalesLine."Qty. to Ship" > 1 THEN
+              ERROR(Text101,SalesLine."Unit of Measure",SalesLine."No.",SalesLine."Line No.",SalesLine.FIELDCAPTION("Qty. to Ship"));
           END;
 
           //***************************************************************************************************
           //                   SOR Auftr„ge drfen nicht mit Service fakturiert werden
           //***************************************************************************************************
 
-          IF (AUkopf.GET(AUkopf."Document Type"::Order,AUzeile."Document No."))
-          AND (Artikel."Software Upgrade Protection" = TRUE) AND (STRPOS(AUkopf."Payment Terms Code",'SOR') <> 0) THEN
-            ERROR(Text102,AUkopf.FIELDCAPTION(AUkopf."Payment Terms Code"));
+          IF (SalesHeader.GET(SalesHeader."Document Type"::Order,SalesLine."Document No."))
+          AND (Artikel."Software Upgrade Protection" = TRUE) AND (STRPOS(SalesHeader."Payment Terms Code",'SOR') <> 0) THEN
+            ERROR(Text102,SalesHeader.FIELDCAPTION(SalesHeader."Payment Terms Code"));
 
           //***************************************************************************************************
           //Prfung, ob Artikel in Kalkulation auftauchen und ob dieser Service Artikel auch geliefert wird
@@ -265,19 +283,19 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
           ServiceZuordnungHolen.RESET;
           ServiceZuordnungHolen.SETRANGE(Art,ServiceZuordnungHolen.Art::"SUP-AU");
           ServiceZuordnungHolen.SETRANGE("Belegnr.",DocNo);
-          ServiceZuordnungHolen.SETRANGE("Belegzeilennr.",AUzeile."Line No.");
+          ServiceZuordnungHolen.SETRANGE("Belegzeilennr.",SalesLine."Line No.");
           ServiceZuordnungHolen.SETRANGE("Nachtr„gliche Service Order",FALSE);
           ServiceZuordnungHolen.SETRANGE(Fremderwerb,FALSE);
           IF ServiceZuordnungHolen.FIND('-') THEN
             REPEAT
-              PrfeAUzeile.RESET;
-              PrfeAUzeile.SETRANGE("Document No.",ServiceZuordnungHolen."Nr.");
-              PrfeAUzeile.SETRANGE("Line No.",ServiceZuordnungHolen."Zeilennr.");
-              IF PrfeAUzeile.FINDFIRST THEN BEGIN
-                IF (PrfeAUzeile."Qty. to Ship" = 0) AND (PrfeAUzeile."Outstanding Quantity" <> 0) THEN
-                  ERROR(Text103,PrfeAUzeile."No.",PrfeAUzeile."Line No.");
+              CheckSalesLine.RESET;
+              CheckSalesLine.SETRANGE("Document No.",ServiceZuordnungHolen."Nr.");
+              CheckSalesLine.SETRANGE("Line No.",ServiceZuordnungHolen."Zeilennr.");
+              IF CheckSalesLine.FINDFIRST THEN BEGIN
+                IF (CheckSalesLine."Qty. to Ship" = 0) AND (CheckSalesLine."Outstanding Quantity" <> 0) THEN
+                  ERROR(Text103,CheckSalesLine."No.",CheckSalesLine."Line No.");
               END ELSE
-                ERROR(Text104,AUzeile."No.",AUzeile."Line No.",ServiceZuordnungHolen."Ger„te Artikelnr.",
+                ERROR(Text104,SalesLine."No.",SalesLine."Line No.",ServiceZuordnungHolen."Ger„te Artikelnr.",
                               ServiceZuordnungHolen."Belegnr.",ServiceZuordnungHolen."Belegzeilennr.");
             UNTIL ServiceZuordnungHolen.NEXT = 0;
 
@@ -289,27 +307,27 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
           ServiceZuordnungHolen.RESET;
           ServiceZuordnungHolen.SETRANGE(Art,ServiceZuordnungHolen.Art::"SUP-AU");
           ServiceZuordnungHolen.SETRANGE("Nr.",DocNo);
-          ServiceZuordnungHolen.SETRANGE("Zeilennr.",AUzeile."Line No.");
+          ServiceZuordnungHolen.SETRANGE("Zeilennr.",SalesLine."Line No.");
           ServiceZuordnungHolen.SETRANGE("Nachtr„gliche Service Order",FALSE);
           ServiceZuordnungHolen.SETRANGE(Fremderwerb,FALSE);
           IF ServiceZuordnungHolen.FIND('-') THEN
             REPEAT
-              PrfeAUzeile.RESET;
-              PrfeAUzeile.SETRANGE("Document No.",ServiceZuordnungHolen."Belegnr.");
-              PrfeAUzeile.SETRANGE("Line No.",ServiceZuordnungHolen."Belegzeilennr.");
-              IF PrfeAUzeile.FINDFIRST THEN BEGIN
-                IF PrfeAUzeile."Qty. to Ship" = 0 THEN
-                  ERROR(Text103,PrfeAUzeile."No.",PrfeAUzeile."Line No.");
+              CheckSalesLine.RESET;
+              CheckSalesLine.SETRANGE("Document No.",ServiceZuordnungHolen."Belegnr.");
+              CheckSalesLine.SETRANGE("Line No.",ServiceZuordnungHolen."Belegzeilennr.");
+              IF CheckSalesLine.FINDFIRST THEN BEGIN
+                IF CheckSalesLine."Qty. to Ship" = 0 THEN
+                  ERROR(Text103,CheckSalesLine."No.",CheckSalesLine."Line No.");
 
                 //Zu liefernde Pos. im AU mssen mengenm„áig mit der Kalkulation bereinstimmen,
                 //um šberbuchungen zu verhindern, betrifft keine Basisger„te (Sonderregel fr FLAT)
-                IF (PrfeAUzeile."Qty. to Ship" <> ServiceZuordnungHolen."Menge kalk.")
+                IF (CheckSalesLine."Qty. to Ship" <> ServiceZuordnungHolen."Menge kalk.")
                 AND (ServiceZuordnungHolen.Basisger„t = FALSE) THEN
-                  ERROR(Text105,PrfeAUzeile."No.",PrfeAUzeile."Line No.",ServiceZuordnungHolen."Zeilennr.",
+                  ERROR(Text105,CheckSalesLine."No.",CheckSalesLine."Line No.",ServiceZuordnungHolen."Zeilennr.",
                         ServiceZuordnungHolen."Menge kalk.");
 
               END ELSE
-                ERROR(Text104,AUzeile."No.",AUzeile."Line No.",ServiceZuordnungHolen."Ger„te Artikelnr.",
+                ERROR(Text104,SalesLine."No.",SalesLine."Line No.",ServiceZuordnungHolen."Ger„te Artikelnr.",
                               ServiceZuordnungHolen."Belegnr.",ServiceZuordnungHolen."Belegzeilennr.");
             UNTIL ServiceZuordnungHolen.NEXT = 0;
 
@@ -320,15 +338,15 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
 
           IF (Artikel."Software Upgrade Protection" = TRUE)  THEN BEGIN
             IF ((Artikel."Manufacturer Code" = '57') OR (Artikel."Manufacturer Code" = '5710') OR
-            ((Artikel."Manufacturer Code" = '5720'))) AND (AUzeile."Qty. to Ship" > 1) THEN
-              ERROR(Text106,AUzeile.FIELDCAPTION("Qty. to Ship"),Artikel.Artikelgruppe,AUzeile."No.");
+            ((Artikel."Manufacturer Code" = '5720'))) AND (SalesLine."Qty. to Ship" > 1) THEN
+              ERROR(Text106,SalesLine.FIELDCAPTION("Qty. to Ship"),Artikel.Artikelgruppe,SalesLine."No.");
 
             ServiceZuordnungHolen.RESET;
             ServiceZuordnungHolen.SETRANGE(Art,ServiceZuordnungHolen.Art::"SUP-AU");
             ServiceZuordnungHolen.SETRANGE("Nr.",DocNo);
-            ServiceZuordnungHolen.SETRANGE("Zeilennr.",AUzeile."Line No.");
+            ServiceZuordnungHolen.SETRANGE("Zeilennr.",SalesLine."Line No.");
             IF NOT ServiceZuordnungHolen.FINDFIRST THEN
-              ERROR(Text107,AUzeile."No.",AUzeile."Line No.");
+              ERROR(Text107,SalesLine."No.",SalesLine."Line No.");
 
             //***************************************************************************************************
             //                          Es muss ein System Basisger„te vorhanden sein
@@ -338,14 +356,14 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
             ServiceZuordnungHolen.RESET;
             ServiceZuordnungHolen.SETFILTER(Art,'%1',ServiceZuordnungHolen.Art::"SUP-AU");
             ServiceZuordnungHolen.SETFILTER("Nr.",'%1',DocNo);
-            ServiceZuordnungHolen.SETFILTER("Zeilennr.",'%1',AUzeile."Line No.");
+            ServiceZuordnungHolen.SETFILTER("Zeilennr.",'%1',SalesLine."Line No.");
             ServiceZuordnungHolen.SETFILTER(Basisger„t,'%1',TRUE);
             IF NOT ServiceZuordnungHolen.FINDFIRST THEN BEGIN
               ServiceZuordnungHolen.SETFILTER(Basisger„t,'%1|%2',TRUE,FALSE);
               IF ServiceZuordnungHolen.FINDFIRST THEN
                 REPEAT
                   IF ServiceZuordnungHolen."Wartungsvertragsnr." = '' THEN
-                    ERROR(Text108,AUzeile."No.",AUzeile."Line No.");
+                    ERROR(Text108,SalesLine."No.",SalesLine."Line No.");
 
                   //***************************************************************************************************
                   //         Der Wartungsvertrag muss bei nachtr„glicher Zubuchung neuer Pos. noch gltig sein
@@ -354,7 +372,7 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
                   IF ServiceZuordnungHolen."Wartungsvertragsnr." <> '' THEN BEGIN
                     Wartungsvertrag.GET(ServiceZuordnungHolen."Wartungsvertragsnr.");
                     IF (Wartungsvertrag.Vertragsablaufdatum < WORKDATE) THEN
-                      ERROR(Text109,Wartungsvertrag."Wartungsvertragsnr.",AUzeile."Line No.",Wartungsvertrag.Vertragsablaufdatum);
+                      ERROR(Text109,Wartungsvertrag."Wartungsvertragsnr.",SalesLine."Line No.",Wartungsvertrag.Vertragsablaufdatum);
                   END;
 
                 UNTIL ServiceZuordnungHolen.NEXT = 0;
@@ -368,7 +386,7 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
             ServiceZuordnungHolen.RESET;
             ServiceZuordnungHolen.SETRANGE(Art,ServiceZuordnungHolen.Art::"SUP-AU");
             ServiceZuordnungHolen.SETRANGE("Nr.",DocNo);
-            ServiceZuordnungHolen.SETRANGE("Zeilennr.",AUzeile."Line No.");
+            ServiceZuordnungHolen.SETRANGE("Zeilennr.",SalesLine."Line No.");
             ServiceZuordnungHolen.SETRANGE(Fremderwerb,FALSE);
             IF ServiceZuordnungHolen.FINDFIRST THEN BEGIN
               menge_kalk_ges := 0;
@@ -376,19 +394,19 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
               REPEAT
                 menge_kalk_ges := menge_kalk_ges + ServiceZuordnungHolen."Menge kalk.";
                 IF ServiceZuordnungHolen."Nachtr„gliche Service Order" = FALSE THEN BEGIN
-                  PrfeAUzeile.RESET;
-                  PrfeAUzeile.SETRANGE("Document No.",ServiceZuordnungHolen."Belegnr.");
-                  PrfeAUzeile.SETRANGE("Line No.",ServiceZuordnungHolen."Belegzeilennr.");
-                  //PrfeAUzeile.SETRANGE("No.",ServiceZuordnungHolen."Ger„te Artikelnr.");
-                  IF PrfeAUzeile.FINDFIRST THEN
-                    menge_liefern_ges += PrfeAUzeile."Qty. to Ship";
+                  CheckSalesLine.RESET;
+                  CheckSalesLine.SETRANGE("Document No.",ServiceZuordnungHolen."Belegnr.");
+                  CheckSalesLine.SETRANGE("Line No.",ServiceZuordnungHolen."Belegzeilennr.");
+                  //CheckSalesLine.SETRANGE("No.",ServiceZuordnungHolen."Ger„te Artikelnr.");
+                  IF CheckSalesLine.FINDFIRST THEN
+                    menge_liefern_ges += CheckSalesLine."Qty. to Ship";
                 END ELSE BEGIN
-                  PrfeLiefzeile.RESET;
-                  PrfeLiefzeile.SETRANGE("Document No.",ServiceZuordnungHolen."Belegnr.");
-                  PrfeLiefzeile.SETRANGE("Line No.",ServiceZuordnungHolen."Belegzeilennr.");
-                  //PrfeLiefzeile.SETRANGE("No.",ServiceZuordnungHolen."Ger„te Artikelnr.");
-                  IF PrfeLiefzeile.FINDFIRST THEN
-                    menge_liefern_ges += PrfeLiefzeile.Quantity
+                  CheckShipmentLine.RESET;
+                  CheckShipmentLine.SETRANGE("Document No.",ServiceZuordnungHolen."Belegnr.");
+                  CheckShipmentLine.SETRANGE("Line No.",ServiceZuordnungHolen."Belegzeilennr.");
+                  //CheckShipmentLine.SETRANGE("No.",ServiceZuordnungHolen."Ger„te Artikelnr.");
+                  IF CheckShipmentLine.FINDFIRST THEN
+                    menge_liefern_ges += CheckShipmentLine.Quantity
                   ELSE BEGIN
                     Beleghistorie.RESET;
                     Beleghistorie.SETRANGE(Belegart,Beleghistorie.Belegart::"Sales Shipment");
@@ -401,8 +419,8 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
                 END;
               UNTIL ServiceZuordnungHolen.NEXT = 0;
 
-              IF (menge_kalk_ges * AUzeile."Qty. to Ship") > menge_liefern_ges THEN
-                ERROR(Text110,AUzeile."No.",AUzeile."Line No.",ServiceZuordnungHolen.FIELDCAPTION("Menge kalk."));
+              IF (menge_kalk_ges * SalesLine."Qty. to Ship") > menge_liefern_ges THEN
+                ERROR(Text110,SalesLine."No.",SalesLine."Line No.",ServiceZuordnungHolen.FIELDCAPTION("Menge kalk."));
 
             END;
 
@@ -413,7 +431,7 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
             ServiceZuordnungHolen.RESET;
             ServiceZuordnungHolen.SETRANGE(Art,ServiceZuordnungHolen.Art::"SUP-AU");
             ServiceZuordnungHolen.SETRANGE("Nr.",DocNo);
-            ServiceZuordnungHolen.SETRANGE("Zeilennr.",AUzeile."Line No.");
+            ServiceZuordnungHolen.SETRANGE("Zeilennr.",SalesLine."Line No.");
             IF ServiceZuordnungHolen.FIND('-') THEN BEGIN
 
               menge_kalk_ges := 0;
@@ -428,22 +446,22 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
 
                 IF (CheckServicePos.ServiceQuoteIsValid(ServiceZuordnungHolen."Quotenr.") = FALSE)
                 AND (ServiceZuordnungHolen."Quotenr." <> '') THEN
-                  ERROR(Text111,AUzeile."No.",AUzeile."Line No.",ServiceZuordnungHolen."Quotenr.");
+                  ERROR(Text111,SalesLine."No.",SalesLine."Line No.",ServiceZuordnungHolen."Quotenr.");
 
                 Artikel.GET(ServiceZuordnungHolen."Ger„te Artikelnr.");
                 IF Artikel.Serviceklassifizierung = '' THEN
                   ERROR(Text100,ServiceZuordnungHolen."Ger„te Artikelnr.",'(Service Kalkulation)');
 
                 IF ServiceZuordnungHolen."Menge kalk." = 0 THEN
-                  ERROR(Text112,AUzeile."No.",AUzeile."Line No.",ServiceZuordnungHolen.FIELDCAPTION("Menge kalk."));
+                  ERROR(Text112,SalesLine."No.",SalesLine."Line No.",ServiceZuordnungHolen.FIELDCAPTION("Menge kalk."));
 
                 //Falsche Mengen Konstellation Auftrag und Menge kalk. bei FLAT Ger„ten wird abgefangen
                 IF Artikel.Serviceklassifizierung = 'SYSTEM FLAT' THEN BEGIN
-                  IF (AUzeile.Quantity > AUzeile."Qty. to Ship") AND (ServiceZuordnungHolen."Menge kalk." >
-                  AUzeile."Qty. to Ship") THEN
-                    ERROR(Text113,AUzeile."Line No.",AUzeile.FIELDCAPTION(Quantity),AUzeile.Quantity,
+                  IF (SalesLine.Quantity > SalesLine."Qty. to Ship") AND (ServiceZuordnungHolen."Menge kalk." >
+                  SalesLine."Qty. to Ship") THEN
+                    ERROR(Text113,SalesLine."Line No.",SalesLine.FIELDCAPTION(Quantity),SalesLine.Quantity,
                     ServiceZuordnungHolen.FIELDCAPTION("Menge kalk."),ServiceZuordnungHolen."Menge kalk.",
-                    AUzeile.FIELDCAPTION("Qty. to Ship"),AUzeile."Qty. to Ship");
+                    SalesLine.FIELDCAPTION("Qty. to Ship"),SalesLine."Qty. to Ship");
                 END;
 
                 //***************************************************************************************************
@@ -467,7 +485,7 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
                   ServiceZuordnungBeleg.RESET;
                   ServiceZuordnungBeleg.SETRANGE(Art,ServiceZuordnungBeleg.Art::"SUP-AU");
                   ServiceZuordnungBeleg.SETRANGE("Nr.",DocNo);
-                  ServiceZuordnungBeleg.SETRANGE("Zeilennr.",AUzeile."Line No.");
+                  ServiceZuordnungBeleg.SETRANGE("Zeilennr.",SalesLine."Line No.");
                   ServiceZuordnungBeleg.SETRANGE(Basisger„t,TRUE);
                   IF ServiceZuordnungBeleg.FIND('-') THEN
                     REPEAT
@@ -496,11 +514,11 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
                                 IF (CheckServicePos."Urspr. Lieferscheinnr." <> ServiceZuordnungHolen."Belegnr.") THEN
                                   IF (Ger„teArtikel.Serviceklassifizierung <> 'SYSTEM FLAT') THEN
                                     ERROR(Text115,CheckServicePos."Wartungsvertragsnr.",CheckServicePos."Seriennr.",
-                                          AUzeile."Line No.")
+                                          SalesLine."Line No.")
                                   ELSE
                                     IF ((v_artikelnr <> '') AND (CheckServicePos."Artikelnr." <> v_artikelnr)) THEN
                                       ERROR(Text115,CheckServicePos."Wartungsvertragsnr.",CheckServicePos."Seriennr.",
-                                            AUzeile."Line No.")
+                                            SalesLine."Line No.")
                                     ELSE
                                       basisger„t_kollision_ok := TRUE;
                               END ELSE BEGIN
@@ -508,11 +526,11 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
                                   IF (CheckServicePos."Nr." <> ServiceZuordnungHolen."Belegnr.") THEN
                                     IF (Ger„teArtikel.Serviceklassifizierung <> 'SYSTEM FLAT') THEN
                                       ERROR(Text115,CheckServicePos."Wartungsvertragsnr.",CheckServicePos."Seriennr.",
-                                            AUzeile."Line No.")
+                                            SalesLine."Line No.")
                                     ELSE
                                       IF ((v_artikelnr <> '') AND (CheckServicePos."Artikelnr." <> v_artikelnr)) THEN
                                         ERROR(Text115,CheckServicePos."Wartungsvertragsnr.",CheckServicePos."Seriennr.",
-                                              AUzeile."Line No.")
+                                              SalesLine."Line No.")
                                       ELSE
                                         basisger„t_kollision_ok := TRUE;
                               END;
@@ -536,7 +554,7 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
                   //Ausnahme wieder fr FLAT Ger„te, bei denen mehr als 1 Ger„t ausgeliefert werden darf
                   Artikel.GET(ServiceZuordnungHolen."Ger„te Artikelnr.");
                   IF Artikel.Serviceklassifizierung = 'SYSTEM FLAT' THEN
-                    menge_kalk_pos := menge_kalk_pos + (ServiceZuordnungHolen."Menge kalk." * AUzeile."Qty. to Ship")
+                    menge_kalk_pos := menge_kalk_pos + (ServiceZuordnungHolen."Menge kalk." * SalesLine."Qty. to Ship")
                   ELSE
                     menge_kalk_pos := menge_kalk_pos + ServiceZuordnungHolen."Menge kalk.";
 
@@ -588,22 +606,22 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
                   END;
 
                   IF menge_auswahl_pos <> menge_kalk_pos THEN
-                    ERROR(Text119,AUzeile."No.",AUzeile."Line No.");
+                    ERROR(Text119,SalesLine."No.",SalesLine."Line No.");
 
                 END;
               UNTIL ServiceZuordnungHolen.NEXT = 0;
 
               IF menge_kalk_ges <> menge_auswahl_ges THEN
-                ERROR(Text120,AUzeile."No.",AUzeile."Line No.");
+                ERROR(Text120,SalesLine."No.",SalesLine."Line No.");
 
               //Prft, ob nur eine Basisger„t Position vorhanden ist
               IF menge_basissystem_pos > 1 THEN
-                ERROR(Text118,AUzeile."No.",AUzeile."Line No.");
+                ERROR(Text118,SalesLine."No.",SalesLine."Line No.");
 
             END;
           END;
 
-        UNTIL AUzeile.NEXT = 0;
+        UNTIL SalesLine.NEXT = 0;
 
         //***************************************************************************************************
         //                                       12.02.14 ST TOPAS
