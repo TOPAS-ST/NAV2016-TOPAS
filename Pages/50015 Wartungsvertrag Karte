@@ -2,8 +2,8 @@ OBJECT Page 50015 Wartungsvertrag Karte
 {
   OBJECT-PROPERTIES
   {
-    Date=01.11.18;
-    Time=09:23:28;
+    Date=03.04.19;
+    Time=15:18:41;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -73,7 +73,7 @@ OBJECT Page 50015 Wartungsvertrag Karte
                            ELSE
                              AnzBeteiligte := 0;
 
-                           Angebote_pruefen(FALSE);
+                           Belegstatus_pruefen(FALSE);
 
                            SORStyleTxt := SetStyle;
 
@@ -156,7 +156,7 @@ OBJECT Page 50015 Wartungsvertrag Karte
                       Image=VoidExpiredCheck;
                       PromotedCategory=Category4;
                       OnAction=BEGIN
-                                 Angebote_pruefen(TRUE);
+                                 Belegstatus_pruefen(TRUE);
                                END;
                                 }
       { 1000000011;1 ;ActionGroup;
@@ -411,13 +411,14 @@ OBJECT Page 50015 Wartungsvertrag Karte
                 Importance=Additional;
                 Editable=FALSE }
 
-    { 1000000005;1;Group  ;
+    { 1000000003;2;Group  ;
                 Visible=hinweis_anzeigen;
                 GroupType=Group }
 
-    { 1000000003;2;Field  ;
+    { 1000000025;3;Field  ;
                 Name=Belegstatus;
                 SourceExpr=Beleg_Hinweistext;
+                Visible=hinweis_anzeigen;
                 Editable=FALSE;
                 Style=Unfavorable;
                 StyleExpr=TRUE }
@@ -1008,7 +1009,7 @@ OBJECT Page 50015 Wartungsvertrag Karte
         ERROR(Text011);
     END;
 
-    PROCEDURE Angebote_pruefen@1140003(ausgabe@1140004 : Boolean);
+    PROCEDURE Belegstatus_pruefen@1140003(ausgabe@1140004 : Boolean);
     VAR
       SalesHeader@1140000 : Record 36;
       ArchSalesHeader@1140001 : Record 5107;
@@ -1025,56 +1026,66 @@ OBJECT Page 50015 Wartungsvertrag Karte
 
       IF Vertragsablaufdatum = 0D THEN EXIT;
 
-      IF ((Vertragsablaufdatum > WORKDATE) AND (CALCDATE('-3M',Vertragsablaufdatum) < WORKDATE)) OR (ausgabe) THEN BEGIN
-        ServicePos.RESET;
-        ServicePos.ASCENDING(FALSE);
-        ServicePos.SETRANGE("Wartungsvertragsnr.","Wartungsvertragsnr.");
-        ServicePos.SETRANGE(Art,ServicePos.Art::Service);
-        ServicePos.SETRANGE(Basisger„t,TRUE);
-        //ServicePos.SETRANGE(Inaktiv,FALSE);
-        IF ServicePos.FINDFIRST THEN BEGIN
-          //REPEAT
-          ServiceZuordnung.RESET;
-          ServiceZuordnung.SETRANGE("Belegnr.",ServicePos."Urspr. Lieferscheinnr.");
-          ServiceZuordnung.SETRANGE("Belegzeilennr.",ServicePos."Urspr. Lieferscheinzeilennr.");
-          IF ServiceZuordnung.FINDFIRST THEN
-            REPEAT
-              SalesHeader.SETRANGE("No.",ServiceZuordnung."Nr.");
-              IF SalesHeader.FINDFIRST THEN
-                IF CALCDATE('-3M',WORKDATE) < SalesHeader."Document Date" THEN BEGIN
-                  AN_liegt_vor := TRUE;
-                  v_datum := SalesHeader."Document Date";
-                  v_belegnr := SalesHeader."No.";
-                  v_zeilennr := ServiceZuordnung."Belegzeilennr.";
-                  v_service_artikel := ServiceZuordnung."SUP Artikelnr.";
-                END;
-
-              ArchSalesHeader.SETRANGE("No.",ServiceZuordnung."Nr.");
-              IF ArchSalesHeader.FINDFIRST THEN
-                IF CALCDATE('-3M',WORKDATE) < ArchSalesHeader."Document Date" THEN BEGIN
-                  AN_liegt_vor := TRUE;
-                  v_datum := ArchSalesHeader."Document Date";
-                  v_belegnr := ArchSalesHeader."No.";
-                  v_zeilennr := ServiceZuordnung."Belegzeilennr.";
-                  v_service_artikel := ServiceZuordnung."SUP Artikelnr.";
-                END;
-
-            UNTIL (ServiceZuordnung.NEXT = 0) OR (AN_liegt_vor);
-          //UNTIL (ServicePos.NEXT = 0) OR (AN_liegt_vor);
+      //IF ((Vertragsablaufdatum > WORKDATE) AND (CALCDATE('-3M',Vertragsablaufdatum) < WORKDATE)) OR (ausgabe) THEN BEGIN
+      ServicePos.RESET;
+      ServicePos.ASCENDING(FALSE);
+      ServicePos.SETRANGE("Wartungsvertragsnr.","Wartungsvertragsnr.");
+      ServicePos.SETRANGE(Art,ServicePos.Art::Service);
+      ServicePos.SETRANGE(Basisger„t,TRUE);
+      //ServicePos.SETRANGE(Inaktiv,FALSE);
+      IF ServicePos.FINDFIRST THEN BEGIN
+        ServiceZuordnung.RESET;
+        ServiceZuordnung.SETRANGE("Belegnr.",ServicePos."Urspr. Lieferscheinnr.");
+        ServiceZuordnung.SETRANGE("Belegzeilennr.",ServicePos."Urspr. Lieferscheinzeilennr.");
+        IF NOT ServiceZuordnung.FINDFIRST THEN BEGIN
+          CLEAR(ServiceZuordnung);
+          ServiceZuordnung.SETRANGE("Belegnr.",ServicePos."Urspr. Auftragsnr.");
+          ServiceZuordnung.SETRANGE("Belegzeilennr.",ServicePos."Urspr. Auftragszeilennr.");
+          IF ServiceZuordnung.FINDFIRST THEN ;
         END;
+        REPEAT
+          SalesHeader.SETRANGE("No.",ServiceZuordnung."Nr.");
+          IF SalesHeader.FINDFIRST THEN
+            IF v_datum < SalesHeader."Document Date" THEN BEGIN
+              AN_liegt_vor := TRUE;
+              v_datum := SalesHeader."Document Date";
+              v_belegnr := SalesHeader."No.";
+              v_zeilennr := ServiceZuordnung."Belegzeilennr.";
+              v_service_artikel := ServiceZuordnung."SUP Artikelnr.";
+            END;
 
-        IF AN_liegt_vor = FALSE THEN BEGIN
-          Beleg_Hinweistext := 'Vertrag l„uft bald aus, kein aktuelles AN bzw. AU in den letzten 3 Monaten vorliegend';
-          hinweis_anzeigen := TRUE;
-        END;
+          ArchSalesHeader.SETRANGE("No.",ServiceZuordnung."Nr.");
+          IF ArchSalesHeader.FINDFIRST THEN
+            IF v_datum < ArchSalesHeader."Document Date" THEN BEGIN
+              AN_liegt_vor := TRUE;
+              v_datum := ArchSalesHeader."Document Date";
+              v_belegnr := ArchSalesHeader."No.";
+              v_zeilennr := ServiceZuordnung."Belegzeilennr.";
+              v_service_artikel := ServiceZuordnung."SUP Artikelnr.";
+            END;
+
+        UNTIL (ServiceZuordnung.NEXT = 0);
       END;
 
+      IF Vertragsablaufdatum < WORKDATE THEN
+        IF AN_liegt_vor = FALSE THEN
+          Beleg_Hinweistext := 'Vertrag ist ausgelaufen - kein Beleg vorliegend.'
+        ELSE
+          Beleg_Hinweistext := 'Vertrag ist ausgelaufen';
+      IF (CALCDATE('-3M',Vertragsablaufdatum) < WORKDATE) AND (Vertragsablaufdatum > WORKDATE) THEN
+        IF AN_liegt_vor = FALSE THEN
+          Beleg_Hinweistext := 'Vertrag l„uft bald aus, kein Beleg vorliegend.';
+
+      IF Beleg_Hinweistext <> '' THEN
+        hinweis_anzeigen := TRUE;
+      //END;
+
       IF (ausgabe) AND (AN_liegt_vor) THEN
-        MESSAGE('Folgender Beleg im Zeitraum der letzten 3 Monate gefunden:'+'\\'+'Service: %1'+'\'+
+        MESSAGE('Der aktuellste Beleg ist:'+'\\'+'Service: %1'+'\'+
         'Belegnr: %2, Zeile: %3 vom %4',v_service_artikel,v_belegnr,v_zeilennr,v_datum);
 
       IF (ausgabe) AND (AN_liegt_vor = FALSE) THEN
-        MESSAGE('Es liegt kein aktueller Beleg fr die letzten 3 Monate vor.');
+        MESSAGE('Es konnte kein Beleg im System gefunden werden.');
     END;
 
     PROCEDURE System_Zusammenfassung@1000000000();
