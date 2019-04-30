@@ -2,8 +2,8 @@ OBJECT Page 50109 Artikel Anlage
 {
   OBJECT-PROPERTIES
   {
-    Date=21.03.19;
-    Time=14:53:33;
+    Date=30.04.19;
+    Time=12:13:39;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -158,6 +158,7 @@ OBJECT Page 50109 Artikel Anlage
       klassifizierung@1000000004 : Text;
       artverfolgung@1000000092 : Text;
       artgruppe@1000000003 : Text;
+      bewertung@1000000106 : Text;
       sonderartikel_schaeffler@1000000002 : Boolean;
       standard_filename@1000000098 : Text;
       filename@1000000000 : Text;
@@ -167,6 +168,7 @@ OBJECT Page 50109 Artikel Anlage
       Spalte_Quelle_Artverfolgung@1000000077 : TextConst 'DEU=D';
       Spalte_Quelle_Klass@1000000076 : TextConst 'DEU=E';
       Spalte_Quelle_Artgruppe@1000000075 : TextConst 'DEU=F';
+      Spalte_Quelle_LagBewertung@1000000105 : TextConst 'DEU=G';
       Spalte_PL_ProductGroup@1000000089 : TextConst 'DEU=A';
       Spalte_Product@1000000088 : TextConst 'DEU=B';
       Spalte_PL_Part@1000000087 : TextConst 'DEU=D';
@@ -293,6 +295,7 @@ OBJECT Page 50109 Artikel Anlage
           artverfolgung := FORMAT(Quelle_Sheet.Range(Spalte_Quelle_Artverfolgung+Quelle_j).Value);
           klassifizierung := FORMAT(Quelle_Sheet.Range(Spalte_Quelle_Klass+Quelle_j).Value);
           EVALUATE(artgruppe,FORMAT(Quelle_Sheet.Range(Spalte_Quelle_Artgruppe+Quelle_j).Value));
+          bewertung := FORMAT(Quelle_Sheet.Range(Spalte_Quelle_LagBewertung+Quelle_j).Value);
 
           IF ek_system_w„hrung = 'USD' THEN BEGIN
             PL_Book := PL_Excel.Workbooks._Open(v_PL_USD_Pfad,0,TRUE);
@@ -436,7 +439,8 @@ OBJECT Page 50109 Artikel Anlage
                 Artikel.Artikelgruppe := 'DIENSTLEISTUNG';
                 Artikel."Gen. Prod. Posting Group" := 'SCHULUNG';
                 Artikel."VAT Prod. Posting Group" := '19DL';
-              END ELSE
+                Artikel.VALIDATE("Handlingskosten %",0);
+              END ELSE BEGIN
                 IF services_artikel = TRUE THEN BEGIN
                   Artikel.Preisinfo := preisinfo;
                   Artikel."Item Tracking Code" := 'KEINE';
@@ -444,6 +448,7 @@ OBJECT Page 50109 Artikel Anlage
                   Artikel.Artikelgruppe := 'DIENSTLEISTUNG';
                   Artikel."Gen. Prod. Posting Group" := 'SERVICE';
                   Artikel."VAT Prod. Posting Group" := '19DL';
+                  Artikel.VALIDATE("Handlingskosten %",0);
                 END ELSE BEGIN
                   Artikel.Preisinfo := preisinfo;
                   IF sonderartikel_schaeffler THEN Artikel.Preisinfo := 'MSRP -50%';
@@ -455,6 +460,7 @@ OBJECT Page 50109 Artikel Anlage
                     ELSE
                       Artikel.Artikelgruppe := 'LIZENZEN/SOFTWARE';
                     IF klassifizierung = 'KEINE' THEN Artikel.Serviceklassifizierung := 'KEINE';
+                    Artikel.VALIDATE("Handlingskosten %",0);
                   END ELSE BEGIN
                     IF (klassifizierung = 'SYSTEM FLAT') THEN
                       IF LOWERCASE(pl_product_group) = 'ip phones' THEN
@@ -467,14 +473,20 @@ OBJECT Page 50109 Artikel Anlage
                       Artikel.Artikelgruppe := 'BAUGRUPPEN';
                     Artikel."Item Tracking Code" := 'SERIENNR';
                     Artikel."Lead Free" := TRUE;
+                    Artikel.VALIDATE("Handlingskosten %",5);
                   END;
                   Artikel.VALIDATE("Gen. Prod. Posting Group",'SYSTEM');
                 END;
+              END;
 
               //NEU Artikelverfolgung kommt aus Excel Sheet
               Artikel.VALIDATE("Item Tracking Code",artverfolgung);
 
               IF sonderartikel_schaeffler THEN Artikel.Preisinfo := Artikel.Preisinfo + ' fr Schaeffler';
+
+              //NEU Ohne Lagerbewertung setzen - i.d.R. bei virtuellen System / Lizenzen / Software / Dienstleistung keine Lagerbewertung
+              IF LOWERCASE(bewertung) = 'nicht bewerten' THEN
+                Artikel."Inventory Value Zero" := TRUE;
 
               //Beschreibung und Textbaustein fllen
               IF STRLEN(pl_short_descr) < 50 THEN BEGIN
@@ -489,13 +501,8 @@ OBJECT Page 50109 Artikel Anlage
                 LongDescrToExtendedText(Artikel."No.",pl_long_descr,50);
               END;
 
-              IF Artikel.Artikelgruppe = 'DIENSTLEISTUNG' THEN
-                Artikel.VALIDATE("Handlingskosten %",0)
-              ELSE
-                IF sonderartikel_schaeffler THEN
-                  Artikel.VALIDATE("Handlingskosten %",2)
-                ELSE
-                  Artikel.VALIDATE("Handlingskosten %",5);
+              IF sonderartikel_schaeffler THEN
+                Artikel.VALIDATE("Handlingskosten %",2);
 
               Artikel.VALIDATE("Handlingskosten %");
               Artikel.UStG_13b_frei := TRUE;
@@ -555,35 +562,35 @@ OBJECT Page 50109 Artikel Anlage
               IF UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte_Quelle_Part + Quelle_j).Value)) = Artikel."No. 2" THEN
                 Quelle_Sheet.Range(Spalte_Quelle_Part + Quelle_j).Value := TOPAS_API.CreateExcelHyperlinkToNav
                 (Artikel.TABLENAME,1,30,Artikel."No.");
-              Quelle_Sheet.Range('G' + Quelle_j).Value := 'OK';
+              Quelle_Sheet.Range('H' + Quelle_j).Value := 'OK';
 
               {
               IF training_artikel = TRUE THEN
-                Quelle_Sheet.Range('H' + Quelle_j).Value := 'MSRP * 0.9'
+                Quelle_Sheet.Range('I' + Quelle_j).Value := 'MSRP * 0.9'
               ELSE
                 IF services_artikel = TRUE THEN
-                  Quelle_Sheet.Range('H' + Quelle_j).Value := 'MSRP * 0.8'
+                  Quelle_Sheet.Range('I' + Quelle_j).Value := 'MSRP * 0.8'
                 ELSE
                   IF sonderartikel_schaeffler THEN
-                    Quelle_Sheet.Range('H' + Quelle_j).Value := 'MSRP * 0.5'
+                    Quelle_Sheet.Range('I' + Quelle_j).Value := 'MSRP * 0.5'
                   ELSE
-                    Quelle_Sheet.Range('H' + Quelle_j).Value := 'MSRP * 0.6';
+                    Quelle_Sheet.Range('I' + Quelle_j).Value := 'MSRP * 0.6';
               }
 
 
               IF sonderartikel_schaeffler = FALSE THEN
-                Quelle_Sheet.Range('H' + Quelle_j).Value := 'MSRP * ' + FORMAT(discount)
+                Quelle_Sheet.Range('I' + Quelle_j).Value := 'MSRP * ' + FORMAT(discount)
               ELSE
-                Quelle_Sheet.Range('H' + Quelle_j).Value := 'MSRP * 0.5';
+                Quelle_Sheet.Range('I' + Quelle_j).Value := 'MSRP * 0.5';
 
-              Quelle_Sheet.Range('I' + Quelle_j).Value := FORMAT(dc);
-              //Quelle_Sheet.Range('I' + Quelle_j).NumberFormat := 0.00;
-              Quelle_Sheet.Range('J' + Quelle_j).Value := FORMAT(excel_msrp);
+              Quelle_Sheet.Range('J' + Quelle_j).Value := FORMAT(dc);
               //Quelle_Sheet.Range('J' + Quelle_j).NumberFormat := 0.00;
-              Quelle_Sheet.Range('L' + Quelle_j).Value := 'A: ' + FORMAT(row_part);
-              Quelle_Sheet.Range('M' + Quelle_j).Value := 'S: ' + FORMAT(row_services);
-              Quelle_Sheet.Range('N' + Quelle_j).Value := 'T: ' + FORMAT(row_training);
-              Quelle_Sheet.Range('O' + Quelle_j).Value := 'Disc_Level: ' + PL_DiscLevel;
+              Quelle_Sheet.Range('K' + Quelle_j).Value := FORMAT(excel_msrp);
+              //Quelle_Sheet.Range('K' + Quelle_j).NumberFormat := 0.00;
+              Quelle_Sheet.Range('M' + Quelle_j).Value := 'A: ' + FORMAT(row_part);
+              Quelle_Sheet.Range('N' + Quelle_j).Value := 'S: ' + FORMAT(row_services);
+              Quelle_Sheet.Range('O' + Quelle_j).Value := 'T: ' + FORMAT(row_training);
+              Quelle_Sheet.Range('P' + Quelle_j).Value := 'Disc_Level: ' + PL_DiscLevel;
 
               //*********************************************************************************************
               //                              VK-Preise EURO bzw. USD einspielen
@@ -655,7 +662,7 @@ OBJECT Page 50109 Artikel Anlage
             END ELSE BEGIN
               Quelle_Sheet.Range(Spalte_Quelle_Part + Quelle_j).Value := TOPAS_API.CreateExcelHyperlinkToNav
                                                                          (Artikel.TABLENAME,1,30,Artikel."No.");
-              Quelle_Sheet.Range('G'+Quelle_j).Value := 'BEREITS ANGELEGT';
+              Quelle_Sheet.Range('H'+Quelle_j).Value := 'BEREITS ANGELEGT';
             END;
 
           END;
