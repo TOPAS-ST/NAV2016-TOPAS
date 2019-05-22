@@ -1,0 +1,985 @@
+OBJECT Report 50039 TOPAS-Lager-negativeVerfgb
+{
+  OBJECT-PROPERTIES
+  {
+    Date=09.05.18;
+    Time=14:04:42;
+    Modified=Yes;
+    Version List=DE2.00,FORNAV3.1.0.1460/1460;
+  }
+  PROPERTIES
+  {
+    Permissions=TableData 23=r;
+    OnInitReport=BEGIN
+                   ;ReportForNav:= ReportForNav.Report(CurrReport.OBJECTID,CurrReport.LANGUAGE,SERIALNUMBER,USERID,COMPANYNAME);ReportForNav.Init;
+                 END;
+
+    OnPreReport=BEGIN
+                  ArtikelFilter := Item.GETFILTERS;
+                  FOR i := 2 TO 23 DO
+                    PeriodenStartDatum[i + 1] := CALCDATE(PeriodeL„nge,PeriodenStartDatum[i]);
+                  PeriodenStartDatum[23] := 31122055D+1;
+                  ;ReportForNav.OpenDesigner:=ReportForNavOpenDesigner;IF NOT ReportForNav.Pre THEN CurrReport.QUIT;
+                END;
+
+    OnPostReport=BEGIN
+                   ;ReportForNav.Post;
+                 END;
+
+  }
+  DATASET
+  {
+    { 1   ;    ;DataItem;                    ;
+               DataItemTable=Table27;
+               OnPreDataItem=BEGIN
+                               PeriodeL„nge:='1W';
+                             END;
+
+               OnAfterGetRecord=VAR
+                                  VerfgbarkeitVerw@1140000 : Codeunit 5400;
+                                  GeplanterZugang@1140001 : Decimal;
+                                  GeplantesFAFreigabeDatum@1140002 : Date;
+                                  GeplantesEinkLieferdatum@1140003 : Date;
+                                  j@1140004 : Integer;
+                                  k@1140005 : Integer;
+                                BEGIN
+                                  artikel2.SETFILTER(artikel2."No.",'%1',Item."No.");
+                                  artikel2.FIND('-');
+                                  artikel2.CALCFIELDS("Qty. on Sales Order");
+                                  IF artikel2."Qty. on Sales Order" = 0 THEN CurrReport.SKIP;
+                                  IF NOT Kred.GET("Vendor No.") THEN
+                                    Kred.INIT;
+                                  CALCFIELDS(Inventory);
+                                  Drucken := Inventory <> 0;
+                                  GeplanteBestellungenVorhanden := FALSE;
+                                  FAVorhanden := FALSE;
+                                  FOR i := 1 TO 22 DO BEGIN
+                                    SETRANGE("Date Filter",PeriodenStartDatum[i],PeriodenStartDatum[i+1] - 1);
+                                    CALCFIELDS(
+                                      "Qty. on Sales Order","Qty. on Purch. Order",
+                                      "Scheduled Receipt (Qty.)","Scheduled Need (Qty.)");
+                                    IF ("Scheduled Receipt (Qty.)" <> 0) OR ("Scheduled Need (Qty.)" <> 0) THEN
+                                      FAVorhanden := TRUE;
+                                    IF ("Qty. on Sales Order" <> 0) OR ("Qty. on Purch. Order" <> 0) OR FAVorhanden THEN
+                                      Drucken := TRUE;
+                                    MengeInAuftr„gen[i] := -"Qty. on Sales Order";
+                                    MengeBestellt[i] := "Qty. on Purch. Order";
+                                    GeplZugang[i] := "Scheduled Receipt (Qty.)";
+                                    GeplanterBedarf[i] := -"Scheduled Need (Qty.)";
+                                    IF i = 1 THEN
+                                      VerfgMenge[1] :=
+                                        Inventory + MengeBestellt[1] + MengeInAuftr„gen[1] +
+                                        GeplZugang[i] + GeplanterBedarf[i]
+                                    ELSE
+                                      VerfgMenge[i] :=
+                                        VerfgMenge[i - 1] + MengeBestellt[i] +
+                                        MengeInAuftr„gen[i] + GeplZugang[i] + GeplanterBedarf[i];
+                                  END;
+                                  FOR i := 1 TO 22 DO BEGIN
+                                    GeplantesEinkLieferdatum := PeriodenStartDatum[i];
+                                    GeplanterZugang := HoleGeplanteEinkLieferung(Item,GeplantesFAFreigabeDatum,GeplantesEinkLieferdatum);
+                                    IF GeplanterZugang <> 0 THEN BEGIN
+                                      Drucken := TRUE;
+                                      GeplanteBestellungenVorhanden := TRUE;
+                                      j := FindeInDatumsArray(GeplantesEinkLieferdatum);
+                                      k := FindeInDatumsArray(GeplantesFAFreigabeDatum);
+                                      IF i < k THEN
+                                        i := k;
+                                      IF k <> 0 THEN
+                                        GeplanteBestellungen[k] := GeplanterZugang;
+                                      FOR k := j TO 22 DO
+                                        BEGIN
+                                        VerfgMenge[k] := VerfgMenge[k] + GeplanteBestellungen[j];
+                                      END;
+                                    END;
+                                  END;
+                                  // Neu Makiert Unterschreitungen des Minimalbestandes !!
+                                  FOR k := 1 TO 22 DO
+                                  BEGIN
+                                  IF VerfgMenge[k]-"Reorder Point" < 0 THEN MB_OK[k]:= '!' ELSE MB_OK[k]:='';
+                                  END;
+                                  SETRANGE("Date Filter",30122053D,01012054D);
+                                    CALCFIELDS("Qty. on Sales Order");
+                                    Abruf := "Qty. on Sales Order";
+                                  //"Menge in Auftrag" := 0;
+                                  //"Menge in Bestellung" := 0;
+                                  IF NOT Drucken THEN
+                                    CurrReport.SKIP;
+                                END;
+
+               ReqFilterFields=No.,Search Description,Inventory Posting Group,Vendor No.;
+               CalcFields=Qty. on Purch. Order,Qty. on Sales Order }
+
+    { 2   ;1   ;Column  ;USERID              ;
+               SourceExpr=USERID }
+
+    { 3   ;1   ;Column  ;ReportForNavPageNo  ;
+               SourceExpr=ReportForNav.PageNo }
+
+    { 4   ;1   ;Column  ;COMPANYNAME         ;
+               SourceExpr=COMPANYNAME }
+
+    { 5   ;1   ;Column  ;TODAY_0_4           ;
+               SourceExpr=FORMAT(TODAY,0,4) }
+
+    { 6   ;1   ;Column  ;ItemTABLENAME___ArtikelFilter;
+               SourceExpr=Item.TABLENAME + ': ' + ArtikelFilter }
+
+    { 7   ;1   ;Column  ;PeriodenStartDatum14;
+               SourceExpr=PeriodenStartDatum[14] }
+
+    { 8   ;1   ;Column  ;PeriodenStartDatum15_1;
+               SourceExpr=PeriodenStartDatum[15]-1 }
+
+    { 9   ;1   ;Column  ;MengeInAuftragen14  ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[14] }
+
+    { 10  ;1   ;Column  ;MengeBestellt14     ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[14] }
+
+    { 11  ;1   ;Column  ;VerfugMenge14       ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[14] }
+
+    { 12  ;1   ;Column  ;MB_OK14             ;
+               DecimalPlaces=0:5;
+               SourceExpr=MB_OK[14] }
+
+    { 13  ;1   ;Column  ;MB_OK19             ;
+               DecimalPlaces=0:5;
+               SourceExpr=MB_OK[19] }
+
+    { 14  ;1   ;Column  ;VerfugMenge19       ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[19] }
+
+    { 15  ;1   ;Column  ;MengeBestellt19     ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[19] }
+
+    { 16  ;1   ;Column  ;MengeInAuftragen19  ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[19] }
+
+    { 17  ;1   ;Column  ;PeriodenStartDatum20_1;
+               SourceExpr=PeriodenStartDatum[20]-1 }
+
+    { 18  ;1   ;Column  ;PeriodenStartDatum19;
+               SourceExpr=PeriodenStartDatum[19] }
+
+    { 19  ;1   ;Column  ;PeriodenStartDatum21;
+               SourceExpr=PeriodenStartDatum[21] }
+
+    { 20  ;1   ;Column  ;PeriodenStartDatum22_1;
+               SourceExpr=PeriodenStartDatum[22]-1 }
+
+    { 21  ;1   ;Column  ;MengeInAuftragen21  ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[21] }
+
+    { 22  ;1   ;Column  ;MengeBestellt21     ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[21] }
+
+    { 23  ;1   ;Column  ;VerfugMenge21       ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[21] }
+
+    { 24  ;1   ;Column  ;MB_OK12             ;
+               DecimalPlaces=0:5;
+               SourceExpr=MB_OK[12] }
+
+    { 25  ;1   ;Column  ;PeriodenStartDatum20;
+               SourceExpr=PeriodenStartDatum[20] }
+
+    { 26  ;1   ;Column  ;PeriodenStartDatum21_1;
+               SourceExpr=PeriodenStartDatum[21]-1 }
+
+    { 27  ;1   ;Column  ;MengeInAuftragen20  ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[20] }
+
+    { 28  ;1   ;Column  ;MengeBestellt20     ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[20] }
+
+    { 29  ;1   ;Column  ;VerfugMenge20       ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[20] }
+
+    { 30  ;1   ;Column  ;MB_OK20             ;
+               DecimalPlaces=0:5;
+               SourceExpr=MB_OK[20] }
+
+    { 31  ;1   ;Column  ;PeriodenStartDatum18;
+               SourceExpr=PeriodenStartDatum[18] }
+
+    { 32  ;1   ;Column  ;PeriodenStartDatum19_1;
+               SourceExpr=PeriodenStartDatum[19]-1 }
+
+    { 33  ;1   ;Column  ;MengeInAuftragen18  ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[18] }
+
+    { 34  ;1   ;Column  ;MengeBestellt18     ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[18] }
+
+    { 35  ;1   ;Column  ;VerfugMenge18       ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[18] }
+
+    { 36  ;1   ;Column  ;MB_OK18             ;
+               DecimalPlaces=0:5;
+               SourceExpr=MB_OK[18] }
+
+    { 37  ;1   ;Column  ;PeriodenStartDatum17;
+               SourceExpr=PeriodenStartDatum[17] }
+
+    { 38  ;1   ;Column  ;PeriodenStartDatum18_1;
+               SourceExpr=PeriodenStartDatum[18]-1 }
+
+    { 39  ;1   ;Column  ;MengeInAuftragen17  ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[17] }
+
+    { 40  ;1   ;Column  ;MengeBestellt17     ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[17] }
+
+    { 41  ;1   ;Column  ;VerfugMenge17       ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[17] }
+
+    { 42  ;1   ;Column  ;MB_OK17             ;
+               DecimalPlaces=0:5;
+               SourceExpr=MB_OK[17] }
+
+    { 43  ;1   ;Column  ;PeriodenStartDatum16;
+               SourceExpr=PeriodenStartDatum[16] }
+
+    { 44  ;1   ;Column  ;PeriodenStartDatum17_1;
+               SourceExpr=PeriodenStartDatum[17]-1 }
+
+    { 45  ;1   ;Column  ;MengeInAuftragen16  ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[16] }
+
+    { 46  ;1   ;Column  ;MengeBestellt16     ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[16] }
+
+    { 47  ;1   ;Column  ;VerfugMenge16       ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[16] }
+
+    { 48  ;1   ;Column  ;MB_OK16             ;
+               DecimalPlaces=0:5;
+               SourceExpr=MB_OK[16] }
+
+    { 49  ;1   ;Column  ;PeriodenStartDatum15;
+               SourceExpr=PeriodenStartDatum[15] }
+
+    { 50  ;1   ;Column  ;PeriodenStartDatum16_1;
+               SourceExpr=PeriodenStartDatum[16]-1 }
+
+    { 51  ;1   ;Column  ;MengeInAuftragen15  ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[15] }
+
+    { 52  ;1   ;Column  ;MengeBestellt15     ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[15] }
+
+    { 53  ;1   ;Column  ;VerfugMenge15       ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[15] }
+
+    { 54  ;1   ;Column  ;MB_OK15             ;
+               DecimalPlaces=0:5;
+               SourceExpr=MB_OK[15] }
+
+    { 55  ;1   ;Column  ;PeriodenStartDatum13;
+               SourceExpr=PeriodenStartDatum[13] }
+
+    { 56  ;1   ;Column  ;PeriodenStartDatum14_1;
+               SourceExpr=PeriodenStartDatum[14]-1 }
+
+    { 57  ;1   ;Column  ;MengeInAuftragen13  ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[13] }
+
+    { 58  ;1   ;Column  ;MengeBestellt13     ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[13] }
+
+    { 59  ;1   ;Column  ;VerfugMenge13       ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[13] }
+
+    { 60  ;1   ;Column  ;MB_OK13             ;
+               DecimalPlaces=0:5;
+               SourceExpr=MB_OK[13] }
+
+    { 61  ;1   ;Column  ;Sicherheitslager_Item_Lbl;
+               SourceExpr=Item.FIELDCAPTION(Sicherheitslager) }
+
+    { 62  ;1   ;Column  ;Sicherheitslager_Item;
+               SourceExpr=Sicherheitslager }
+
+    { 63  ;1   ;Column  ;MengeBestellt22     ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[22] }
+
+    { 64  ;1   ;Column  ;VerfugMenge22       ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[22] }
+
+    { 65  ;1   ;Column  ;MengeInAuftragen22  ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[22] }
+
+    { 66  ;1   ;Column  ;Abruf               ;
+               DecimalPlaces=0:5;
+               SourceExpr=Abruf }
+
+    { 67  ;1   ;Column  ;MB_OK11             ;
+               DecimalPlaces=0:5;
+               SourceExpr=MB_OK[11] }
+
+    { 68  ;1   ;Column  ;MB_OK10             ;
+               DecimalPlaces=0:5;
+               SourceExpr=MB_OK[10] }
+
+    { 69  ;1   ;Column  ;MB_OK9              ;
+               DecimalPlaces=0:5;
+               SourceExpr=MB_OK[9] }
+
+    { 70  ;1   ;Column  ;MB_OK8              ;
+               DecimalPlaces=0:5;
+               SourceExpr=MB_OK[8] }
+
+    { 71  ;1   ;Column  ;MB_OK7              ;
+               DecimalPlaces=0:5;
+               SourceExpr=MB_OK[7] }
+
+    { 72  ;1   ;Column  ;MB_OK6              ;
+               DecimalPlaces=0:5;
+               SourceExpr=MB_OK[6] }
+
+    { 73  ;1   ;Column  ;MB_OK5              ;
+               DecimalPlaces=0:5;
+               SourceExpr=MB_OK[5] }
+
+    { 74  ;1   ;Column  ;MB_OK4              ;
+               DecimalPlaces=0:5;
+               SourceExpr=MB_OK[4] }
+
+    { 75  ;1   ;Column  ;MB_OK3              ;
+               DecimalPlaces=0:5;
+               SourceExpr=MB_OK[3] }
+
+    { 76  ;1   ;Column  ;MB_OK2              ;
+               DecimalPlaces=0:5;
+               SourceExpr=MB_OK[2] }
+
+    { 77  ;1   ;Column  ;ReorderPoint_Item   ;
+               DecimalPlaces=0:5;
+               SourceExpr="Reorder Point" }
+
+    { 78  ;1   ;Column  ;PeriodenStartDatum12;
+               SourceExpr=PeriodenStartDatum[12] }
+
+    { 79  ;1   ;Column  ;PeriodenStartDatum13_1;
+               SourceExpr=PeriodenStartDatum[13]-1 }
+
+    { 80  ;1   ;Column  ;PeriodenStartDatum11;
+               SourceExpr=PeriodenStartDatum[11] }
+
+    { 81  ;1   ;Column  ;PeriodenStartDatum12_1;
+               SourceExpr=PeriodenStartDatum[12]-1 }
+
+    { 82  ;1   ;Column  ;PeriodenStartDatum10;
+               SourceExpr=PeriodenStartDatum[10] }
+
+    { 83  ;1   ;Column  ;PeriodenStartDatum11_1;
+               SourceExpr=PeriodenStartDatum[11]-1 }
+
+    { 84  ;1   ;Column  ;PeriodenStartDatum9 ;
+               SourceExpr=PeriodenStartDatum[9] }
+
+    { 85  ;1   ;Column  ;PeriodenStartDatum10_1;
+               SourceExpr=PeriodenStartDatum[10]-1 }
+
+    { 86  ;1   ;Column  ;PeriodenStartDatum8 ;
+               SourceExpr=PeriodenStartDatum[8] }
+
+    { 87  ;1   ;Column  ;PeriodenStartDatum9_1;
+               SourceExpr=PeriodenStartDatum[9]-1 }
+
+    { 88  ;1   ;Column  ;PeriodenStartDatum8_1;
+               SourceExpr=PeriodenStartDatum[8]-1 }
+
+    { 89  ;1   ;Column  ;PeriodenStartDatum7 ;
+               SourceExpr=PeriodenStartDatum[7] }
+
+    { 90  ;1   ;Column  ;PeriodenStartDatum7_1;
+               SourceExpr=PeriodenStartDatum[7]-1 }
+
+    { 91  ;1   ;Column  ;PeriodenStartDatum6 ;
+               SourceExpr=PeriodenStartDatum[6] }
+
+    { 92  ;1   ;Column  ;PeriodenStartDatum6_1;
+               SourceExpr=PeriodenStartDatum[6]-1 }
+
+    { 93  ;1   ;Column  ;PeriodenStartDatum5 ;
+               SourceExpr=PeriodenStartDatum[5] }
+
+    { 94  ;1   ;Column  ;PeriodenStartDatum4 ;
+               SourceExpr=PeriodenStartDatum[4] }
+
+    { 95  ;1   ;Column  ;PeriodenStartDatum3 ;
+               SourceExpr=PeriodenStartDatum[3] }
+
+    { 96  ;1   ;Column  ;PeriodenStartDatum2 ;
+               SourceExpr=PeriodenStartDatum[2] }
+
+    { 97  ;1   ;Column  ;PeriodenStartDatum5_1;
+               SourceExpr=PeriodenStartDatum[5]-1 }
+
+    { 98  ;1   ;Column  ;PeriodenStartDatum4_1;
+               SourceExpr=PeriodenStartDatum[4]-1 }
+
+    { 99  ;1   ;Column  ;PeriodenStartDatum3_1;
+               SourceExpr=PeriodenStartDatum[3]-1 }
+
+    { 100 ;1   ;Column  ;MengeBestellt12     ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[12] }
+
+    { 101 ;1   ;Column  ;MengeInAuftragen12  ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[12] }
+
+    { 102 ;1   ;Column  ;VerfugMenge12       ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[12] }
+
+    { 103 ;1   ;Column  ;MengeBestellt11     ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[11] }
+
+    { 104 ;1   ;Column  ;MengeInAuftragen11  ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[11] }
+
+    { 105 ;1   ;Column  ;VerfugMenge11       ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[11] }
+
+    { 106 ;1   ;Column  ;MengeBestellt10     ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[10] }
+
+    { 107 ;1   ;Column  ;MengeInAuftragen10  ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[10] }
+
+    { 108 ;1   ;Column  ;VerfugMenge10       ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[10] }
+
+    { 109 ;1   ;Column  ;MengeBestellt9      ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[9] }
+
+    { 110 ;1   ;Column  ;MengeInAuftragen9   ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[9] }
+
+    { 111 ;1   ;Column  ;VerfugMenge9        ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[9] }
+
+    { 112 ;1   ;Column  ;QtyonPurchOrder_Item;
+               SourceExpr="Qty. on Purch. Order";
+               AutoCalcField=Yes }
+
+    { 113 ;1   ;Column  ;QtyonSalesOrder_Item;
+               SourceExpr="Qty. on Sales Order";
+               AutoCalcField=Yes }
+
+    { 114 ;1   ;Column  ;VerfugMenge8        ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[8] }
+
+    { 115 ;1   ;Column  ;VerfugMenge7        ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[7] }
+
+    { 116 ;1   ;Column  ;VerfugMenge6        ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[6] }
+
+    { 117 ;1   ;Column  ;VerfugMenge5        ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[5] }
+
+    { 118 ;1   ;Column  ;VerfugMenge4        ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[4] }
+
+    { 119 ;1   ;Column  ;VerfugMenge3        ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[3] }
+
+    { 120 ;1   ;Column  ;VerfugMenge2        ;
+               DecimalPlaces=0:5;
+               SourceExpr=VerfgMenge[2] }
+
+    { 121 ;1   ;Column  ;Inventory_Item      ;
+               SourceExpr=Inventory;
+               AutoCalcField=Yes }
+
+    { 122 ;1   ;Column  ;MengeBestellt8      ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[8] }
+
+    { 123 ;1   ;Column  ;MengeBestellt7      ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[7] }
+
+    { 124 ;1   ;Column  ;MengeBestellt6      ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[6] }
+
+    { 125 ;1   ;Column  ;MengeBestellt5      ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[5] }
+
+    { 126 ;1   ;Column  ;MengeBestellt4      ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[4] }
+
+    { 127 ;1   ;Column  ;MengeBestellt3      ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[3] }
+
+    { 128 ;1   ;Column  ;MengeBestellt2      ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeBestellt[2] }
+
+    { 129 ;1   ;Column  ;MengeInAuftragen8   ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[8] }
+
+    { 130 ;1   ;Column  ;MengeInAuftragen7   ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[7] }
+
+    { 131 ;1   ;Column  ;MengeInAuftragen6   ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[6] }
+
+    { 132 ;1   ;Column  ;MengeInAuftragen5   ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[5] }
+
+    { 133 ;1   ;Column  ;MengeInAuftragen4   ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[4] }
+
+    { 134 ;1   ;Column  ;MengeInAuftragen3   ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[3] }
+
+    { 135 ;1   ;Column  ;MengeInAuftragen2   ;
+               DecimalPlaces=0:5;
+               SourceExpr=MengeInAuftr„gen[2] }
+
+    { 136 ;1   ;Column  ;LeadTimeCalculation_Item;
+               SourceExpr="Lead Time Calculation" }
+
+    { 137 ;1   ;Column  ;LeadTimeCalculation_Item_Lbl;
+               SourceExpr=Item.FIELDCAPTION("Lead Time Calculation") }
+
+    { 138 ;1   ;Column  ;VendorItemNo_Item   ;
+               SourceExpr="Vendor Item No." }
+
+    { 139 ;1   ;Column  ;VendorItemNo_Item_Lbl;
+               SourceExpr=Item.FIELDCAPTION("Vendor Item No.") }
+
+    { 140 ;1   ;Column  ;Name_Kred           ;
+               SourceExpr=Kred.Name }
+
+    { 141 ;1   ;Column  ;VendorNo_Item       ;
+               SourceExpr="Vendor No." }
+
+    { 142 ;1   ;Column  ;Description_Item    ;
+               SourceExpr=Description }
+
+    { 143 ;1   ;Column  ;No_Item             ;
+               SourceExpr="No." }
+
+  }
+  REQUESTPAGE
+  {
+    PROPERTIES
+    {
+      SaveValues=Yes;
+      OnOpenPage=BEGIN
+                   IF PeriodeL„nge = '' THEN
+                     PeriodeL„nge := '1W';
+                   IF PeriodenStartDatum[2] = 0D THEN
+                     PeriodenStartDatum[2] := WORKDATE;
+                 END;
+
+    }
+    CONTROLS
+    {
+      { 1900000001;0;Container;
+                  ContainerType=ContentArea }
+
+      { 1900000002;1;Group  ;
+                  CaptionML=[CSY=Moznosti;
+                             DAN=Indstillinger;
+                             DEU=Optionen;
+                             ENU=Options;
+                             FIN=Vaihtoehdot;
+                             ISL=Valkostir;
+                             NLD=Opties;
+                             NOR=Alternativer;
+                             SVE=Alternativ;
+                             ITS=Opzioni;
+                             NLB=Opties] }
+
+      { 1   ;2   ;Field     ;
+                  CaptionML=DEU=Startdatum;
+                  NotBlank=Yes;
+                  SourceExpr=PeriodenStartDatum[2] }
+
+      { 2   ;2   ;Field     ;
+                  CaptionML=DEU=Periodenl„nge;
+                  DateFormula=Yes;
+                  SourceExpr=PeriodeL„nge }
+
+      { 5000;2   ;Field     ;
+                  Name=ForNavOpenDesigner;
+                  CaptionML=ENU=Open Designer;
+                  SourceExpr=ReportForNavOpenDesigner;
+                  Visible=ReportForNavAllowDesign }
+
+    }
+  }
+  LABELS
+  {
+  }
+  CODE
+  {
+    VAR
+      Kred@1140000 : Record 23;
+      ArtikelFilter@1140001 : Text[250];
+      MengeBestellt@1140002 : ARRAY [25] OF Decimal;
+      PeriodenStartDatum@1140003 : ARRAY [25] OF Date;
+      VerfgMenge@1140004 : ARRAY [25] OF Decimal;
+      MengeInAuftr„gen@1140005 : ARRAY [25] OF Decimal;
+      GeplZugang@1140006 : ARRAY [25] OF Decimal;
+      GeplanterBedarf@1140007 : ARRAY [25] OF Decimal;
+      GeplanteBestellungen@1140008 : ARRAY [25] OF Decimal;
+      PeriodeL„nge@1140009 : Code[20];
+      Drucken@1140010 : Boolean;
+      GeplanteBestellungenVorhanden@1140011 : Boolean;
+      FAVorhanden@1140012 : Boolean;
+      i@1140013 : Integer;
+      MB_OK@1140014 : ARRAY [25] OF Text[12];
+      Abruf@1140015 : Decimal;
+      info@1140016 : Decimal;
+      artikel2@1140017 : Record 27;
+      ReportForNav@5000 : DotNet "'ForNav.Reports.3.1.0.1460, Version=3.1.0.1460, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
+      ReportForNavClient@5003 : DotNet "'ForNav.Reports.3.1.0.1460, Version=3.1.0.1460, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
+      ReportForNavDialog@5001 : Dialog;
+      ReportForNavOpenDesigner@5002 : Boolean;
+      ReportForNavAllowDesign@5004 : Boolean INDATASET;
+
+    LOCAL PROCEDURE OnPreSectionItem_Header2@5027(VAR Item@1000000000 : Record 27);
+    BEGIN
+      WITH Item DO BEGIN
+        ReportForNav.ShowOutput((ReportForNav.PageNo = 1) AND (ArtikelFilter <> ''));
+      END;
+    END;
+
+    LOCAL PROCEDURE OnPreSectionItem_Body3@5028(VAR Item@1000000000 : Record 27);
+    BEGIN
+      WITH Item DO BEGIN
+        Item.CALCFIELDS(Item."Qty. on Purch. Order",Item."Qty. on Sales Order");
+        ReportForNav.ShowOutput((VerfgMenge[2] < 0) OR (VerfgMenge[3] < 0) OR (VerfgMenge[4] < 0) OR (VerfgMenge[5] < 0) OR
+        (VerfgMenge[6] < 0) OR (VerfgMenge[7] < 0) OR (VerfgMenge[8] < 0) OR (VerfgMenge[9] < 0) OR(VerfgMenge[10] < 0) OR
+        (VerfgMenge[11] < 0) OR (VerfgMenge[12] < 0) OR(VerfgMenge[13] < 0)OR(VerfgMenge[14] < 0)OR(VerfgMenge[15] < 0)
+        OR(VerfgMenge[16] < 0)OR(VerfgMenge[17] < 0)OR(VerfgMenge[18] < 0)OR(VerfgMenge[19] < 0)OR(VerfgMenge[20] < 0)
+        OR(VerfgMenge[21] < 0)OR(VerfgMenge[22] < 0));
+      END;
+    END;
+
+    PROCEDURE FindeInDatumsArray@4(Datum@1140000 : Date) j : Integer;
+    BEGIN
+      j := 1;
+      WHILE Datum > PeriodenStartDatum[j + 1] DO BEGIN
+        j := j + 1;
+        IF j = 22 THEN
+          EXIT(j);
+      END;
+      EXIT(j);
+    END;
+
+    PROCEDURE HoleGeplanteEinkLieferung@1140000(Artikel@1140000 : Record 27;VAR N„chstesGeplantesFreigabedatum@1140001 : Date;VAR N„chstesGeplantesZugangsdatum@1140002 : Date) : Decimal;
+    BEGIN
+      N„chstesGeplantesFreigabedatum := 31129999D;
+      EXIT(0);
+    END;
+
+    EVENT ReportForNav@5000::OnInit@5002();
+    VAR
+      ReportLayoutSelection@1000 : Record 9651;
+      CustomReportLayout@1001 : Record 9650;
+      CustomLayoutID@1002 : Variant;
+      InStream@1004 : InStream;
+      EmptyLayout@1003 : Text;
+    BEGIN
+      // This code is created automatically every time Reports ForNAV saves the report.
+      // Do not modify this code.
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+      ReportForNav.OData := GETURL(CLIENTTYPE::OData, COMPANYNAME, OBJECTTYPE::Page, 7702);
+      IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN
+        CustomLayoutID := ReportLayoutSelection.GetTempLayoutSelected
+      ELSE
+        IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN
+          CustomLayoutID := ReportLayoutSelection."Custom Report Layout ID";
+
+      IF (FORMAT(CustomLayoutID) <> EmptyLayout) AND CustomReportLayout.GET(CustomLayoutID) THEN BEGIN
+        CustomReportLayout.TESTFIELD(Type,CustomReportLayout.Type::RDLC);
+        CustomReportLayout.CALCFIELDS(Layout);
+        CustomReportLayout.Layout.CREATEINSTREAM(InStream,TEXTENCODING::UTF8);
+        ReportForNav.IsCustomLayout := TRUE;
+      END ELSE
+        REPORT.RDLCLAYOUT(ReportForNav.ReportID,InStream);
+
+      ReportForNav.LoadRdlc(InStream);
+      IF ReportForNav.IsWindowsClient THEN BEGIN
+        ReportForNav.CheckClientAddIn();
+        ReportForNavClient := ReportForNavClient.Report(ReportForNav.Definition);
+        ReportForNavAllowDesign := ReportForNavClient.HasDesigner AND NOT ReportForNav.ParameterMode;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnSave@5010(Base64Layout@1000 : Text);
+    VAR
+      CustomReportLayout@1002 : Record 9650;
+      ReportLayoutSelection@1003 : Record 9651;
+      LayoutId@1004 : Variant;
+      TempBlob@1007 : Record 99008535;
+      OutStream@1006 : OutStream;
+      Bstr@1005 : BigText;
+      EmptyLayout@1001 : Text;
+    BEGIN
+      // This code is created automatically every time Reports ForNAV saves the report.
+      // Do not modify this code.
+      EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
+      LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+      IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN BEGIN
+        IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN BEGIN
+          LayoutId := ReportLayoutSelection.GetTempLayoutSelected;
+        END ELSE BEGIN
+          IF ReportLayoutSelection.GET(ReportForNav.ReportID, COMPANYNAME) THEN BEGIN
+          LayoutId := ReportLayoutSelection."Custom Report Layout ID";
+          END;
+        END;
+      END ELSE BEGIN
+        IF CONFIRM('Default custom layout not found. Create one?') THEN;
+      END;
+      IF FORMAT(LayoutId) <> EmptyLayout THEN BEGIN
+        TempBlob.Blob.CREATEOUTSTREAM(OutStream);
+        Bstr.ADDTEXT(Base64Layout);
+        Bstr.WRITE(OutStream);
+        CustomReportLayout.GET(LayoutId);
+        CustomReportLayout.ImportLayoutBlob(TempBlob, 'RDL');
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnParameters@5008(Parameters@1000 : Text);
+    BEGIN
+      // This code is created automatically every time Reports ForNAV saves the report.
+      // Do not modify this code.
+      ReportForNav.Parameters := REPORT.RUNREQUESTPAGE(ReportForNav.ReportID, Parameters);
+    END;
+
+    EVENT ReportForNav@5000::OnPreview@5009(Parameters@1000 : Text;FileName@1005 : Text);
+    VAR
+      PdfFile@1002 : File;
+      InStream@1003 : InStream;
+      OutStream@1004 : OutStream;
+    BEGIN
+      // This code is created automatically every time Reports ForNAV saves the report.
+      // Do not modify this code.
+      COMMIT;
+      PdfFile.CREATETEMPFILE;
+      PdfFile.CREATEOUTSTREAM(OutStream);
+      REPORT.SAVEAS(ReportForNav.ReportID, Parameters, REPORTFORMAT::Pdf, OutStream);
+      PdfFile.CREATEINSTREAM(InStream);
+      ReportForNavClient.ShowDesigner;
+      IF ReportForNav.IsValidPdf(PdfFile.NAME) THEN DOWNLOADFROMSTREAM(InStream, '', '', '', FileName);
+      PdfFile.CLOSE;
+    END;
+
+    EVENT ReportForNav@5000::OnPreSection@5012(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+      CASE DataItemId OF
+        'Item': CASE SectionId OF
+          'Header2': OnPreSectionItem_Header2(Item);
+          'Body3': OnPreSectionItem_Body3(Item);
+        END;
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPostSection@5013(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
+    BEGIN
+    END;
+
+    EVENT ReportForNav@5000::OnClientOperation@5014(Args@1000 : DotNet "'mscorlib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Array");
+    VAR
+      op@1001 : Text;
+      FileMgmt@1002 : Codeunit 419;
+      Process@1006 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.Process" RUNONCLIENT;
+      PathObj@1005 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Path" RUNONCLIENT;
+      FileVersionInfo@1003 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.FileVersionInfo" RUNONCLIENT;
+      DirectoryHelper@1004 : DotNet "'mscorlib'.System.IO.Directory" RUNONCLIENT;
+    BEGIN
+      // This code is created automatically every time Reports ForNAV saves the report.
+      // Do not modify this code.
+      op := Args.GetValue(0);
+      CASE op OF
+        'TempPath': ReportForNav.Result := PathObj.GetTempPath();
+        'FileExists': ReportForNav.Result := FileMgmt.ClientFileExists(Args.GetValue(1));
+        'DirectoryExists': ReportForNav.Result := FileMgmt.ClientDirectoryExists(Args.GetValue(1));
+        'ProcessLocation': ReportForNav.Result := Process.GetCurrentProcess().MainModule.FileName;
+        'FileVersion': ReportForNav.Result := FileVersionInfo.GetVersionInfo(Args.GetValue(1)).FileVersion;
+        'DeleteFile': FileMgmt.DeleteClientFile(Args.GetValue(1));
+        'DeleteDirectory': IF STRLEN(Args.GetValue(1)) > 20 THEN
+          IF FileMgmt.ClientDirectoryExists(Args.GetValue(1)) THEN
+            DirectoryHelper.Delete(FORMAT(Args.GetValue(1)), TRUE);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnCheckForNavClientVersion@5015();
+    BEGIN
+      // This code is created automatically every time Reports ForNAV saves the report.
+      // Do not modify this code.
+      ReportForNavClient := ReportForNavClient.Report();
+      IF ReportForNav.MyFileVersion <> ReportForNavClient.MyFileVersion THEN
+        ERROR('You have version %1 of the Reports ForNAV assembly here:\\%2\\Please close your NAV client and update it to version %3.',
+              ReportForNavClient.MyFileVersion, ReportForNavClient.MyFileName, ReportForNav.MyFileVersion);
+    END;
+
+    EVENT ReportForNav@5000::OnSelectPrinter@5006();
+    BEGIN
+      // This code is created automatically every time Reports ForNAV saves the report.
+      // Do not modify this code.
+      ReportForNav.PrinterSettings.PageSettings := ReportForNavClient.SelectPrinter(ReportForNav.PrinterSettings.PrinterName,ReportForNav.PrinterSettings.ShowPrinterDialog,ReportForNav.PrinterSettings.PageSettings);
+    END;
+
+    EVENT ReportForNav@5000::OnPrint@5005(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream");
+    VAR
+      ClientFileName@1000000001 : Text[255];
+    BEGIN
+      // This code is created automatically every time Reports ForNAV saves the report.
+      // Do not modify this code.
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      ReportForNavClient.Print(ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnDesign@5007(Data@1001 : Text);
+    BEGIN
+      // This code is created automatically every time Reports ForNAV saves the report.
+      // Do not modify this code.
+      ReportForNavClient.Data := Data;
+      WHILE ReportForNavClient.DesignReport DO BEGIN
+        ReportForNav.HandleRequest(ReportForNavClient.GetRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnView@5003(ClientFileName@1000000000 : Text;Parameters@1000000001 : Text;ServerFileName@1000000002 : Text);
+    VAR
+      ServerFile@1000000003 : File;
+      ServerInStream@1000000004 : InStream;
+      Filter@1000000005 : Text;
+    BEGIN
+      // This code is created automatically every time Reports ForNAV saves the report.
+      // Do not modify this code.
+      ServerFile.OPEN(ServerFileName);
+      ServerFile.CREATEINSTREAM(ServerInStream);
+      IF STRLEN(ClientFileName) >= 4 THEN IF LOWERCASE(COPYSTR(ClientFileName, STRLEN(ClientFileName)-3, 4)) = '.pdf' THEN Filter := 'PDF (*.pdf)|*.pdf';
+      IF STRLEN(ClientFileName) >= 4 THEN IF LOWERCASE(COPYSTR(ClientFileName, STRLEN(ClientFileName)-3, 4)) = '.doc' THEN Filter := 'Microsoft Word (*.doc)|*.doc';
+      IF STRLEN(ClientFileName) >= 5 THEN IF LOWERCASE(COPYSTR(ClientFileName, STRLEN(ClientFileName)-4, 5)) = '.xlsx' THEN Filter := 'Microsoft Excel (*.xlsx)|*.xlsx';
+      DOWNLOADFROMSTREAM(ServerInStream,'Export','',Filter,ClientFileName);
+    END;
+
+    EVENT ReportForNav@5000::OnMessage@5016(Operation@1000000000 : Text;Parameter@1000000001 : Text;ParameterNo@1000000002 : Integer);
+    BEGIN
+      // This code is created automatically every time Reports ForNAV saves the report.
+      // Do not modify this code.
+      CASE Operation OF
+        'Open'    : ReportForNavDialog.OPEN(Parameter);
+        'Update'  : ReportForNavDialog.UPDATE(ParameterNo,Parameter);
+        'Close'   : ReportForNavDialog.CLOSE();
+        'Message' : MESSAGE(Parameter);
+        'Error'   : ERROR(Parameter);
+      END;
+    END;
+
+    EVENT ReportForNav@5000::OnPrintPreview@5011(InStream@1000000000 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Stream";Preview@1000000001 : Boolean);
+    VAR
+      ClientFileName@1000000002 : Text[255];
+    BEGIN
+      // This code is created automatically every time Reports ForNAV saves the report.
+      // Do not modify this code.
+      CurrReport.LANGUAGE := SYSTEM.GLOBALLANGUAGE;
+      DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
+      WHILE ReportForNavClient.PrintPreviewDialog(ClientFileName,ReportForNav.PrinterSettings.PrinterName,Preview) DO BEGIN
+        ReportForNav.HandlePrintPreviewRequest(ReportForNavClient.GetPrintPreviewRequest());
+        SLEEP(100);
+      END;
+    END;
+
+    BEGIN
+    END.
+  }
+  RDLDATA
+  {
+    <?xml version="1.0" encoding="utf-8"?>
+<Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
+  <Description>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</Description>
+  <DataSources>
+    <DataSource Name="DataSource">
+      <ConnectionProperties>
+        <DataProvider>SQL</DataProvider>
+        <ConnectString />
+      </ConnectionProperties>
+    </DataSource>
+  </DataSources>
+  <ReportSections>
+    <ReportSection>
+      <Body>
+        <Height>2in</Height>
+      </Body>
+      <Width>6.5in</Width>
+      <Page></Page>
+    </ReportSection>
+  </ReportSections>
+</Report>
+    END_OF_RDLDATA
+  }
+}
+
