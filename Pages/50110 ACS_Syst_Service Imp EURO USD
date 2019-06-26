@@ -2,14 +2,22 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
 {
   OBJECT-PROPERTIES
   {
-    Date=08.01.19;
-    Time=09:09:17;
+    Date=02.04.19;
+    Time=14:33:59;
     Modified=Yes;
     Version List=TOPAS;
   }
   PROPERTIES
   {
     CaptionML=DEU=AudioCodes Systemartikel-, ACTS- und CHAMPS Preis Import Tool;
+    OnOpenPage=BEGIN
+                 //Z„hlt die aktuell vorhandenen Serviceartikel
+                 Servicepreise.RESET;
+                 IF Servicepreise.FIND('-') THEN BEGIN
+                   service_items_total := Servicepreise.COUNT;
+                 END;
+               END;
+
     ActionList=ACTIONS
     {
       { 1000000004;  ;ActionContainer;
@@ -51,8 +59,17 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                 CaptionML=DEU=Info;
                 GroupType=Group }
 
-    { 1000000003;2;Field  ;
+    { 1000000013;2;Group  ;
+                GroupType=Group }
+
+    { 1000000003;3;Field  ;
                 CaptionML=DEU=Mit diesem Tool k”nnen die AudioCodes System-,  ACTS-,  ACTS Schaeffler- und Champs Servicepreise eingespielt werden. }
+
+    { 1000000012;3;Field  ;
+                Name=service_items_total;
+                CaptionML=DEU=Aktuelle Anzahl Servicepreise;
+                SourceExpr=service_items_total;
+                Editable=FALSE }
 
     { 1000000006;1;Group  ;
                 CaptionML=DEU=Option;
@@ -180,11 +197,13 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
       Text029@1000000116 : TextConst 'DEU=Ger„te Artikelnr.';
       Text100@1000000013 : TextConst 'DEU=CHAMPS Import,ACTS / ACTS Schaeffler (nur ber Classic) Import,Systemartikel DC und MSRP Import,Schaeffler Systemartikel DC und MSRP Import,CHAMPS alt aktualisieren,ACTS alt aktualisieren';
       startdatum@1000000046 : Date;
+      prerelease_date@1000000136 : Date;
       laufzeit@1000000055 : Integer;
       v_art@1000000028 : 'Champs,ACTS';
       PL_W„h@1000000014 : Code[20];
       PL_Bezeichnung@1000000056 : Text[30];
       PL_Kreditor@1000000003 : Code[20];
+      PL_LTB@1000000137 : Date;
       nav_msrp@1000000111 : Decimal;
       excel_msrp@1000000032 : Decimal;
       excel_dc@1000000044 : Decimal;
@@ -201,6 +220,8 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
       TotalRowsPriceBook@1000000106 : Integer;
       TotalRowsEOS@1000000101 : Integer;
       i@1000000059 : Integer;
+      Text200@1000000138 : TextConst 'DEU=Es wurde keine Importdatei angegeben.';
+      Text201@1000000139 : TextConst 'DEU=Bitte eine Laufzeit fr Artikel %1 in der %2 hinterlegen.';
       Text998@1000000004 : TextConst 'DEU=Es konnte keine Kreditornr. zur angegeben W„hrung ermittelt werden.';
       Text999@1000000048 : TextConst 'DEU=Der W„hrungscode des Kreditors %1 und der in der Excel Liste angebene W„hrungscode weichen voneinander ab.';
       ExcelFileExtensionTok@1000000078 : TextConst '@@@={Locked};DEU=.xlsx;ENU=.xlsx';
@@ -229,12 +250,13 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
       DiscountLevel@1000000129 : Text;
       error_level@1000000128 : Integer;
       service_item_counter@1000000130 : Integer;
+      service_items_total@1000000140 : Integer;
       step@1000000131 : Integer;
       Doku_Import@1000000132 : TextConst 'DEU=F:\Daten NEU\Gemeinsame Ordner\Preislisten\AudioCodes\Preislisten Importe\Import AudioCodes Preislisten - How to.docx';
 
     LOCAL PROCEDURE Run_Import_Direct@1000000006();
     BEGIN
-      IF DialogFileName = '' THEN ERROR('Es wurde keine Importdatei angegeben.');
+      IF DialogFileName = '' THEN ERROR(Text200);
 
       ServerUploadFile := FileMgt.UploadFileSilent(DialogFileName);
 
@@ -276,6 +298,9 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
 
         PL_Version := GetValueAtCell(8,7);
 
+        IF GetValueAtCell(15,7) <> '' THEN
+          PL_LTB := ConvertDateString(GetValueAtCell(15,7)) - 1;
+
         //+ Das Sheet wird aufbereitet, damit keine Fehlermeldung erzeugt wird, wenn eine Spalte eine L„nge gr”áer 250 Zeichen aufweist
         IF auswahl = 1 THEN BEGIN
           IF PL_W„h = '' THEN BEGIN
@@ -303,6 +328,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         RowCount := XlWrkShtReader.RowCount;
         XlWrkBkReader.Close;
 
+        //+ Das Sheet wird aufbereitet, damit keine Fehlermeldung erzeugt wird, wenn eine Spalte eine L„nge gr”áer 250 Zeichen aufweist
         XlWrkBkWriter := XlWrkBkWriter.Open(ServerUploadFile);
         XlWrkShtWriter := XlWrkBkWriter.GetWorksheetByName(SheetNamePriceBook);
 
@@ -313,12 +339,14 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         END;
 
         XlWrkBkWriter.Close;
+        //-
 
         XlWrkBkReader := XlWrkBkReader.Open(ServerUploadFile);
         XlWrkShtReader := XlWrkBkReader.GetWorksheetByName(SheetNameEOL);
         RowCount := XlWrkShtReader.RowCount;
         XlWrkBkReader.Close;
 
+        //+ Das Sheet wird aufbereitet, damit keine Fehlermeldung erzeugt wird, wenn eine Spalte eine L„nge gr”áer 250 Zeichen aufweist
         XlWrkBkWriter := XlWrkBkWriter.Open(ServerUploadFile);
         XlWrkShtWriter := XlWrkBkWriter.GetWorksheetByName(SheetNameEOL);
 
@@ -375,6 +403,35 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         //********************************************************************************************
 
         IF testlauf = FALSE THEN BEGIN
+
+          Servicepreise.RESET;
+          IF auswahl = 1 THEN
+            Servicepreise.SETRANGE(Art,Servicepreise.Art::Champs);
+          IF auswahl = 2 THEN
+            Servicepreise.SETRANGE(Art,Servicepreise.Art::ACTS);
+          Servicepreise.SETRANGE(W„hrungscode,PL_W„h);
+          Servicepreise.SETRANGE(Status,Servicepreise.Status::neu);
+          Servicepreise.SETRANGE("Update letzte Preisliste",TRUE);
+          Servicepreise.SETFILTER(Preisliste,'<>%1','SCHAEFFLER');
+          IF Servicepreise.FIND('-') THEN
+            WITH Servicepreise DO BEGIN
+              IF Preisliste <> PL_Version THEN BEGIN
+                SETRANGE(Status,Servicepreise.Status::alt);
+                IF FIND('-') THEN
+                  DELETEALL;
+                SETRANGE(Status,Servicepreise.Status::neu);
+                IF FIND('-') THEN BEGIN
+                  REPEAT
+                    RENAME("Service Artikelnr.","SUP Artikelnr.","Artikelnr. 2",W„hrungscode,Servicepreise.Status::alt);
+                    "Last Time Buy" := PL_LTB;
+                    MODIFY;
+                  UNTIL NEXT = 0;
+                END;
+              END;
+            END;
+
+          {
+          //wird durch die neue Routine s.o. berflssig
           IF TotalRowsPriceBook > 999 THEN BEGIN
             IF CONFIRM('Es konnte mehr als 1000 Eintr„ge in der Quelldatei gefunden werden.\' +
                         'Soll der Status Update letzte Preisliste fr alle Artikel zurckgesetzt und neu ' +
@@ -385,20 +442,24 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
               IF auswahl = 2 THEN
                 Servicepreise.SETRANGE(Art,Servicepreise.Art::ACTS);
               Servicepreise.SETRANGE(W„hrungscode,PL_W„h);
+              //Servicepreise.SETFILTER(Preisliste,'<>%1','SCHAEFFLER');
               IF Servicepreise.FINDFIRST THEN
                 Servicepreise.MODIFYALL("Update letzte Preisliste",FALSE);
             END;
           END;
+          }
         END;
 
         //Excel Protokoll wird initialisiert
-        CreateExcelProtocol;
+        IF testlauf THEN
+          CreateExcelProtocol;
 
         TroubleshootingSetup.SETRANGE(Type,TroubleshootingSetup.Type::Item);
         IF auswahl = 1 THEN
           TroubleshootingSetup.SETRANGE("Troubleshooting No.",'CHAMPS');
         IF auswahl = 2 THEN
           TroubleshootingSetup.SETRANGE("Troubleshooting No.",'ACTS');
+        //Fr Testzwecke und mehr Performance nachfolgenden Filter aktivieren
         //TroubleshootingSetup.SETRANGE("Troubleshooting No.",'SUPP_9X5');
         IF TroubleshootingSetup.FINDFIRST THEN BEGIN
           service_item_counter := TroubleshootingSetup.COUNT;
@@ -480,7 +541,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                   IF Opt_laufzeit.FINDFIRST THEN
                     EVALUATE(ServiceJahre,COPYSTR(Opt_laufzeit.Code,1,STRPOS(Opt_laufzeit.Code,'M')-1))
                   ELSE
-                    ERROR('Bitte eine Laufzeit fr Artikel %1 in der %2 hinterlegen.',Artikelname,Opt_laufzeit.TABLECAPTION);
+                    ERROR(Text201,Artikelname,Opt_laufzeit.TABLECAPTION);
 
                   ServiceArtikelname := UPPERCASE(GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_ServiceName));
                   IF (STRPOS(UPPERCASE(ServiceArtikelname),'CONTACT') <> 0) OR (STRPOS(UPPERCASE(ServiceArtikelname),'PRICE') <> 0) OR (ServiceArtikelname = '0')
@@ -518,20 +579,24 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                     obsolete_items := '';
                     Artikelnr_obsolete.RESET;
                     IF auswahl = 1 THEN
-                      Artikelnr_obsolete.SETFILTER(Art,'%1',Artikelnr_obsolete.Art::Champs);
+                      Artikelnr_obsolete.SETRANGE(Art,Artikelnr_obsolete.Art::Champs);
                     IF auswahl = 2 THEN
-                      Artikelnr_obsolete.SETFILTER(Art,'%1',Artikelnr_obsolete.Art::ACTS);
-                    Artikelnr_obsolete.SETFILTER("Artikelnr. 2",'%1',Artikelname);
-                    Artikelnr_obsolete.SETFILTER("SUP Artikelnr.",'%1',SUPArtikelname);
-                    Artikelnr_obsolete.SETFILTER(W„hrungscode,'%1',PL_W„h);
-                    Artikelnr_obsolete.SETFILTER("Zuordnung obsolete",'%1',FALSE);
+                      Artikelnr_obsolete.SETRANGE(Art,Artikelnr_obsolete.Art::ACTS);
+                    Artikelnr_obsolete.SETRANGE("Artikelnr. 2",Artikelname);
+                    Artikelnr_obsolete.SETRANGE("SUP Artikelnr.",SUPArtikelname);
+                    Artikelnr_obsolete.SETRANGE(W„hrungscode,PL_W„h);
+                    Artikelnr_obsolete.SETRANGE("Zuordnung obsolete",FALSE);
+                    Artikelnr_obsolete.SETRANGE(Status,Artikelnr_obsolete.Status::neu);
                     IF Artikelnr_obsolete.FINDFIRST THEN
                       REPEAT
                         IF Artikelnr_obsolete."Service Artikelnr." <> ServiceArtikelname THEN BEGIN
+                          {
+                          //obsolete Kennzeichnung wird eigentlich nicht mehr ben”tigt durch die verschiedenen Preislisten Optionen
                           IF testlauf = FALSE THEN BEGIN
                             Artikelnr_obsolete."Zuordnung obsolete" := TRUE;
                             Artikelnr_obsolete.MODIFY(TRUE);
                           END;
+                          }
                           obsolete_eintr„ge += 1;
                           obsolete_items += Artikelnr_obsolete."Service Artikelnr." + ';';
                         END;
@@ -539,13 +604,18 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
 
                     Servicepreise.RESET;
                     IF auswahl = 1 THEN
-                      Servicepreise.SETFILTER(Art,'%1',Servicepreise.Art::Champs);
+                      Servicepreise.SETRANGE(Art,Servicepreise.Art::Champs);
                     IF auswahl = 2 THEN
-                      Servicepreise.SETFILTER(Art,'%1',Servicepreise.Art::ACTS);
-                    Servicepreise.SETFILTER("Artikelnr. 2",'%1',Artikelname);
-                    Servicepreise.SETFILTER("Service Artikelnr.",'%1',ServiceArtikelname);
-                    Servicepreise.SETFILTER("SUP Artikelnr.",'%1',SUPArtikelname);
-                    Servicepreise.SETFILTER(W„hrungscode,'%1',PL_W„h);
+                      Servicepreise.SETRANGE(Art,Servicepreise.Art::ACTS);
+                    Servicepreise.SETRANGE("Artikelnr. 2",Artikelname);
+                    IF testlauf = FALSE THEN
+                      Servicepreise.SETRANGE("Service Artikelnr.",ServiceArtikelname)
+                    ELSE
+                      Servicepreise.SETRANGE("Zuordnung obsolete",FALSE);
+                    Servicepreise.SETRANGE("SUP Artikelnr.",SUPArtikelname);
+                    Servicepreise.SETRANGE(W„hrungscode,PL_W„h);
+                    Servicepreise.SETRANGE("Update letzte Preisliste",TRUE);
+                    Servicepreise.SETRANGE(Status,Servicepreise.Status::neu);
                     IF Servicepreise.FINDFIRST THEN BEGIN
                       IF (Servicepreise.MSRP <> ROUND(excel_msrp,0.01)) AND (excel_msrp <> 0) THEN BEGIN
                         ge„nderte_eintr„ge += 1;
@@ -582,6 +652,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                         Servicepreise."Update letzte Preisliste" := TRUE;
                         Servicepreise.Preisliste := PL_Version;
                         Servicepreise.W„hrungscode := PL_W„h;
+                        Servicepreise.Status := Servicepreise.Status::neu;
                         EVALUATE(Servicepreise."Laufzeit in Jahren",ServiceJahre);
                         Servicepreise."Laufzeit in Jahren" := Servicepreise."Laufzeit in Jahren" / 12;
                         IF auswahl = 1 THEN
@@ -594,7 +665,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                       neuer_service := TRUE;
                     END;
                     //Excel Protokoll
-                    IF (neuer_preis) OR (neuer_service) OR (obsolete_items <> '') THEN BEGIN
+                    IF ((neuer_preis) OR (neuer_service) OR (obsolete_items <> '')) AND (testlauf) THEN BEGIN
                       ColumnNo := 1;
                       EnterCell(RowNo,ColumnNo,Artikelname,'',FALSE,FALSE,FALSE,'',TempExcelBufferExport."Cell Type"::Text);
                       ColumnNo := ColumnNo + 1;
@@ -612,12 +683,12 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                       EnterCell(RowNo,ColumnNo,PL_W„h,'',FALSE,FALSE,FALSE,'',TempExcelBufferExport."Cell Type"::Text);
                       ColumnNo := ColumnNo + 1;
                       IF neuer_preis THEN
-                        EnterCell(RowNo,ColumnNo,'Preis„nderung','',FALSE,FALSE,FALSE,'',TempExcelBufferExport."Cell Type"::Text);
+                        EnterCell(RowNo,ColumnNo,'Preis„nderung','',FALSE,FALSE,FALSE,'',TempExcelBufferExport."Cell Type"::Text)
+                      ELSE
+                        IF obsolete_items <> '' THEN
+                          EnterCell(RowNo,ColumnNo,'Service„nderung','',FALSE,FALSE,FALSE,'',TempExcelBufferExport."Cell Type"::Text);
                       IF (neuer_service) AND (obsolete_items = '') THEN
-                        EnterCell(RowNo,ColumnNo,'NEU','',FALSE,FALSE,FALSE,'',TempExcelBufferExport."Cell Type"::Text)
-                        ELSE
-                          IF obsolete_items <> '' THEN
-                            EnterCell(RowNo,ColumnNo,'Service„nderung','',FALSE,FALSE,FALSE,'',TempExcelBufferExport."Cell Type"::Text);
+                        EnterCell(RowNo,ColumnNo,'NEU','',FALSE,FALSE,FALSE,'',TempExcelBufferExport."Cell Type"::Text);
                       ColumnNo := ColumnNo + 1;
                       EnterCell(RowNo,ColumnNo,SourceSheet,'',FALSE,FALSE,FALSE,'',TempExcelBufferExport."Cell Type"::Text);
                       ColumnNo := ColumnNo + 1;
@@ -643,7 +714,8 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         CLEAR(XlWrkShtReader);
         CLEAR(XlWrkBkWriter);
 
-        FinishExcelProtocol;
+        IF testlauf THEN
+          FinishExcelProtocol;
 
       END;
 
@@ -665,8 +737,14 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
           PL_W„h := '';
         EVALUATE(v_art,GetValueAtCell(10,7));
 
+        IF GetValueAtCell(13,7) <> '' THEN
+          prerelease_date := ConvertDateString(GetValueAtCell(13,7));
+
         IF GetValueAtCell(14,7) <> '' THEN
           startdatum := ConvertDateString(GetValueAtCell(14,7));
+
+        IF GetValueAtCell(15,7) <> '' THEN
+          PL_LTB := ConvertDateString(GetValueAtCell(15,7)) - 1;
 
         //Fhrende Einkaufsw„hrung
         system_ek_w„hrung := '';
@@ -684,6 +762,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         RowCount := XlWrkShtReader.RowCount;
         XlWrkBkReader.Close;
 
+        //+ Das Sheet wird aufbereitet, damit keine Fehlermeldung erzeugt wird, wenn eine Spalte eine L„nge gr”áer 250 Zeichen aufweist
         XlWrkBkWriter := XlWrkBkWriter.Open(ServerUploadFile);
         XlWrkShtWriter := XlWrkBkWriter.GetWorksheetByName(SheetName_UploadPriceBook);
 
@@ -693,6 +772,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         END;
 
         XlWrkBkWriter.Close;
+        //-
 
         TempExcelBuffer.DELETEALL;
         TempExcelBuffer.OpenBook(ServerUploadFile,SheetName_UploadPriceBook);
@@ -792,10 +872,10 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
               einkaufspreis.SETFILTER("Vendor No.",'%1',PL_Kreditor);
               einkaufspreis.SETFILTER("Currency Code",'%1',PL_W„h);
               einkaufspreis.SETFILTER("Ending Date",'%1',0D);
-              einkaufspreis.SETFILTER("Starting Date",'<>%1',startdatum);
+              einkaufspreis.SETFILTER("Starting Date",'<>%1',prerelease_date);
               IF einkaufspreis.FINDFIRST THEN BEGIN
                 IF testlauf = FALSE THEN BEGIN
-                  einkaufspreis."Ending Date" := startdatum - 1;
+                  einkaufspreis."Ending Date" := PL_LTB;
                   einkaufspreis.MODIFY(TRUE);
                 END;
               END;
@@ -805,13 +885,13 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                 einkaufspreis.SETFILTER("Item No.",'%1',Artikel."No.");
                 einkaufspreis.SETFILTER("Vendor No.",'%1',PL_Kreditor);
                 einkaufspreis.SETFILTER("Currency Code",'%1',PL_W„h);
-                einkaufspreis.SETFILTER("Starting Date",'%1',startdatum);
+                einkaufspreis.SETFILTER("Starting Date",'%1',prerelease_date);
                 IF NOT einkaufspreis.FINDFIRST THEN BEGIN
                   IF testlauf = FALSE THEN BEGIN
                     einkaufspreis.INIT;
                     einkaufspreis."Item No." := Artikel."No.";
                     einkaufspreis."Vendor No." := PL_Kreditor;
-                    einkaufspreis."Starting Date" := startdatum;
+                    einkaufspreis."Starting Date" := prerelease_date;
                     einkaufspreis."Currency Code" := PL_W„h;
                     einkaufspreis."Unit of Measure Code" := 'STšCK';
                     einkaufspreis."Direct Unit Cost" := excel_dc;
@@ -845,10 +925,10 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
               verkaufspreis.SETFILTER("Item No.",'%1',Artikel."No.");
               verkaufspreis.SETFILTER("Currency Code",'%1',PL_W„h);
               verkaufspreis.SETFILTER("Ending Date",'%1',0D);
-              verkaufspreis.SETFILTER("Starting Date",'<>%1',startdatum);
+              verkaufspreis.SETFILTER("Starting Date",'<>%1',prerelease_date);
               IF verkaufspreis.FINDFIRST THEN BEGIN
                 IF testlauf = FALSE THEN BEGIN
-                  verkaufspreis."Ending Date" := startdatum - 1;
+                  verkaufspreis."Ending Date" := PL_LTB;
                   verkaufspreis.MODIFY(TRUE);
                 END;
               END;
@@ -858,7 +938,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                 verkaufspreis.SETFILTER("Sales Type",'%1',verkaufspreis."Sales Type"::"All Customers");
                 verkaufspreis.SETFILTER("Item No.",'%1',Artikel."No.");
                 verkaufspreis.SETFILTER("Currency Code",'%1',PL_W„h);
-                //verkaufspreis.SETFILTER("Starting Date",'%1',CALCDATE('<-3M>',startdatum));
+                //verkaufspreis.SETFILTER("Starting Date",'%1',CALCDATE('<-3M>',prerelease_date));
                 IF verkaufspreis.FINDLAST THEN
                   nav_msrp := verkaufspreis."Unit Price";
 
@@ -866,13 +946,13 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                 verkaufspreis.SETFILTER("Sales Type",'%1',verkaufspreis."Sales Type"::"All Customers");
                 verkaufspreis.SETFILTER("Item No.",'%1',Artikel."No.");
                 verkaufspreis.SETFILTER("Currency Code",'%1',PL_W„h);
-                verkaufspreis.SETFILTER("Starting Date",'%1',startdatum);
+                verkaufspreis.SETFILTER("Starting Date",'%1',prerelease_date);
                 IF NOT verkaufspreis.FINDFIRST THEN BEGIN
                   IF testlauf = FALSE THEN BEGIN
                     verkaufspreis.INIT;
                     verkaufspreis."Sales Type" := verkaufspreis."Sales Type"::"All Customers";
                     verkaufspreis."Item No.":= Artikel."No.";
-                    verkaufspreis."Starting Date" := startdatum;
+                    verkaufspreis."Starting Date" := prerelease_date;
                     verkaufspreis."Currency Code" := PL_W„h;
                     verkaufspreis."Unit of Measure Code" := 'STšCK';
                     verkaufspreis."Unit Price" := excel_msrp;
@@ -1521,7 +1601,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
 
     LOCAL PROCEDURE Run_Import_Classic@1000000001();
     BEGIN
-      IF DialogFileName = '' THEN ERROR('Es wurde keine Importdatei angegeben.');
+      IF DialogFileName = '' THEN ERROR(Text200);
 
       ServerUploadFile := FileMgt.UploadFileSilent(DialogFileName);
 
@@ -2607,6 +2687,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
       1       TOP       26.03.18    ST    Excel Automation komplett durch deutlich schnellere Excel Buffer Technik ersetzt
       2       TOP       19.06.18    ST    Abl”sung der manuellen Preislisten Vorbereitung durch automatisches Einspielen der Original Preisliste
       3       TOP       08.01.19    ST    Pauschalartikel wie z.B. ACTS9X5-IPP_PK-A/YR werden nun beim Abgleich bercksichtigt, hier ist der Service gleich HW MSRP, EK und VK = 0
+      4       TOP       19.03.19    ST    Neues Preislisten System mit neu und alt integriert, um so zwischen verschiedenen Versionen wechseln zu k”nnen
     }
     END.
   }
