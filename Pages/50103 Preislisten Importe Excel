@@ -2,8 +2,8 @@ OBJECT Page 50103 Preislisten Importe Excel
 {
   OBJECT-PROPERTIES
   {
-    Date=04.01.19;
-    Time=15:29:42;
+    Date=04.07.19;
+    Time=16:19:00;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -1910,18 +1910,23 @@ OBJECT Page 50103 Preislisten Importe Excel
 
     PROCEDURE RIC_Import@1140006();
     VAR
-      Spalte_Part@1140007 : TextConst 'DEU=B';
-      Spalte_DC@1140006 : TextConst 'DEU=C';
-      Spalte_2reel@1140005 : TextConst 'DEU=D';
-      Spalte_Text@1140004 : TextConst 'DEU=G';
+      Spalte_Part@1140007 : TextConst 'DEU=A';
+      Spalte_DC@1140006 : TextConst 'DEU=B';
+      Spalte_2reel@1140005 : TextConst 'DEU=C';
+      Spalte_Text@1140004 : TextConst 'DEU=F';
       Max_Datens„tze@1140003 : TextConst 'DEU=1000';
       Text001@1140000 : TextConst 'DEU=&Chips,&Evalboards';
       PL_2reel@1140008 : Decimal;
+      PL_2reel_TEXT@1000000000 : Text;
       hilfs_PL_VPE_TEXT@1140009 : Text[120];
       PL_ALL_TEXT@1140010 : Text[120];
       PL_VPE_TEXT@1140011 : Text[120];
       artikel_gefunden@1140012 : Boolean;
       kein_preis_update@1140001 : Boolean;
+      platzhalter@1000000002 : Text[10];
+      suffix@1000000001 : Text;
+      k@1000000003 : Integer;
+      i@1000000004 : Integer;
     BEGIN
       //Ricoh Preislisten Abgleich
 
@@ -1941,7 +1946,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       IF CREATE(Quelle_Excel,FALSE,TRUE) THEN BEGIN END ELSE ERROR('Cannot start Excel Application.');
       Quelle_Book := Quelle_Excel.Workbooks._Open(filename,0,TRUE);
       Quelle_Sheet := Quelle_Book.Worksheets.Item(1);
-      Quelle_j := '12';
+      Quelle_j := '7';
 
       neuer_preis := 0;
       sonstige_aenderungen := 0;
@@ -1952,19 +1957,19 @@ OBJECT Page 50103 Preislisten Importe Excel
       //********************************************************************************************
 
       chr := 39;
-      IF FORMAT(Quelle_Sheet.Range('B11').Value) <> 'Item' THEN BEGIN
+      IF FORMAT(Quelle_Sheet.Range(Spalte_Part + Quelle_j).Value) <> 'Item' THEN BEGIN
         Quelle_Book.Close;
         ERROR(Text000,Spalte_Part);
       END;
-      IF FORMAT(Quelle_Sheet.Range('C11').Value) <> '1 reel' THEN BEGIN
+      IF FORMAT(Quelle_Sheet.Range(Spalte_DC + Quelle_j).Value) <> '1 reel' THEN BEGIN
         Quelle_Book.Close;
         ERROR(Text000,Spalte_DC);
       END;
-      IF STRPOS(FORMAT(Quelle_Sheet.Range('D11').Value),'2 reel') = 0 THEN BEGIN
+      IF STRPOS(FORMAT(Quelle_Sheet.Range(Spalte_2reel + Quelle_j).Value),'2 reel') = 0 THEN BEGIN
         Quelle_Book.Close;
         ERROR(Text000,Spalte_2reel);
       END;
-      IF DELCHR(FORMAT(Quelle_Sheet.Range('G11').Value),'=',FORMAT(chr)) <> 'Paclage / Taping / Qty per reel' THEN BEGIN
+      IF DELCHR(FORMAT(Quelle_Sheet.Range(Spalte_Text + Quelle_j).Value),'=',FORMAT(chr)) <> 'Paclage / Taping / Qty per reel' THEN BEGIN
         Quelle_Book.Close;
         ERROR(Text000,Spalte_Text);
       END;
@@ -1989,6 +1994,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       Protokoll_Sheet.Range('H'+'1').Value:= 'AUR';
       Protokoll_Sheet.Range('I'+'1').Value:= 'BB';
       Protokoll_Sheet.Range('J'+'1').Value:= 'Preisgruppe';
+      Protokoll_Sheet.Range('J:J').ColumnWidth := 20;
       Protokoll_Sheet.Range('K'+'1').Value:= 'Preis';
       Protokoll_Sheet.Range('L'+'1').Value:= 'VPE';
       Protokoll_Sheet.Range('A1:L1').Interior.ColorIndex := 15;
@@ -1998,6 +2004,8 @@ OBJECT Page 50103 Preislisten Importe Excel
       //********************************************************************************************
       //                         Eigentliches Update der Ricoh Artikel
       //********************************************************************************************
+
+      Quelle_j := INCSTR(Quelle_j);
 
       EVALUATE(a,Quelle_j);
       excel_datens„tze := Quelle_Sheet.UsedRange.Rows.Count - a + 1;
@@ -2027,12 +2035,19 @@ OBJECT Page 50103 Preislisten Importe Excel
 
       REPEAT
 
-        Artikelname := FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value);
+        Artikelname := DELCHR(FORMAT(Quelle_Sheet.Range(Spalte_Part+Quelle_j).Value),'=',' ');
+        WHILE STRPOS(Artikelname, 'x') <> 0 DO BEGIN
+          Artikelname := TOPAS_API.replace_text(Artikelname,'x','*');
+        END;
+
         PL_DISTI_TEXT := FORMAT(Quelle_Sheet.Range(Spalte_DC+Quelle_j).Value);
-        IF FORMAT(Quelle_Sheet.Range(Spalte_2reel+Quelle_j).Value) <> '' THEN
-          EVALUATE(PL_2reel,FORMAT(Quelle_Sheet.Range(Spalte_2reel+Quelle_j).Value))
+        IF FORMAT(Quelle_Sheet.Range(Spalte_2reel+Quelle_j).Value) = '-' THEN
+          PL_2reel := 0
         ELSE
-          PL_2reel := 0;
+          IF FORMAT(Quelle_Sheet.Range(Spalte_2reel+Quelle_j).Value) <> '' THEN
+            EVALUATE(PL_2reel,FORMAT(Quelle_Sheet.Range(Spalte_2reel+Quelle_j).Value))
+          ELSE
+            PL_2reel := 0;
         PL_2reel := ROUND(PL_2reel,0.01);
         PL_VPE := 0;
         hilfs_PL_VPE_TEXT := '';
@@ -2083,6 +2098,7 @@ OBJECT Page 50103 Preislisten Importe Excel
 
         IF Artikelname <> '' THEN BEGIN
           Artikel.RESET;
+          //Artikel.SETFILTER("No. 2",'%1','R3150N055E-TR-JE');
           Artikel.SETFILTER("Manufacturer Code",'%1','40');
           IF selection = 1 THEN BEGIN
             Artikel.SETFILTER("Item Tracking Code",'%1','DATECODE');
@@ -2119,16 +2135,59 @@ OBJECT Page 50103 Preislisten Importe Excel
                 AND (STRPOS(Artikel."No. 2",COPYSTR(Artikelname,1,STRPOS(Artikelname,'-Y')-1)) <> 0) THEN
                   artikel_gefunden := TRUE;
 
-              IF STRPOS(Artikelname,'**') <> 0 THEN
-                IF (STRPOS(Artikel."No. 2",COPYSTR(Artikelname,1,STRPOS(Artikelname,'**')-1)) <> 0)
-                AND (COPYSTR(Artikelname,STRPOS(Artikelname,'**')+2) = COPYSTR(Artikel."No. 2",STRLEN(Artikelname),
-                STRLEN(COPYSTR(Artikelname,STRPOS(Artikelname,'**')+2)))) THEN
-                  artikel_gefunden := TRUE;
+              //Platzhalter * in Verbindung mit Suffix wie A/B oder E/F auswerten
+              suffix := '';
+              IF STRPOS(Artikelname,'/') -1 > 0 THEN BEGIN
+                suffix := COPYSTR(Artikelname,STRPOS(Artikelname,'/') -1);
+              END;
+              IF suffix <> '' THEN BEGIN
+                k := STRLEN(suffix);
+                Artikelname := COPYSTR(Artikelname,1,STRPOS(Artikelname,'/') -2);
+              END ELSE
+                k := 1;
+
+              IF (artikel_gefunden = FALSE) AND (suffix <> '') THEN BEGIN
+                FOR i := 1 TO k DO BEGIN
+                  Artikelname += COPYSTR(suffix,i,1);
+                  IF (STRPOS(Artikel."No. 2",Artikelname) <> 0) AND (STRPOS(Artikel."No. 2",'-Y') = 0)
+                  AND (STRPOS(Artikelname,'-Y') = 0) THEN
+                    artikel_gefunden := TRUE;
+                  Artikelname := COPYSTR(Artikelname,1,STRLEN(Artikelname)-1);
+                END;
+              END;
+
+              IF artikel_gefunden = FALSE THEN BEGIN
+                platzhalter := '**';
+                FOR i := 1 TO k DO BEGIN
+                  IF suffix <> '' THEN Artikelname += COPYSTR(suffix,i,1);
+                  IF STRPOS(Artikelname,platzhalter) <> 0 THEN
+                    IF (STRPOS(Artikel."No. 2",COPYSTR(Artikelname,1,STRPOS(Artikelname,platzhalter)-1)) <> 0)
+                    AND (COPYSTR(Artikelname,STRPOS(Artikelname,platzhalter) + STRLEN(platzhalter)) = COPYSTR(Artikel."No. 2",STRLEN(Artikelname),
+                    STRLEN(COPYSTR(Artikelname,STRPOS(Artikelname,platzhalter) + STRLEN(platzhalter))))) THEN
+                      artikel_gefunden := TRUE;
+                  IF suffix <> '' THEN Artikelname := COPYSTR(Artikelname,1,STRLEN(Artikelname)-1);
+                END;
+              END;
+
+              IF artikel_gefunden = FALSE THEN BEGIN
+                platzhalter := '***';
+                FOR i := 1 TO k DO BEGIN
+                  IF suffix <> '' THEN Artikelname += COPYSTR(suffix,i,1);
+                  IF STRPOS(Artikelname,platzhalter) <> 0 THEN
+                    IF (STRPOS(Artikel."No. 2",COPYSTR(Artikelname,1,STRPOS(Artikelname,platzhalter)-1)) <> 0)
+                    AND (COPYSTR(Artikelname,STRPOS(Artikelname,platzhalter) + STRLEN(platzhalter)) = COPYSTR(Artikel."No. 2",STRLEN(Artikelname),
+                    STRLEN(COPYSTR(Artikelname,STRPOS(Artikelname,platzhalter) + STRLEN(platzhalter))))) THEN
+                      artikel_gefunden := TRUE;
+                  IF suffix <> '' THEN Artikelname := COPYSTR(Artikelname,1,STRLEN(Artikelname)-1);
+                END;
+              END;
+
+              IF suffix <> '' THEN Artikelname += suffix;
 
               IF artikel_gefunden THEN BEGIN
                 einkaufspreis.RESET;
-                einkaufspreis.SETFILTER(einkaufspreis."Item No.",'%1',Artikel."No.");
-                //einkaufspreis.SETFILTER(einkaufspreis."Vendor No.",'%1',Artikel."Vendor No.");
+                einkaufspreis.SETFILTER("Item No.",'%1',Artikel."No.");
+                //einkaufspreis.SETFILTER("Vendor No.",'%1',Artikel."Vendor No.");
                 IF einkaufspreis.FINDFIRST THEN BEGIN
                   IF (einkaufspreis."Direct Unit Cost" <> PL_DC) AND (PL_DC <> 0) AND (kein_preis_update = FALSE) THEN BEGIN
                     Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikel."No. 2";
@@ -2166,18 +2225,21 @@ OBJECT Page 50103 Preislisten Importe Excel
                 //*********************************************************************************************
 
                 IF testlauf = FALSE THEN BEGIN
-                  IF PL_2reel <> 0 THEN BEGIN
-                    IF (Artikel.Preisinfo = '') OR (STRPOS(Artikel.Preisinfo,'2 reel price: ') = 1) THEN
-                      Artikel.Preisinfo := '2 reel price: ' + FORMAT(PL_2reel)
-                    ELSE BEGIN
-                      IF STRPOS(Artikel.Preisinfo,'2 reel price: ') > 1 THEN
-                        Artikel.Preisinfo := COPYSTR(Artikel.Preisinfo,1,STRPOS(Artikel.Preisinfo,'2 reel price')-2)
-                                              + ' 2 reel price: ' + FORMAT(PL_2reel)
-                      ELSE
-                        IF (STRLEN(Artikel.Preisinfo) + STRLEN(' 2 reel price: ' + FORMAT(PL_2reel))) <= 60 THEN
-                          Artikel.Preisinfo:= Artikel.Preisinfo + ' 2 reel price: ' + FORMAT(PL_2reel);
-                      Artikel.MODIFY(TRUE);
-                    END;
+                  IF PL_2reel > 0 THEN
+                    PL_2reel_TEXT := '2 reel price: ' + FORMAT(PL_2reel)
+                  ELSE
+                    PL_2reel_TEXT := '2 reel price: bitte anfragen';
+
+                  IF (Artikel.Preisinfo = '') OR (STRPOS(Artikel.Preisinfo,'2 reel price: ') = 1) THEN
+                    Artikel.Preisinfo := PL_2reel_TEXT
+                  ELSE BEGIN
+                    IF STRPOS(Artikel.Preisinfo,'2 reel price: ') > 1 THEN
+                      Artikel.Preisinfo := COPYSTR(Artikel.Preisinfo,1,STRPOS(Artikel.Preisinfo,'2 reel price')-2)
+                                            + PL_2reel_TEXT
+                    ELSE
+                      IF (STRLEN(Artikel.Preisinfo) + STRLEN(' ' + PL_2reel_TEXT)) <= 60 THEN
+                        Artikel.Preisinfo:= Artikel.Preisinfo + ' ' + PL_2reel_TEXT;
+                    Artikel.MODIFY(TRUE);
                   END;
                 END;
 
@@ -2241,7 +2303,7 @@ OBJECT Page 50103 Preislisten Importe Excel
         //                                       Abbruchbedingung
         //*********************************************************************************************
 
-        // Wenn in der Quelldatei 15 Leere Zeilen hintereinander kommen, ist das Dateiende erreicht
+        // Wenn in der Quelldatei 5 Leere Zeilen hintereinander kommen, ist das Dateiende erreicht
         IF Artikelname = '' THEN                                 // erkennt das Ende der Excel Datei
           leere_zeilen += 1
         ELSE
@@ -2249,7 +2311,7 @@ OBJECT Page 50103 Preislisten Importe Excel
 
         Quelle_j := INCSTR(Quelle_j);                            // n„chste Zeile Importdatei
 
-      UNTIL (Max_Datens„tze = Quelle_j) OR (leere_zeilen = 15);  // Nach 15 Zeilen ohne Artikel ist Schluss
+      UNTIL (Max_Datens„tze = Quelle_j) OR (leere_zeilen = 5);  // Nach 5 Zeilen ohne Artikel ist Schluss
 
       Quelle_Excel.Visible(TRUE);
       Protokoll_Excel.Visible(TRUE);
