@@ -1,36 +1,38 @@
-OBJECT Table 110 Sales Shipment Header
+OBJECT Table 112 Sales Invoice Header
 {
   OBJECT-PROPERTIES
   {
     Date=08.07.19;
-    Time=17:55:03;
+    Time=17:55:35;
     Modified=Yes;
-    Version List=NAVW19.00.00.50087,TOP1.02;
+    Version List=NAVW19.00.00.50293,TOP1.02;
   }
   PROPERTIES
   {
     DataCaptionFields=No.,Sell-to Customer Name;
     OnDelete=VAR
-               CertificateOfSupply@1000 : Record 780;
+               PostedDeferralHeader@1002 : Record 1704;
+               PostSalesLinesDelete@1003 : Codeunit 363;
+               DeferralUtilities@1001 : Codeunit 1720;
              BEGIN
+               PostSalesLinesDelete.IsDocumentDeletionAllowed("Posting Date");
                TESTFIELD("No. Printed");
                LOCKTABLE;
-               PostSalesLinesDelete.DeleteSalesShptLines(Rec);
+               PostSalesLinesDelete.DeleteSalesInvLines(Rec);
 
-               SalesCommentLine.SETRANGE("Document Type",SalesCommentLine."Document Type"::Shipment);
+               SalesCommentLine.SETRANGE("Document Type",SalesCommentLine."Document Type"::"Posted Invoice");
                SalesCommentLine.SETRANGE("No.","No.");
                SalesCommentLine.DELETEALL;
 
                ApprovalsMgmt.DeletePostedApprovalEntries(RECORDID);
-
-               IF CertificateOfSupply.GET(CertificateOfSupply."Document Type"::"Sales Shipment","No.") THEN
-                 CertificateOfSupply.DELETE(TRUE);
+               PostedDeferralHeader.DeleteForDoc(DeferralUtilities.GetSalesDeferralDocType,'','',
+                 SalesCommentLine."Document Type"::"Posted Invoice","No.");
              END;
 
-    CaptionML=[DEU=Verkaufslieferkopf;
-               ENU=Sales Shipment Header];
-    LookupPageID=Page142;
-    DrillDownPageID=Page142;
+    CaptionML=[DEU=Verkaufsrechnungskopf;
+               ENU=Sales Invoice Header];
+    LookupPageID=Page143;
+    DrillDownPageID=Page143;
   }
   FIELDS
   {
@@ -141,10 +143,11 @@ OBJECT Table 110 Sales Shipment Header
     { 43  ;   ;Salesperson Code    ;Code20        ;TableRelation=Salesperson/Purchaser;
                                                    CaptionML=[DEU=Verk„ufercode;
                                                               ENU=Salesperson Code] }
-    { 44  ;   ;Order No.           ;Code20        ;CaptionML=[DEU=Auftragsnummer;
+    { 44  ;   ;Order No.           ;Code20        ;AccessByPermission=TableData 110=R;
+                                                   CaptionML=[DEU=Auftragsnummer;
                                                               ENU=Order No.] }
     { 46  ;   ;Comment             ;Boolean       ;FieldClass=FlowField;
-                                                   CalcFormula=Exist("Sales Comment Line" WHERE (Document Type=CONST(Shipment),
+                                                   CalcFormula=Exist("Sales Comment Line" WHERE (Document Type=CONST(Posted Invoice),
                                                                                                  No.=FIELD(No.),
                                                                                                  Document Line No.=CONST(0)));
                                                    CaptionML=[DEU=Bemerkung;
@@ -173,6 +176,20 @@ OBJECT Table 110 Sales Shipment Header
                                                                  ELSE IF (Bal. Account Type=CONST(Bank Account)) "Bank Account";
                                                    CaptionML=[DEU=Gegenkontonr.;
                                                               ENU=Bal. Account No.] }
+    { 60  ;   ;Amount              ;Decimal       ;FieldClass=FlowField;
+                                                   CalcFormula=Sum("Sales Invoice Line".Amount WHERE (Document No.=FIELD(No.)));
+                                                   CaptionML=[DEU=Betrag;
+                                                              ENU=Amount];
+                                                   Editable=No;
+                                                   AutoFormatType=1;
+                                                   AutoFormatExpr="Currency Code" }
+    { 61  ;   ;Amount Including VAT;Decimal       ;FieldClass=FlowField;
+                                                   CalcFormula=Sum("Sales Invoice Line"."Amount Including VAT" WHERE (Document No.=FIELD(No.)));
+                                                   CaptionML=[DEU=Betrag inkl. MwSt.;
+                                                              ENU=Amount Including VAT];
+                                                   Editable=No;
+                                                   AutoFormatType=1;
+                                                   AutoFormatExpr="Currency Code" }
     { 70  ;   ;VAT Registration No.;Text20        ;CaptionML=[DEU=USt-IdNr.;
                                                               ENU=VAT Registration No.] }
     { 73  ;   ;Reason Code         ;Code10        ;TableRelation="Reason Code";
@@ -261,23 +278,23 @@ OBJECT Table 110 Sales Shipment Header
                                                    CaptionML=[DEU=Zahlungsformcode;
                                                               ENU=Payment Method Code] }
     { 105 ;   ;Shipping Agent Code ;Code10        ;TableRelation="Shipping Agent";
-                                                   OnValidate=BEGIN
-                                                                IF "Shipping Agent Code" <> xRec."Shipping Agent Code" THEN
-                                                                  VALIDATE("Shipping Agent Service Code",'');
-                                                              END;
-
                                                    AccessByPermission=TableData 5790=R;
                                                    CaptionML=[DEU=Zustellercode;
                                                               ENU=Shipping Agent Code] }
     { 106 ;   ;Package Tracking No.;Text30        ;CaptionML=[DEU=Paketverfolgungsnr.;
                                                               ENU=Package Tracking No.] }
-    { 109 ;   ;No. Series          ;Code10        ;TableRelation="No. Series";
+    { 107 ;   ;Pre-Assigned No. Series;Code10     ;TableRelation="No. Series";
+                                                   CaptionML=[DEU=Zugeordnete Nr.-Serie;
+                                                              ENU=Pre-Assigned No. Series] }
+    { 108 ;   ;No. Series          ;Code10        ;TableRelation="No. Series";
                                                    CaptionML=[DEU=Nummernserie;
                                                               ENU=No. Series];
                                                    Editable=No }
     { 110 ;   ;Order No. Series    ;Code10        ;TableRelation="No. Series";
                                                    CaptionML=[DEU=Auftragsnr.-Serie;
                                                               ENU=Order No. Series] }
+    { 111 ;   ;Pre-Assigned No.    ;Code20        ;CaptionML=[DEU=Zugeordnete Nr.;
+                                                              ENU=Pre-Assigned No.] }
     { 112 ;   ;User ID             ;Code50        ;TableRelation=User."User Name";
                                                    OnLookup=VAR
                                                               UserMgt@1000 : Codeunit 418;
@@ -305,6 +322,13 @@ OBJECT Table 110 Sales Shipment Header
                                                    DecimalPlaces=0:5;
                                                    MinValue=0;
                                                    MaxValue=100 }
+    { 131 ;   ;Prepayment No. Series;Code10       ;TableRelation="No. Series";
+                                                   CaptionML=[DEU=Vorauszahlung Nummernserie;
+                                                              ENU=Prepayment No. Series] }
+    { 136 ;   ;Prepayment Invoice  ;Boolean       ;CaptionML=[DEU=Vorauszahlungsrechnung;
+                                                              ENU=Prepayment Invoice] }
+    { 137 ;   ;Prepayment Order No.;Code20        ;CaptionML=[DEU=Vorauszahlungsauftragsnr.;
+                                                              ENU=Prepayment Order No.] }
     { 151 ;   ;Quote No.           ;Code20        ;CaptionML=[DEU=Angebotsnr.;
                                                               ENU=Quote No.];
                                                    Editable=No }
@@ -316,6 +340,60 @@ OBJECT Table 110 Sales Shipment Header
                                                    CaptionML=[DEU=Dimensionssatz-ID;
                                                               ENU=Dimension Set ID];
                                                    Editable=No }
+    { 710 ;   ;Document Exchange Identifier;Text50;CaptionML=[DEU=Belegaustauschsbezeichner;
+                                                              ENU=Document Exchange Identifier] }
+    { 711 ;   ;Document Exchange Status;Option    ;CaptionML=[DEU=Belegaustauschsstatus;
+                                                              ENU=Document Exchange Status];
+                                                   OptionCaptionML=[DEU=Nicht gesendet,An Belegaustauschdienst gesendet,An Empf„nger geliefert,Fehler bei Lieferung,Verbindung zu Empf„nger steht aus;
+                                                                    ENU=Not Sent,Sent to Document Exchange Service,Delivered to Recipient,Delivery Failed,Pending Connection to Recipient];
+                                                   OptionString=Not Sent,Sent to Document Exchange Service,Delivered to Recipient,Delivery Failed,Pending Connection to Recipient }
+    { 712 ;   ;Doc. Exch. Original Identifier;Text50;
+                                                   CaptionML=[DEU=Originalbezeichner Belegaustausch;
+                                                              ENU=Doc. Exch. Original Identifier] }
+    { 720 ;   ;Coupled to CRM      ;Boolean       ;CaptionML=[DEU=Gekoppelt mit Dynamics CRM;
+                                                              ENU=Coupled to Dynamics CRM] }
+    { 827 ;   ;Credit Card No.     ;Code20        ;TableRelation="DO Payment Credit Card" WHERE (Customer No.=FIELD(Bill-to Customer No.));
+                                                   CaptionML=[DEU=Kreditkartennr.;
+                                                              ENU=Credit Card No.] }
+    { 1200;   ;Direct Debit Mandate ID;Code35     ;TableRelation="SEPA Direct Debit Mandate" WHERE (Customer No.=FIELD(Bill-to Customer No.));
+                                                   CaptionML=[DEU=Lastschrift-Mandat-ID;
+                                                              ENU=Direct Debit Mandate ID] }
+    { 1300;   ;Canceled By         ;Code20        ;TableRelation="Sales Cr.Memo Header";
+                                                   DataClassification=EndUserIdentifiableInformation;
+                                                   CaptionML=[DEU=Storniert von;
+                                                              ENU=Canceled By];
+                                                   Editable=No }
+    { 1301;   ;Canceled            ;Boolean       ;FieldClass=FlowField;
+                                                   CalcFormula=Exist("Sales Cr.Memo Header" WHERE (Canceled=CONST(Yes),
+                                                                                                   Applies-to Doc. Type=CONST(Invoice),
+                                                                                                   Applies-to Doc. No.=FIELD(No.)));
+                                                   CaptionML=[DEU=Storniert;
+                                                              ENU=Canceled];
+                                                   Editable=No }
+    { 1302;   ;Paid                ;Boolean       ;FieldClass=FlowField;
+                                                   CalcFormula=-Exist("Cust. Ledger Entry" WHERE (Entry No.=FIELD(Cust. Ledger Entry No.),
+                                                                                                  Open=FILTER(Yes)));
+                                                   CaptionML=[DEU=Bezahlt;
+                                                              ENU=Paid];
+                                                   Editable=No }
+    { 1303;   ;Remaining Amount    ;Decimal       ;FieldClass=FlowField;
+                                                   CalcFormula=Sum("Detailed Cust. Ledg. Entry".Amount WHERE (Cust. Ledger Entry No.=FIELD(Cust. Ledger Entry No.)));
+                                                   CaptionML=[DEU=Restbetrag;
+                                                              ENU=Remaining Amount];
+                                                   Editable=No;
+                                                   AutoFormatType=1;
+                                                   AutoFormatExpr="Currency Code" }
+    { 1304;   ;Cust. Ledger Entry No.;Integer     ;TableRelation="Cust. Ledger Entry"."Entry No.";
+                                                   TestTableRelation=No;
+                                                   CaptionML=[DEU=Debitorenposten Lfd. Nr.;
+                                                              ENU=Cust. Ledger Entry No.];
+                                                   Editable=No }
+    { 1305;   ;Invoice Discount Amount;Decimal    ;FieldClass=FlowField;
+                                                   CalcFormula=Sum("Sales Invoice Line"."Inv. Discount Amount" WHERE (Document No.=FIELD(No.)));
+                                                   CaptionML=[DEU=Rechnungsrab.-Betrag;
+                                                              ENU=Invoice Discount Amount];
+                                                   Editable=No;
+                                                   AutoFormatType=1 }
     { 5050;   ;Campaign No.        ;Code20        ;TableRelation=Campaign;
                                                    CaptionML=[DEU=Kampagnennr.;
                                                               ENU=Campaign No.] }
@@ -328,106 +406,149 @@ OBJECT Table 110 Sales Shipment Header
     { 5700;   ;Responsibility Center;Code10       ;TableRelation="Responsibility Center";
                                                    CaptionML=[DEU=Zust„ndigkeitseinheitencode;
                                                               ENU=Responsibility Center] }
-    { 5790;   ;Requested Delivery Date;Date       ;AccessByPermission=TableData 99000880=R;
-                                                   CaptionML=[DEU=Gewnschtes Lieferdatum;
-                                                              ENU=Requested Delivery Date] }
-    { 5791;   ;Promised Delivery Date;Date        ;CaptionML=[DEU=Zugesagtes Lieferdatum;
-                                                              ENU=Promised Delivery Date] }
-    { 5792;   ;Shipping Time       ;DateFormula   ;AccessByPermission=TableData 5790=R;
-                                                   CaptionML=[DEU=Transportzeit;
-                                                              ENU=Shipping Time] }
-    { 5793;   ;Outbound Whse. Handling Time;DateFormula;
-                                                   AccessByPermission=TableData 14=R;
-                                                   CaptionML=[DEU=Ausgeh. Lagerdurchlaufzeit;
-                                                              ENU=Outbound Whse. Handling Time] }
-    { 5794;   ;Shipping Agent Service Code;Code10 ;TableRelation="Shipping Agent Services".Code WHERE (Shipping Agent Code=FIELD(Shipping Agent Code));
-                                                   CaptionML=[DEU=Zustellertransportartencode;
-                                                              ENU=Shipping Agent Service Code] }
     { 7001;   ;Allow Line Disc.    ;Boolean       ;CaptionML=[DEU=Zeilenrabatt zulassen;
                                                               ENU=Allow Line Disc.] }
-    { 50001;  ;Endkunde            ;Text50        ;Description=TOPAS 30.01.13 ST }
-    { 50019;  ;W„hrungsabgleich    ;Boolean       ;Description=003 }
-    { 50030;  ;Ausfuhrbegleitdokument;Code30      ;Description=Zoll-Dokument-Nr. der Ausfuhr }
-    { 50033;  ;Spediteuraccount    ;Text20        ;Description=TOPAS: Acc.Nr. des Kunden beim Spediteur }
+    { 7200;   ;Get Shipment Used   ;Boolean       ;CaptionML=[DEU=Verwendete Lieferung abrufen;
+                                                              ENU=Get Shipment Used] }
+    { 50001;  ;Endkunde            ;Text50        ;Description=TOPAS 18.05.17 ST }
+    { 50015;  ;Ursprungsangebotsnr.;Code20        ;TableRelation="Sales Header" WHERE (Document Type=CONST(Quote));
+                                                   OnValidate=VAR
+                                                                Angebote@1000000000 : Record 36;
+                                                              BEGIN
+                                                              END;
+
+                                                   Description=TOPAS 19.10.16 UB }
+    { 50019;  ;W„hrungsabgleich    ;Boolean       ;Description=TOPAS 19.10.16 UB;
+                                                   Editable=No }
+    { 50020;  ;Euro-Parit„tsw„hrungscode;Code10   ;TableRelation=Currency;
+                                                   Description=TOPAS 19.10.16 UB;
+                                                   Editable=No }
+    { 50021;  ;Euro-Parit„tsw„hrungsfaktor;Decimal;DecimalPlaces=0:15;
+                                                   MinValue=0;
+                                                   Description=TOPAS 19.10.16 UB;
+                                                   Editable=No }
+    { 50030;  ;Ausfuhrbegleitdokument;Code30      ;Description=TOPAS 19.10.16 UB: Zoll-Dokument-Nr. der Ausfuhr }
+    { 50033;  ;Spediteuraccount    ;Text20        ;Description=TOPAS 19.10.16 UB: Acc.Nr. des Kunden beim Spediteur }
     { 50035;  ;Service EMail-Adresse;Text120      ;OnLookup=VAR
                                                               KontBez@1140002 : Record 5054;
                                                               Kontakt@1140001 : Record 5050;
                                                             BEGIN
                                                             END;
 
-                                                   Description=TOPAS 26.01.15 ST - fr Zusendung der Wartungsvertr„ge }
-    { 50052;  ;Endkunde Adresse    ;Text50        ;Description=TOPAS 30.01.13 ST }
-    { 50054;  ;Endkunde PLZ-Code   ;Code20        ;TableRelation="Post Code";
+                                                   Description=TOPAS 18.05.17 ST: Fr Zusendung der Wartungsvertr„ge }
+    { 50052;  ;Endkunde Adresse    ;Text50        ;Description=TOPAS 18.05.17 ST }
+    { 50054;  ;Endkunde PLZ-Code   ;Code20        ;TableRelation=IF (Endkunde Land=CONST()) "Post Code"
+                                                                 ELSE IF (Endkunde Land=FILTER(<>'')) "Post Code" WHERE (Country/Region Code=FIELD(Endkunde Land));
                                                    ValidateTableRelation=No;
                                                    TestTableRelation=No;
-                                                   Description=TOPAS 30.01.13 ST }
-    { 50055;  ;Endkunde Ort        ;Text30        ;Description=TOPAS 30.01.13 ST }
-    { 50056;  ;Endkunde Land       ;Code10        ;Description=TOPAS 30.01.13 ST }
-    { 50057;  ;Endkunde Kontakt    ;Text50        ;Description=TOPAS 30.01.13 ST }
-    { 50058;  ;Endkunde Telefonnr. ;Text30        ;Description=TOPAS 30.01.13 ST }
-    { 50059;  ;Endkunde E-Mail     ;Text80        ;Description=TOPAS 30.01.13 ST }
-    { 50061;  ;Systemhaus E-Mail   ;Text80        ;Description=TOPAS 18.01.16 ST }
-    { 50210;  ;Kontaktperson       ;Text30         }
-    { 50260;  ;Systemhaus Kontakt  ;Text50        ;Description=TOPAS 18.01.16 ST }
+                                                   Description=TOPAS 18.05.17 ST }
+    { 50055;  ;Endkunde Ort        ;Text30        ;TableRelation=IF (Endkunde Land=CONST()) "Post Code".City
+                                                                 ELSE IF (Endkunde Land=FILTER(<>'')) "Post Code".City WHERE (Country/Region Code=FIELD(Endkunde Land));
+                                                   ValidateTableRelation=No;
+                                                   TestTableRelation=No;
+                                                   Description=TOPAS 18.05.17 ST }
+    { 50056;  ;Endkunde Land       ;Code10        ;TableRelation=Country/Region;
+                                                   Description=TOPAS 18.05.17 ST }
+    { 50057;  ;Endkunde Kontakt    ;Text50        ;Description=TOPAS 18.05.17 ST }
+    { 50058;  ;Endkunde Telefonnr. ;Text30        ;Description=TOPAS 18.05.17 ST }
+    { 50059;  ;Endkunde E-Mail     ;Text80        ;Description=TOPAS 18.05.17 ST }
+    { 50061;  ;Systemhaus E-Mail   ;Text80        ;Description=TOPAS 18.05.17 ST }
+    { 50210;  ;Kontaktperson       ;Text30        ;Description=TOPAS 19.10.16 UB }
+    { 50260;  ;Systemhaus Kontakt  ;Text50        ;Description=TOPAS 18.05.17 ST }
     { 50262;  ;Rech EMail-Adresse  ;Text80        ;OnLookup=VAR
                                                               KontBez@1140000 : Record 5054;
                                                               Kontakt@1140001 : Record 5050;
                                                             BEGIN
                                                             END;
 
-                                                   Description=TOPAS 15.05.17 ST }
-    { 50329;  ;AB via EMail        ;Boolean       ;FieldClass=FlowField;
-                                                   CalcFormula=Lookup(Customer."AB via EMail" WHERE (No.=FIELD(Sell-to Customer No.)));
-                                                   Description=Lookup auf Debitor }
-    { 50331;  ;AB EMail-Adresse    ;Text80        ;Description=TOPAS 16.05.08 ST - Email-Auswahl aus dem Debitor }
+                                                   Description=TOPAS 18.05.17 ST }
+    { 50331;  ;AB EMail-Adresse    ;Text80        ;OnLookup=VAR
+                                                              KontBez@1140000 : Record 5054;
+                                                              Kontakt@1140001 : Record 5050;
+                                                            BEGIN
+                                                            END;
+
+                                                   Description=TOPAS 18.05.17 ST }
+    { 50334;  ;Nicht rechnen       ;Boolean       ;Description=TOPAS 19.10.16 UB }
     { 50341;  ;Lizenz EMail-Adresse;Text120       ;Description=TOPAS 19.03.18 ST }
     { 60000;  ;Territory Code      ;Code10        ;TableRelation=Territory;
                                                    CaptionML=[DEU=Gebietscode;
                                                               ENU=Territory Code];
-                                                   Description=TOPAS }
+                                                   Description=TOPAS 19.10.16 UB }
     { 60001;  ;Betreuer Innendienst;Code10        ;TableRelation=Salesperson/Purchaser;
-                                                   Description=TOPAS }
+                                                   Description=TOPAS 19.10.16 UB }
     { 60002;  ;Teams               ;Code10        ;TableRelation=Team;
-                                                   Description=TOPAS }
+                                                   Description=TOPAS 19.10.16 UB }
   }
   KEYS
   {
     {    ;No.                                     ;Clustered=Yes }
     {    ;Order No.                                }
+    {    ;Pre-Assigned No.                         }
+    {    ;Sell-to Customer No.,External Document No.;
+                                                   MaintainSQLIndex=No }
+    {    ;Sell-to Customer No.,Order Date         ;MaintainSQLIndex=No }
+    {    ;Sell-to Customer No.                     }
+    {    ;Prepayment Order No.,Prepayment Invoice  }
     {    ;Bill-to Customer No.                     }
-    {    ;Sell-to Customer No.,External Document No. }
-    {    ;Sell-to Customer No.,No.                 }
   }
   FIELDGROUPS
   {
-    { 1   ;DropDown            ;No.,Sell-to Customer No.,Sell-to Customer Name,Posting Date,Posting Description }
+    { 1   ;DropDown            ;No.,Sell-to Customer No.,Bill-to Customer No.,Posting Date,Posting Description }
+    { 2   ;Brick               ;No.,Sell-to Customer Name,Amount,Due Date,Amount Including VAT,Canceled }
   }
   CODE
   {
     VAR
-      SalesShptHeader@1000 : Record 110;
       SalesCommentLine@1001 : Record 44;
-      CustLedgEntry@1002 : Record 21;
-      ShippingAgent@1004 : Record 291;
-      PostSalesLinesDelete@1005 : Codeunit 363;
-      DimMgt@1006 : Codeunit 408;
-      ApprovalsMgmt@1011 : Codeunit 1535;
-      UserSetupMgt@1008 : Codeunit 5700;
-      TrackingInternetAddr@1007 : Text;
+      SalesSetup@1007 : Record 311;
+      CustLedgEntry@1003 : Record 21;
+      DimMgt@1005 : Codeunit 408;
+      ApprovalsMgmt@1008 : Codeunit 1535;
+      UserSetupMgt@1002 : Codeunit 5700;
+      CheckLatestQst@1006 : TextConst '@@@=%1 is Document Exchange Status;DEU=M”chten Sie den neuesten Status des elektronischen Belegs prfen?;ENU=Do you want to check the latest status of the electronic document?';
 
-    PROCEDURE PrintRecords@3(ShowRequestForm@1000 : Boolean);
+    PROCEDURE SendRecords@12();
     VAR
-      ReportSelection@1001 : Record 77;
+      DocumentSendingProfile@1001 : Record 60;
     BEGIN
-      WITH SalesShptHeader DO BEGIN
-        COPY(Rec);
-        ReportSelection.SETRANGE(Usage,ReportSelection.Usage::"S.Shipment");
-        ReportSelection.SETFILTER("Report ID",'<>0');
-        ReportSelection.FIND('-');
-        REPEAT
-          REPORT.RUNMODAL(ReportSelection."Report ID",ShowRequestForm,FALSE,SalesShptHeader);
-        UNTIL ReportSelection.NEXT = 0;
-      END;
+      DocumentSendingProfile.SendCustomerRecords(Rec,"Bill-to Customer No.",FIELDNO("Bill-to Customer No."));
+    END;
+
+    PROCEDURE PrintRecords@1(ShowRequestForm@1000 : Boolean);
+    VAR
+      TempDocumentSendingProfile@1001 : TEMPORARY Record 60;
+      ReportDistributionManagement@1002 : Codeunit 452;
+    BEGIN
+      TempDocumentSendingProfile.INIT;
+
+      IF ShowRequestForm THEN
+        TempDocumentSendingProfile.Printer := TempDocumentSendingProfile.Printer::"Yes (Prompt for Settings)"
+      ELSE
+        TempDocumentSendingProfile.Printer := TempDocumentSendingProfile.Printer::"Yes (Use Default Settings)";
+
+      TempDocumentSendingProfile.INSERT;
+
+      ReportDistributionManagement.SendDocumentReport(TempDocumentSendingProfile,Rec);
+    END;
+
+    PROCEDURE EmailRecords@17(ShowRequestForm@1000 : Boolean);
+    VAR
+      TempDocumentSendingProfile@1002 : TEMPORARY Record 60;
+      ReportDistributionManagement@1001 : Codeunit 452;
+    BEGIN
+      TempDocumentSendingProfile.INIT;
+
+      IF ShowRequestForm THEN
+        TempDocumentSendingProfile."E-Mail" := TempDocumentSendingProfile."E-Mail"::"Yes (Prompt for Settings)"
+      ELSE
+        TempDocumentSendingProfile."E-Mail" := TempDocumentSendingProfile."E-Mail"::"Yes (Use Default Settings)";
+
+      TempDocumentSendingProfile."E-Mail Attachment" := TempDocumentSendingProfile."E-Mail Attachment"::PDF;
+
+      TempDocumentSendingProfile.INSERT;
+
+      ReportDistributionManagement.SendDocumentReport(TempDocumentSendingProfile,Rec);
     END;
 
     PROCEDURE Navigate@2();
@@ -438,9 +559,60 @@ OBJECT Table 110 Sales Shipment Header
       NavigateForm.RUN;
     END;
 
-    PROCEDURE StartTrackingSite@1();
+    PROCEDURE GetCreditcardNumber@52() : Text[20];
+    VAR
+      DOPaymentCreditCard@1001 : Record 827;
     BEGIN
-      HYPERLINK(GetTrackingInternetAddr);
+      IF "Credit Card No." = '' THEN
+        EXIT('');
+      EXIT(DOPaymentCreditCard.GetCreditCardNumber("Credit Card No."));
+    END;
+
+    PROCEDURE LookupAdjmtValueEntries@3();
+    VAR
+      ValueEntry@1000 : Record 5802;
+    BEGIN
+      ValueEntry.SETCURRENTKEY("Document No.");
+      ValueEntry.SETRANGE("Document No.","No.");
+      ValueEntry.SETRANGE("Document Type",ValueEntry."Document Type"::"Sales Invoice");
+      ValueEntry.SETRANGE(Adjustment,TRUE);
+      PAGE.RUNMODAL(0,ValueEntry);
+    END;
+
+    PROCEDURE GetCustomerVATRegistrationNumber@14() : Text;
+    BEGIN
+      EXIT("VAT Registration No.");
+    END;
+
+    PROCEDURE GetCustomerVATRegistrationNumberLbl@15() : Text;
+    BEGIN
+      EXIT(FIELDCAPTION("VAT Registration No."));
+    END;
+
+    PROCEDURE GetCustomerGlobalLocationNumber@8() : Text;
+    BEGIN
+      EXIT('');
+    END;
+
+    PROCEDURE GetCustomerGlobalLocationNumberLbl@10() : Text;
+    BEGIN
+      EXIT('');
+    END;
+
+    PROCEDURE GetPaymentReference@9() : Text;
+    BEGIN
+      EXIT('');
+    END;
+
+    PROCEDURE GetPaymentReferenceLbl@11() : Text;
+    BEGIN
+      EXIT('');
+    END;
+
+    PROCEDURE GetLegalStatement@60() : Text;
+    BEGIN
+      SalesSetup.GET;
+      EXIT(SalesSetup.GetLegalStatement);
     END;
 
     PROCEDURE ShowDimensions@4();
@@ -448,18 +620,7 @@ OBJECT Table 110 Sales Shipment Header
       DimMgt.ShowDimensionSet("Dimension Set ID",STRSUBSTNO('%1 %2',TABLECAPTION,"No."));
     END;
 
-    PROCEDURE IsCompletlyInvoiced@5() : Boolean;
-    VAR
-      SalesShipmentLine@1008 : Record 111;
-    BEGIN
-      SalesShipmentLine.SETRANGE("Document No.","No.");
-      SalesShipmentLine.SETFILTER("Qty. Shipped Not Invoiced",'<>0');
-      IF SalesShipmentLine.ISEMPTY THEN
-        EXIT(TRUE);
-      EXIT(FALSE);
-    END;
-
-    PROCEDURE SetSecurityFilterOnRespCenter@6();
+    PROCEDURE SetSecurityFilterOnRespCenter@5();
     BEGIN
       IF UserSetupMgt.GetSalesFilter <> '' THEN BEGIN
         FILTERGROUP(2);
@@ -468,28 +629,58 @@ OBJECT Table 110 Sales Shipment Header
       END;
     END;
 
-    PROCEDURE GetTrackingInternetAddr@7() : Text;
-    VAR
-      HttpStr@1001 : Text;
+    PROCEDURE GetDocExchStatusStyle@13() : Text;
     BEGIN
-      HttpStr := 'http://';
-      TESTFIELD("Shipping Agent Code");
-      ShippingAgent.GET("Shipping Agent Code");
-      TrackingInternetAddr := STRSUBSTNO(ShippingAgent."Internet Address","Package Tracking No.");
+      CASE "Document Exchange Status" OF
+        "Document Exchange Status"::"Not Sent":
+          EXIT('Standard');
+        "Document Exchange Status"::"Sent to Document Exchange Service":
+          EXIT('Ambiguous');
+        "Document Exchange Status"::"Delivered to Recipient":
+          EXIT('Favorable');
+        ELSE
+          EXIT('Unfavorable');
+      END;
+    END;
 
-      IF STRPOS(TrackingInternetAddr,HttpStr) = 0 THEN
-        TrackingInternetAddr := HttpStr + TrackingInternetAddr;
-      EXIT(TrackingInternetAddr);
+    PROCEDURE DocExchStatusDrillDown@16();
+    VAR
+      DocExchLinks@1001 : Codeunit 1411;
+      DocExchServiceMgt@1000 : Codeunit 1410;
+    BEGIN
+      CASE "Document Exchange Status" OF
+        "Document Exchange Status"::"Not Sent":
+          EXIT;
+        "Document Exchange Status"::"Sent to Document Exchange Service",
+        "Document Exchange Status"::"Pending Connection to Recipient":
+          IF CONFIRM(CheckLatestQst,TRUE) THEN
+            DocExchLinks.CheckAndUpdateDocExchInvoiceStatus(Rec);
+        "Document Exchange Status"::"Delivered to Recipient":
+          BEGIN
+            HYPERLINK(DocExchServiceMgt.GetExternalDocURL("Document Exchange Identifier"));
+            EXIT;
+          END;
+      END;
+
+      ShowActivityLog;
+    END;
+
+    PROCEDURE ShowActivityLog@116();
+    VAR
+      ActivityLog@1000 : Record 710;
+    BEGIN
+      ActivityLog.ShowEntries(RECORDID);
     END;
 
     BEGIN
     {
       Lfd.Nr. Version   Datum       User  Beschreibung
       ===========================================================================
-      1       TOP1.00   19.10.16    UB    TOPAS Felder angelegt
-      2       TOP1.00   15.05.17    ST    Feld "Rech E-Mail-Adresse" angelegt
-      3       TOP1.01   19.03.18    ST    Neues Feld 50341 "Lizenz EMail Adresse" angelegt
-      4       TOP1.02   08.07.19    ST    Service EMail-Adresse u. Lizenz EMail-Adresse 80 => 120 Zeichen
+      1       TOP1.00   19.10.16    UB    TOPAS Felder 50015,50019-50021,50030,50033,50210,50334,60000-60002 angelegt
+      2       TOP1.00   06.01.17    ST    Neues Feld 50262 Rech EMail-Adresse angelegt
+      3       TOP1.00   18.05.17    ST    Neue Felder 50001, 50035, 50052, 50054-50059, 50061, 50260, 50262, 50331 angelegt
+      4       TOP1.01   19.03.18    ST    Neues Feld 50341 "Lizenz EMail Adresse" angelegt
+      5       TOP1.02   08.07.19    ST    Service EMail-Adresse u. Lizenz EMail-Adresse 80 => 120 Zeichen
     }
     END.
   }
