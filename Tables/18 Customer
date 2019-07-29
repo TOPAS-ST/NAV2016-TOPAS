@@ -2,10 +2,10 @@ OBJECT Table 18 Customer
 {
   OBJECT-PROPERTIES
   {
-    Date=28.05.18;
-    Time=18:40:39;
+    Date=08.07.19;
+    Time=17:46:56;
     Modified=Yes;
-    Version List=NAVW19.00.00.50221,TOP1.04;
+    Version List=NAVW19.00.00.50637,TOP1.05;
   }
   PROPERTIES
   {
@@ -38,35 +38,7 @@ OBJECT Table 18 Customer
     OnModify=BEGIN
                "Last Date Modified" := TODAY;
 
-               IF (Name <> xRec.Name) OR
-                  ("Search Name" <> xRec."Search Name") OR
-                  ("Name 2" <> xRec."Name 2") OR
-                  (Address <> xRec.Address) OR
-                  ("Address 2" <> xRec."Address 2") OR
-                  (City <> xRec.City) OR
-                  ("Phone No." <> xRec."Phone No.") OR
-                  ("Telex No." <> xRec."Telex No.") OR
-                  ("Territory Code" <> xRec."Territory Code") OR
-                  ("Currency Code" <> xRec."Currency Code") OR
-                  ("Language Code" <> xRec."Language Code") OR
-                  ("Salesperson Code" <> xRec."Salesperson Code") OR
-
-                  // TOPAS 24.10.2016 st - Beginn *****************************************************************
-                  ("Betreuer Innendienst" <> xRec."Betreuer Innendienst") OR
-                  (Teams <> xRec.Teams) OR
-                  (AC_Solutionpartner <> xRec.AC_Solutionpartner) OR
-                  // TOPAS Ende ******************************************************************
-
-                  ("Country/Region Code" <> xRec."Country/Region Code") OR
-                  ("Fax No." <> xRec."Fax No.") OR
-                  ("Telex Answer Back" <> xRec."Telex Answer Back") OR
-                  ("VAT Registration No." <> xRec."VAT Registration No.") OR
-                  ("Post Code" <> xRec."Post Code") OR
-                  (County <> xRec.County) OR
-                  ("E-Mail" <> xRec."E-Mail") OR
-                  ("Home Page" <> xRec."Home Page") OR
-                  (Contact <> xRec.Contact)
-               THEN BEGIN
+               IF IsContactUpdateNeeded THEN BEGIN
                  MODIFY;
                  UpdateContFromCust.OnModify(Rec);
                  IF NOT FIND THEN BEGIN
@@ -87,7 +59,7 @@ OBJECT Table 18 Customer
                CampaignTargetGrMgmt@1002 : Codeunit 7030;
                VATRegistrationLogMgt@1006 : Codeunit 249;
              BEGIN
-               //TOPAS 22.04.09-ST, 25.06.2012-ST Um Wartungsvertr„ge erweitert
+               //TOPAS 22.04.09 ST, 25.06.12 ST - Um Wartungsvertr„ge erweitert +
 
                Belehistorie.RESET;
                Belehistorie.SETFILTER(Belehistorie."Debitornr.","No.");
@@ -155,7 +127,7 @@ OBJECT Table 18 Customer
                IF "RMA-Zeile".FINDFIRST THEN
                  ERROR(Text018,TABLECAPTION,"No.","RMA-Zeile".TABLECAPTION);
 
-               //TOPAS Ende
+               //TOPAS -
 
                ApprovalsMgmt.OnCancelCustomerApprovalRequest(Rec);
 
@@ -1380,7 +1352,7 @@ OBJECT Table 18 Customer
     { 50216;  ;AB nur best„tigt    ;Boolean       ;Description=TOPAS: AB wird nur versand, wenn Termine best„tigt worden sind. }
     { 50217;  ;Endkunde w/Bestcker;Boolean       ;Description=TOPAS: Endkunde in Bezeichnung3 eintragen fr IDT-POS (Bestcker) }
     { 50218;  ;SerNr. via EMail    ;Boolean       ;Description=TOPAS: Seriennummer via E-Mail an den Kunden versenden }
-    { 50219;  ;Text Versandbedingungen;Text50     ;Description=TOPAS: Text fr spezielle Wnsche des Kunden beim Versand beachten }
+    { 50219;  ;Versandbedingungen  ;Text80        ;Description=TOPAS: Text fr spezielle Wnsche des Kunden beim Versand beachten }
     { 50221;  ;Barcode_Lieferschein_erw;Boolean   ;Description=TOPAS: Druckt erweiterten Barcode auf Lieferschein }
     { 50224;  ;Best„tigung via Internet;Boolean   ;Description=TOPAS: AB wird im System des Kunden eingetragen }
     { 50261;  ;Rech via EMail      ;Boolean       ;OnValidate=BEGIN
@@ -1671,14 +1643,16 @@ OBJECT Table 18 Customer
       SalesOutstandingAmountFromShipment@1001 : Decimal;
       ServOutstandingAmountFromShipment@1003 : Decimal;
       InvoicedPrepmtAmountLCY@1004 : Decimal;
+      RetRcdNotInvAmountLCY@1006 : Decimal;
     BEGIN
       SalesOutstandingAmountFromShipment := SalesLine.OutstandingInvoiceAmountFromShipment("No.");
       ServOutstandingAmountFromShipment := ServiceLine.OutstandingInvoiceAmountFromShipment("No.");
       InvoicedPrepmtAmountLCY := GetInvoicedPrepmtAmountLCY;
+      RetRcdNotInvAmountLCY := GetReturnRcdNotInvAmountLCY;
 
       EXIT("Balance (LCY)" + "Outstanding Orders (LCY)" + "Shipped Not Invoiced (LCY)" + "Outstanding Invoices (LCY)" +
         "Outstanding Serv. Orders (LCY)" + "Serv Shipped Not Invoiced(LCY)" + "Outstanding Serv.Invoices(LCY)" -
-        SalesOutstandingAmountFromShipment - ServOutstandingAmountFromShipment - InvoicedPrepmtAmountLCY);
+        SalesOutstandingAmountFromShipment - ServOutstandingAmountFromShipment - InvoicedPrepmtAmountLCY - RetRcdNotInvAmountLCY);
     END;
 
     PROCEDURE GetSalesLCY@13() : Decimal;
@@ -1763,6 +1737,17 @@ OBJECT Table 18 Customer
       SEPADirectDebitMandate@1001 : Record 1230;
     BEGIN
       EXIT(SEPADirectDebitMandate.GetDefaultMandate("No.",Date) <> '');
+    END;
+
+    PROCEDURE GetReturnRcdNotInvAmountLCY@53() : Decimal;
+    VAR
+      SalesLine@1000 : Record 37;
+    BEGIN
+      SalesLine.SETCURRENTKEY("Document Type","Bill-to Customer No.");
+      SalesLine.SETRANGE("Document Type",SalesLine."Document Type"::"Return Order");
+      SalesLine.SETRANGE("Bill-to Customer No.","No.");
+      SalesLine.CALCSUMS("Return Rcd. Not Invd. (LCY)");
+      EXIT(SalesLine."Return Rcd. Not Invd. (LCY)");
     END;
 
     PROCEDURE GetInvoicedPrepmtAmountLCY@18() : Decimal;
@@ -1853,6 +1838,45 @@ OBJECT Table 18 Customer
       EXIT("No.");
     END;
 
+    LOCAL PROCEDURE IsContactUpdateNeeded@48() : Boolean;
+    VAR
+      CustContUpdate@1001 : Codeunit 5056;
+      UpdateNeeded@1000 : Boolean;
+    BEGIN
+      UpdateNeeded :=
+        (Name <> xRec.Name) OR
+        ("Search Name" <> xRec."Search Name") OR
+        ("Name 2" <> xRec."Name 2") OR
+        (Address <> xRec.Address) OR
+        ("Address 2" <> xRec."Address 2") OR
+        (City <> xRec.City) OR
+        ("Phone No." <> xRec."Phone No.") OR
+        ("Telex No." <> xRec."Telex No.") OR
+        ("Territory Code" <> xRec."Territory Code") OR
+        ("Currency Code" <> xRec."Currency Code") OR
+        ("Language Code" <> xRec."Language Code") OR
+        ("Salesperson Code" <> xRec."Salesperson Code") OR
+        // TOPAS 24.10.16 ST + ****************************************************
+        ("Betreuer Innendienst" <> xRec."Betreuer Innendienst") OR
+        (Teams <> xRec.Teams) OR
+        (AC_Solutionpartner <> xRec.AC_Solutionpartner) OR
+        // TOPAS - ****************************************************************
+        ("Country/Region Code" <> xRec."Country/Region Code") OR
+        ("Fax No." <> xRec."Fax No.") OR
+        ("Telex Answer Back" <> xRec."Telex Answer Back") OR
+        ("VAT Registration No." <> xRec."VAT Registration No.") OR
+        ("Post Code" <> xRec."Post Code") OR
+        (County <> xRec.County) OR
+        ("E-Mail" <> xRec."E-Mail") OR
+        ("Home Page" <> xRec."Home Page") OR
+        (Contact <> xRec.Contact);
+
+      IF NOT UpdateNeeded AND NOT ISTEMPORARY THEN
+        UpdateNeeded := CustContUpdate.ContactNameIsBlank("No.");
+
+      EXIT(UpdateNeeded);
+    END;
+
     LOCAL PROCEDURE "***TOPAS_Func***"@1000000000();
     BEGIN
     END;
@@ -1889,6 +1913,7 @@ OBJECT Table 18 Customer
       4       TOP1.02   13.03.18    ST    Neue Felder 50340 und 50341 angelegt
       5       TOP1.03   07.05.18    ST    Neues Feld 50514 ADV angelegt - Datenschutz Auftragsdatenvereinbarung
       6       TOP1.04   28.05.18    ST    Neues Feld 50515 "System Preisbindung" angelegt - fr Andruck auf Angeboten
+      7       TOP1.05   08.07.19    ST    Feld "Text Versandbedingung" in "Versandbedingung umbenannt, 50 => 80 Zeichen
     }
     END.
   }
