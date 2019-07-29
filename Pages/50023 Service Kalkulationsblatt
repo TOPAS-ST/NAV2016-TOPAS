@@ -2,8 +2,8 @@ OBJECT Page 50023 Service Kalkulationsblatt
 {
   OBJECT-PROPERTIES
   {
-    Date=05.04.19;
-    Time=09:00:00;
+    Date=29.07.19;
+    Time=15:48:31;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -583,6 +583,8 @@ OBJECT Page 50023 Service Kalkulationsblatt
 
                              IF Basisger„t =  TRUE THEN
                                TESTFIELD("Wartungsvertragsnr.",'');
+
+                             CurrPage.UPDATE;
                            END;
                             }
 
@@ -660,6 +662,8 @@ OBJECT Page 50023 Service Kalkulationsblatt
       hinweis_ablaufdatum_zeigen@1000000019 : Boolean;
       start_ablaufdatum_nachtragen@1000000014 : Boolean;
       TextExport@1000000017 : TextConst 'DEU=Daten werden analysiert ...\\';
+      service_ablaufdatum@1000000022 : Date;
+      wartungsvertrag_gefunden@1000000021 : Boolean;
 
     PROCEDURE HoleArtikelPos@1140007();
     BEGIN
@@ -1622,6 +1626,7 @@ OBJECT Page 50023 Service Kalkulationsblatt
       hinweis_ahr_zeigen := FALSE;
       hinweis_ablaufdatum := '';
       hinweis_ablaufdatum_zeigen := FALSE;
+      service_ablaufdatum := 0D;
       kalk_preis_gesamt := 0;
 
       AktBeleg.RESET;
@@ -1740,23 +1745,58 @@ OBJECT Page 50023 Service Kalkulationsblatt
       END;
 
       //Hinweis zum Vertragsende ausgeben
+      wartungsvertrag_gefunden := FALSE;
       ServRelaDoc.RESET;
       ServRelaDoc.SETRANGE(Art,ServRelaDoc.Art::"SUP-AU");
       ServRelaDoc.SETRANGE("Nr.","Nr.");
       ServRelaDoc.SETRANGE("Zeilennr.","Zeilennr.");
       ServRelaDoc.SETFILTER("Vertragsnr. bernommen",'<>%1','');
       IF ServRelaDoc.FINDFIRST THEN BEGIN
-        IF Wartungsvertrag.GET(ServRelaDoc."Vertragsnr. bernommen") THEN BEGIN
-          hinweis_ablaufdatum_zeigen := TRUE;
-          hinweis_ablaufdatum := STRSUBSTNO('Der Wartungsvertrag %1 endet am: ',Wartungsvertrag."Wartungsvertragsnr.") + FORMAT(Wartungsvertrag.Vertragsablaufdatum);
-        END;
+        Wartungsvertrag.GET(ServRelaDoc."Vertragsnr. bernommen");
+        wartungsvertrag_gefunden := TRUE;
       END ELSE BEGIN
         ServRelaDoc.SETRANGE("Vertragsnr. bernommen",'');
         ServRelaDoc.SETFILTER("Wartungsvertragsnr.",'<>%1','');
-        IF ServRelaDoc.FINDFIRST THEN
-          IF Wartungsvertrag.GET(ServRelaDoc."Wartungsvertragsnr.") THEN BEGIN
+        IF ServRelaDoc.FINDFIRST THEN BEGIN
+          Wartungsvertrag.GET(ServRelaDoc."Wartungsvertragsnr.");
+          wartungsvertrag_gefunden := TRUE;
+        END;
+      END;
+
+      IF wartungsvertrag_gefunden THEN BEGIN
+        TroubleshootingSetup.RESET;
+        TroubleshootingSetup.SETRANGE("No.","SUP Artikelnr.");
+        TroubleshootingSetup.SETRANGE("Troubleshooting No.",'AHR');
+        IF TroubleshootingSetup.FINDFIRST THEN BEGIN
+          TroubleshootingSetup.SETRANGE("No.");
+          TroubleshootingSetup.FINDFIRST;
+          REPEAT
+            ServicePos.RESET;
+            ServicePos.SETRANGE(Art,ServicePos.Art::Service);
+            ServicePos.SETRANGE(Inaktiv,FALSE);
+            ServicePos.SETRANGE(Basisger„t,TRUE);
+            ServicePos.SETRANGE("SUP Artikelnr.",TroubleshootingSetup."No.");
+            ServicePos.SETRANGE("Wartungsvertragsnr.",Wartungsvertrag."Wartungsvertragsnr.");
+            ServicePos.SETCURRENTKEY("Ablaufdatum Serviceleistung","SUP Artikelnr.",Gruppierung);
+            ServicePos.ASCENDING(FALSE);
+            IF ServicePos.FINDFIRST THEN BEGIN
+              IF service_ablaufdatum < ServicePos."Ablaufdatum Serviceleistung" THEN
+                service_ablaufdatum := ServicePos."Ablaufdatum Serviceleistung";
+            END ELSE BEGIN
+              ServicePos.SETRANGE("Wartungsvertragsnr.","Vertragsnr. bernommen");
+              IF ServicePos.FINDFIRST THEN BEGIN
+                IF service_ablaufdatum < ServicePos."Ablaufdatum Serviceleistung" THEN
+                  service_ablaufdatum := ServicePos."Ablaufdatum Serviceleistung";
+              END;
+            END;
+          UNTIL TroubleshootingSetup.NEXT = 0;
+        END ELSE BEGIN
+          service_ablaufdatum := Wartungsvertrag.Vertragsablaufdatum;
+        END;
+
+        IF service_ablaufdatum <> 0D THEN BEGIN
           hinweis_ablaufdatum_zeigen := TRUE;
-          hinweis_ablaufdatum := STRSUBSTNO('Der Wartungsvertrag %1 endet am: ',Wartungsvertrag."Wartungsvertragsnr.") + FORMAT(Wartungsvertrag.Vertragsablaufdatum);
+          hinweis_ablaufdatum := STRSUBSTNO('Der Service fr den Wartungsvertrag %1 endet am: ',Wartungsvertrag."Wartungsvertragsnr.") + FORMAT(service_ablaufdatum);
         END;
       END;
     END;
@@ -2082,6 +2122,9 @@ OBJECT Page 50023 Service Kalkulationsblatt
     BEGIN
       hinweistext_AHR := '';
       hinweistext := '';
+      hinweis_ablaufdatum := '';
+      hinweis_ablaufdatum_zeigen := FALSE;
+      service_ablaufdatum := 0D;
       EVALUATE(v_Art,GETFILTER(Art));
       CASE v_Art OF
         'SUP-AU' :
