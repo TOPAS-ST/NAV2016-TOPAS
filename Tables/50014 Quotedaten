@@ -1,0 +1,191 @@
+OBJECT Table 50014 Quotedaten
+{
+  OBJECT-PROPERTIES
+  {
+    Date=01.02.17;
+    Time=15:19:52;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    OnInsert=BEGIN
+               IF "Quotenr." = '' THEN BEGIN
+                 EinkEinr.GET;
+                 EinkEinr.TESTFIELD(Quotenummern);
+                 NrSerienVerw.InitSeries(EinkEinr.Quotenummern,xRec.Nummernserie,0D,"Quotenr.",Nummernserie);
+               END;
+
+               "angelegt am" := WORKDATE;
+               "angelegt von" := USERID;
+             END;
+
+    OnModify=BEGIN
+               "ge„ndert am" := WORKDATE;
+               "ge„ndert von" := USERID;
+             END;
+
+    OnDelete=BEGIN
+               BemerkZeile.SETRANGE("Table Name",BemerkZeile."Table Name"::"32");
+               BemerkZeile.SETRANGE("No.","Quotenr.");
+               BemerkZeile.DELETEALL;
+
+               AuftragZeile.SETCURRENTKEY("Document Type",Type,"No.");
+               AuftragZeile.SETRANGE("Document Type",AuftragZeile."Document Type"::Quote);
+               AuftragZeile.SETRANGE(Type,AuftragZeile.Type::Item);
+               AuftragZeile.SETRANGE("Quotenr.", "Quotenr.");
+               IF AuftragZeile.FIND('-') THEN
+                 ERROR(
+                   'Sie k”nnen %1 %2 nicht l”schen, da noch Angebote vorhanden sind.',
+                   TABLENAME,"Quotenr.");
+
+               AuftragZeile.SETCURRENTKEY("Document Type",Type,"No.");
+               AuftragZeile.SETRANGE("Document Type",AuftragZeile."Document Type"::Order);
+               AuftragZeile.SETRANGE(Type,AuftragZeile.Type::Item);
+               AuftragZeile.SETRANGE("Quotenr.", "Quotenr.");
+               IF AuftragZeile.FIND('-') THEN
+                 ERROR(
+                   'Sie k”nnen %1 %2 nicht l”schen, da noch Auftr„ge vorhanden sind.',
+                   TABLENAME,"Quotenr.");
+               // +001
+             END;
+
+    LookupPageID=Page50011;
+  }
+  FIELDS
+  {
+    { 1   ;   ;Quotenr.            ;Code10        ;OnValidate=BEGIN
+                                                                IF "Quotenr." <> xRec."Quotenr." THEN BEGIN
+                                                                  EinkEinr.GET;
+                                                                  NrSerienVerw.TestManual(EinkEinr.Quotenummern);
+                                                                  Nummernserie := '';
+                                                                END;
+                                                              END;
+                                                               }
+    { 2   ;   ;Herstellercode      ;Code4         ;TableRelation=Manufacturer;
+                                                   OnValidate=BEGIN
+                                                                AktHerstCode;
+                                                              END;
+                                                               }
+    { 3   ;   ;Bemerkung           ;Boolean       ;FieldClass=FlowField;
+                                                   CalcFormula=Exist("Comment Line" WHERE (Table Name=CONST(32),
+                                                                                           No.=FIELD(Quotenr.)));
+                                                   Editable=No }
+    { 4   ;   ;angelegt am         ;Date          ;Editable=No }
+    { 5   ;   ;angelegt von        ;Code50        ;Editable=No }
+    { 6   ;   ;ge„ndert am         ;Date          ;Editable=No }
+    { 7   ;   ;ge„ndert von        ;Code50        ;Editable=No }
+    { 10  ;   ;Artikelnr.          ;Code40        ;TableRelation=Item.No. }
+    { 11  ;   ;Debitorennr.        ;Code20        ;TableRelation=Customer.No. }
+    { 12  ;   ;Quotenr. Hersteller ;Code20         }
+    { 13  ;   ;Genehmigungstext    ;Text100        }
+    { 14  ;   ;Gltigkeitsdatum    ;Date           }
+    { 15  ;   ;Quotepreis          ;Decimal       ;DecimalPlaces=0:5 }
+    { 16  ;   ;Quotemenge          ;Decimal       ;OnValidate=BEGIN
+                                                                // TOPAS 10.10.08 ST
+                                                                IF "Quotenr." <> '' THEN BEGIN
+                                                                  IF Quotesystem = 'SHIP&DEBIT' THEN BEGIN
+                                                                    IF "Quotenr. Hersteller" = '' THEN
+                                                                      Rec.TESTFIELD (Genehmigungstext);
+                                                                      Rec.CALCFIELDS ("Restmenge in Auftrag", "Menge in VK-Rechnung");
+                                                                      IF (Quotemenge < ("Menge in VK-Rechnung"+"Restmenge in Auftrag")) THEN
+                                                                        ERROR ('Die Quotemenge fr Quote %1 kann nicht reduziert werden, da sie ansonsten die Menge in Auftr„gen'+
+                                                                               ' und Rechnungen unterschreiten wrde!',"Quotenr.");
+                                                                  END;
+                                                                END;
+                                                                // TOPAS Ende
+                                                              END;
+
+                                                   DecimalPlaces=0:5 }
+    { 100 ;   ;Quotesystem         ;Code15        ;TableRelation=Optionstabelle.Code WHERE (Tabellen ID=CONST(5720),
+                                                                                            Feld ID=CONST(50003));
+                                                   Editable=No }
+    { 101 ;   ;Quote nummernpflichtig;Boolean     ;Editable=No }
+    { 102 ;   ;Quote Bonusabrechnung;Boolean      ;Editable=No }
+    { 103 ;   ;Nummernserie        ;Code10        ;TableRelation="No. Series";
+                                                   Editable=No }
+    { 200 ;   ;Restmenge in Auftrag;Decimal       ;FieldClass=FlowField;
+                                                   CalcFormula=Sum("Sales Line"."Outstanding Quantity" WHERE (Document Type=CONST(Order),
+                                                                                                              Quotenr.=FIELD(Quotenr.)));
+                                                   DecimalPlaces=0:5;
+                                                   Description=Sum. off. Auftr.zeilen;
+                                                   Editable=No }
+    { 201 ;   ;Menge in VK-Rechnung;Decimal       ;FieldClass=FlowField;
+                                                   CalcFormula=Sum("Sales Invoice Line".Quantity WHERE (Quotenr.=FIELD(Quotenr.)));
+                                                   DecimalPlaces=0:5;
+                                                   Description=Sum. VK-Rech.zeilen;
+                                                   Editable=No }
+    { 1000;   ;Systemhaus          ;Text50         }
+    { 1001;   ;Endkunde            ;Text50         }
+    { 1002;   ;MSRP ° VK xx%       ;Decimal        }
+    { 1003;   ;MSRP $ DC xx%       ;Decimal        }
+    { 1004;   ;ACS Qte einmalig    ;Boolean        }
+    { 1005;   ;ACS Qte Projekt     ;Boolean        }
+    { 1006;   ;ACS Qte Laborkonditionen;Boolean    }
+    { 1007;   ;Validationcode      ;Code20         }
+    { 50000;  ;Erledigtstatus      ;Option        ;OptionString=[ ,Erledigt ,Fehler] }
+    { 50001;  ;Fremdpositionsnummer;Code5          }
+    { 50002;  ;Gltig ab Datum     ;Date           }
+    { 50004;  ;Kunde               ;Text50        ;FieldClass=FlowField;
+                                                   CalcFormula=Lookup(Customer.Name WHERE (No.=FIELD(Debitorennr.)));
+                                                   Editable=No }
+    { 50005;  ;ursprngliche Quotemenge;Decimal   ;DecimalPlaces=0:5 }
+    { 50006;  ;IDT SAP Nr          ;Code10        ;Description=IDT }
+    { 50007;  ;Accelerators        ;Boolean       ;Description=IDT }
+    { 50008;  ;Hersteller-VK-Preis ;Decimal       ;DecimalPlaces=0:5;
+                                                   Description=ehemals IDT-VK-Preis }
+  }
+  KEYS
+  {
+    {    ;Quotenr.                                ;Clustered=Yes }
+    {    ;Erledigtstatus,Debitorennr.,Quotenr.     }
+  }
+  FIELDGROUPS
+  {
+  }
+  CODE
+  {
+    VAR
+      BemerkZeile@1140000 : Record 97;
+      EinkEinr@1140001 : Record 312;
+      QDat@1140002 : Record 50014;
+      AuftragZeile@1140004 : Record 37;
+      NrSerienVerw@1140005 : Codeunit 396;
+
+    PROCEDURE AktHerstCode@1();
+    VAR
+      HerstDat@1140000 : Record 5720;
+    BEGIN
+      IF Herstellercode <> '' THEN BEGIN
+        HerstDat.GET(Herstellercode);
+        Quotesystem:= HerstDat.Quotesystem;
+        "Quote nummernpflichtig" := HerstDat."Quote nummernpflichtig";
+        "Quote Bonusabrechnung" := HerstDat."Quote Bonusabrechnung";
+      END ELSE BEGIN
+        Quotesystem:= '';
+        "Quote nummernpflichtig" := FALSE;
+        "Quote Bonusabrechnung" := FALSE;
+      END;
+    END;
+
+    PROCEDURE AssistEdit@2(OldQuote@1140000 : Record 50014) : Boolean;
+    BEGIN
+      WITH QDat DO BEGIN
+        QDat := Rec;
+        EinkEinr.GET;
+        EinkEinr.TESTFIELD(Quotenummern);
+        IF NrSerienVerw.SelectSeries(EinkEinr.Quotenummern,OldQuote.Nummernserie,Nummernserie) THEN BEGIN
+          EinkEinr.GET;
+          EinkEinr.TESTFIELD(Quotenummern);
+          NrSerienVerw.SetSeries("Quotenr.");
+          Rec := QDat;
+          EXIT(TRUE);
+        END;
+      END;
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
