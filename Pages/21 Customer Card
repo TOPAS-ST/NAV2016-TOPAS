@@ -2,10 +2,10 @@ OBJECT Page 21 Customer Card
 {
   OBJECT-PROPERTIES
   {
-    Date=28.05.18;
-    Time=18:39:52;
+    Date=24.10.19;
+    Time=09:00:00;
     Modified=Yes;
-    Version List=NAVW19.00.00.50221,TOP1.04;
+    Version List=NAVW19.00.00.50528,TOP1.05;
   }
   PROPERTIES
   {
@@ -14,7 +14,7 @@ OBJECT Page 21 Customer Card
     SourceTable=Table18;
     PageType=Card;
     RefreshOnActivate=Yes;
-    PromotedActionCategoriesML=[DEU=Neu,Verarbeiten,Melden,Genehmigen,Genehmigung anfordern,TOPAS;
+    PromotedActionCategoriesML=[DEU=Neu,Verarbeiten,Bericht,Genehmigen,Genehmigung anfordern,TOPAS;
                                 ENU=New,Process,Report,Approve,Request Approval,TOPAS];
     OnInit=BEGIN
              ContactEditable := TRUE;
@@ -36,6 +36,58 @@ OBJECT Page 21 Customer Card
     OnAfterGetRecord=BEGIN
                        ActivateFields;
                        StyleTxt := SetStyle;
+
+                       //TOPAS 22.07.08 ST +
+                       Disti :=FALSE;
+                       CommentCont := FALSE;
+                       CommentText := '';
+
+                       ContactBusinessRelation.RESET;
+                       ContactBusinessRelation.SETCURRENTKEY("Link to Table","No.");
+                       ContactBusinessRelation.SETRANGE("Link to Table",ContactBusinessRelation."Link to Table"::Customer);
+                       ContactBusinessRelation.SETRANGE("No.","No.");
+                       IF ContactBusinessRelation.FINDFIRST THEN BEGIN
+                         //H„ndler Anzeige
+                         ContactIndustryGroup.RESET;
+                         ContactIndustryGroup.SETRANGE("Contact No.",ContactBusinessRelation."Contact No.");
+                         ContactIndustryGroup.SETRANGE("Industry Group Code",'HŽNDLER');
+                         IF ContactIndustryGroup.FINDFIRST THEN
+                           Disti :=TRUE;
+                         //Prft, ob Bemerkungen zum Kontakt existieren
+                         ContComments.RESET;
+                         ContComments.SETRANGE("Table Name",ContComments."Table Name"::Contact);
+                         ContComments.SETRANGE("No.",ContactBusinessRelation."Contact No.");
+                         IF ContComments.FINDFIRST THEN
+                           REPEAT
+                             CommentCont := TRUE;
+                             IF CommentText = '' THEN
+                               CommentText += ContComments.Comment
+                             ELSE
+                               IF ContComments.Date <> 0D THEN
+                                 CommentText += ' --- ' + ContComments.Comment
+                               ELSE
+                                 CommentText += ' ' + ContComments.Comment;
+                           UNTIL ContComments.NEXT = 0;
+                         //11.10.19 ST - Dynamisches Einblenden der Kontakt Bemerkungen als gelbes Posted Feld
+                         IF (ControlReady) AND (CommentCont) THEN BEGIN
+                           CurrPage.CommentControl.SendDatatoJavaScript(CommentText, 700, 82);
+                         END;
+
+                         //Bestcker Hinweis
+                         IF "No." <> xRec."No." THEN BEGIN
+                           ContactIndustryGroup.RESET;
+                           ContactIndustryGroup.SETFILTER("Contact No.",ContactBusinessRelation."Contact No.");
+                           ContactIndustryGroup.SETFILTER("Industry Group Code",'BESTšCKER');
+                           IF (NOT ContactIndustryGroup.FINDFIRST) AND ("Endkunde w/Bestcker" = TRUE) THEN
+                             MESSAGE(Text50000)
+                           ELSE
+                           IF (ContactIndustryGroup.FINDFIRST) AND ("Endkunde w/Bestcker" = FALSE) THEN
+                             MESSAGE(Text50001);
+                         END;
+                       END;
+
+
+                       //TOPAS -
                      END;
 
     OnAfterGetCurrRecord=VAR
@@ -47,48 +99,6 @@ OBJECT Page 21 Customer Card
                            CRMIsCoupledToRecord := CRMIntegrationEnabled AND CRMCouplingManagement.IsRecordCoupledToCRM(RECORDID);
                            OpenApprovalEntriesExistCurrUser := ApprovalsMgmt.HasOpenApprovalEntriesForCurrentUser(RECORDID);
                            OpenApprovalEntriesExist := ApprovalsMgmt.HasOpenApprovalEntries(RECORDID);
-
-                           //TOPAS 22.07.08 ST
-                           Disti :=FALSE;
-                           CommentCont := 'Nein';
-
-                           ContactBusinessRelation.RESET;
-                           ContactBusinessRelation.SETCURRENTKEY("Link to Table","No.");
-                           ContactBusinessRelation.SETRANGE("Link to Table",ContactBusinessRelation."Link to Table"::Customer);
-                           ContactBusinessRelation.SETRANGE("No.","No.");
-                           IF ContactBusinessRelation.FINDFIRST THEN BEGIN
-                             //H„ndler Anzeige
-                             ContactIndustryGroup.RESET;
-                             ContactIndustryGroup.SETRANGE("Contact No.",ContactBusinessRelation."Contact No.");
-                             ContactIndustryGroup.SETRANGE("Industry Group Code",'HŽNDLER');
-                             IF ContactIndustryGroup.FINDFIRST THEN
-                               Disti :=TRUE;
-                             //Prft, ob Bemerkungen zum Kontakt existieren
-                             ContComments.RESET;
-                             ContComments.SETRANGE("Table Name",ContComments."Table Name"::Contact);
-                             ContComments.SETRANGE("No.",ContactBusinessRelation."Contact No.");
-                             IF ContComments.FINDFIRST THEN
-                               CommentCont := 'Ja';
-                             //Bestcker Hinweis
-                             IF "No." <> xRec."No." THEN BEGIN
-                               ContactIndustryGroup.RESET;
-                               ContactIndustryGroup.SETFILTER("Contact No.",ContactBusinessRelation."Contact No.");
-                               ContactIndustryGroup.SETFILTER("Industry Group Code",'BESTšCKER');
-                               IF (NOT ContactIndustryGroup.FINDFIRST) AND ("Endkunde w/Bestcker" = TRUE) THEN
-                                 MESSAGE(Text50000)
-                               ELSE
-                               IF (ContactIndustryGroup.FINDFIRST) AND ("Endkunde w/Bestcker" = FALSE) THEN
-                                 MESSAGE(Text50001);
-                             END;
-                           END;
-
-                           //03.07.17 ST ST - Hebt das Bemerkungs Feld rot hervor, wenn eine Bemerkung zum Debitor bzw. Kontakt vorhanden ist
-                           IF CommentCont = 'Ja' THEN
-                             comment_style := 'Unfavorable'
-                           ELSE
-                             comment_style := 'Standard';
-
-                           //TOPAS Ende
                          END;
 
     ActionList=ACTIONS
@@ -482,7 +492,7 @@ OBJECT Page 21 Customer Card
                       Name=Endkunden;
                       Image=CustomerGroup;
                       OnAction=BEGIN
-                                 //TOPAS 17.05.17 ST
+                                 //TOPAS 17.05.17 ST +
                                  ContactBusinessRelation.RESET;
                                  ContactBusinessRelation.SETCURRENTKEY("Link to Table","No.");
                                  ContactBusinessRelation.SETRANGE("Link to Table",ContactBusinessRelation."Link to Table"::Customer);
@@ -491,7 +501,7 @@ OBJECT Page 21 Customer Card
                                    SalesInfoMgt.LookupEndkunden_TOP(ContactBusinessRelation."Contact No.")
                                  ELSE
                                    ERROR(Text50002);
-                                 //TOPAS Ende
+                                 //TOPAS -
                                END;
                                 }
       { 1000000043;2 ;Action    ;
@@ -758,6 +768,7 @@ OBJECT Page 21 Customer Card
                                  ENU=F&unctions];
                       Image=Action }
       { 167     ;2   ;Action    ;
+                      Name=ApplyTemplate;
                       Ellipsis=Yes;
                       CaptionML=[DEU=Vorlage anwenden;
                                  ENU=Apply Template];
@@ -770,6 +781,7 @@ OBJECT Page 21 Customer Card
                                BEGIN
                                  RecRef.GETTABLE(Rec);
                                  ConfigTemplateMgt.UpdateFromTemplateSelection(RecRef);
+                                 RecRef.SETTABLE(Rec);
                                END;
                                 }
       { 1900839804;1 ;Action    ;
@@ -952,16 +964,22 @@ OBJECT Page 21 Customer Card
     { 1000000022;2;Field  ;
                 SourceExpr="Our Account No." }
 
-    { 1000000049;2;Field  ;
-                Name=Bemerkung;
-                SourceExpr=CommentCont;
-                Editable=FALSE;
-                StyleExpr=comment_style }
-
     { 1000000003;2;Field  ;
                 CaptionML=DEU=H„ndler;
                 SourceExpr=Disti;
                 Editable=FALSE }
+
+    { 1000000049;1;Group  ;
+                Name=Comments;
+                CaptionML=[DEU=Bemerkungen;
+                           ENU=Comments];
+                Visible=CommentCont;
+                GroupType=Group }
+
+    { 1000000062;2;Field  ;
+                Name=CommentControl;
+                SourceExpr=CommentText;
+                ControlAddIn=[CreateCustomHTMLTextbox;PublicKeyToken=504c26232bb21f06] }
 
     { 1902768601;1;Group  ;
                 CaptionML=[DEU=Kommunikation;
@@ -1281,7 +1299,7 @@ OBJECT Page 21 Customer Card
                             }
 
     { 1000000025;3;Field  ;
-                SourceExpr="Text Versandbedingungen";
+                SourceExpr=Versandbedingungen;
                 Enabled=TextVersandbdgEnable }
 
     { 1000000024;3;Field  ;
@@ -1300,7 +1318,7 @@ OBJECT Page 21 Customer Card
     { 1000000036;3;Field  ;
                 SourceExpr="Endkunde w/Bestcker";
                 OnValidate=BEGIN
-                             //TOPAS 09.09.09 ST
+                             //TOPAS 09.09.09 ST +
                              IF "Endkunde w/Bestcker" = TRUE THEN BEGIN
                                ContactBusinessRelation.RESET;
                                ContactBusinessRelation.SETCURRENTKEY("Link to Table","No.");
@@ -1314,7 +1332,7 @@ OBJECT Page 21 Customer Card
                                    MESSAGE(Text50000)
                                END;
                              END;
-                             //TOPAS Ende
+                             //TOPAS -
                            END;
                             }
 
@@ -1458,14 +1476,17 @@ OBJECT Page 21 Customer Card
       Text50001@1000000005 : TextConst 'DEU=Es wurde die Kontaktklassifizierung BESTšCKER gefunden. Bitte kennzeichnen Sie auch den Debitor als Bestcker.';
       TextVersandbdgEnable@1000000006 : Boolean;
       Text50002@1000000010 : TextConst 'DEU=Der Debitor wurde noch nicht mit einem Kontakt verknpft.';
-      comment_style@1000000012 : Text;
-      CommentCont@1000000013 : Text;
+      CommentCont@1000000014 : Boolean;
+      CommentText@1000000013 : Text;
+      ControlReady@1000000012 : Boolean;
 
     LOCAL PROCEDURE ActivateFields@3();
     BEGIN
       SetSocialListeningFactboxVisibility;
       ContactEditable := "Primary Contact No." = '';
+      //TOPAS +
       TextVersandbdgEnable := "besondere Versandbedingungen";
+      //TOPAS -
     END;
 
     LOCAL PROCEDURE ContactOnAfterValidate@19013243();
@@ -1480,6 +1501,12 @@ OBJECT Page 21 Customer Card
       SocialListeningMgt.GetCustFactboxVisibility(Rec,SocialListeningSetupVisible,SocialListeningVisible);
     END;
 
+    EVENT CommentControl@-1000000062::ControlAddInReady@1();
+    BEGIN
+      ControlReady := TRUE;
+      CurrPage.UPDATE;
+    END;
+
     BEGIN
     {
       Lfd.Nr. Version   Datum       User  Beschreibung
@@ -1492,6 +1519,7 @@ OBJECT Page 21 Customer Card
       6       TOP1.02   04.12.17    ST    Neue Felder fr Rechnungsadresse eingebaut
       7       TOP1.03   08.05.18    ST    Neues Feld ADV - Auftragsdatenvereinbarung eingebaut
       8       TOP1.04   28.05.18    ST    Neues Feld "System Preisbindung" eingebaut
+      9       TOP1.05   11.10.19    ST    Dynamisches Einblenden der Kontakt Bemerkungen als gelbes Posted Feld
     }
     END.
   }
