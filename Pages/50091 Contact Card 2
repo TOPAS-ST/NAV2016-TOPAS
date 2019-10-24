@@ -2,10 +2,10 @@ OBJECT Page 50091 Contact Card 2
 {
   OBJECT-PROPERTIES
   {
-    Date=14.09.17;
-    Time=12:45:18;
+    Date=24.10.19;
+    Time=09:00:00;
     Modified=Yes;
-    Version List=NAVW19.00,TOP1.00;
+    Version List=NAVW19.00,TOP1.01;
   }
   PROPERTIES
   {
@@ -37,6 +37,63 @@ OBJECT Page 50091 Contact Card 2
                  CRMIntegrationEnabled := CRMIntegrationManagement.IsCRMIntegrationEnabled;
                END;
 
+    OnAfterGetRecord=BEGIN
+                       //TOPAS 15.05.17 ST
+                       IF (Type = Type::Company) AND (Rec."No." <> xRec."No.") AND ("No." <> '') THEN BEGIN
+                         IF ("Betreuer Innendienst" = '') AND ("Salesperson Code" <> '')  THEN
+                            MESSAGE('Der Betreuer Innendienst wurde noch nicht ausgew„hlt.');
+                         IF ("Betreuer Innendienst" <> '') AND ("Salesperson Code" = '')  THEN
+                            MESSAGE('Der Verk„ufercode wurde noch nicht ausgew„hlt.');
+                         IF ("Betreuer Innendienst" = '') AND ("Salesperson Code" = '')  THEN
+                            MESSAGE('Der Verk„ufercode und Betreuer Innendienst wurden noch nicht ausgew„hlt.');
+                       END;
+
+                       IF ("No." <> '') AND ("Company No." <> '') THEN BEGIN
+                       ContactIndustryGroup.SETRANGE("Contact No.","Company No.");
+                       ContactIndustryGroup.SETRANGE("Industry Group Code",'HŽNDLER');
+                       IF ContactIndustryGroup.FINDFIRST THEN
+                         Disti := TRUE
+                       ELSE
+                         Disti := FALSE;
+                       END;
+
+                       //29.08.08 ST - Anzeige "Angelegt von" aus den Žnderungsprotokollposten
+                       ChangeLog.SETRANGE("Table No.",5050);
+                       ChangeLog.SETRANGE("Type of Change",ChangeLog."Type of Change"::Insertion);
+                       ChangeLog.SETRANGE("Primary Key Field 1 Value","No.");
+                       IF ChangeLog.FINDFIRST THEN
+                         CreatedBy := ChangeLog."User ID"
+                       ELSE
+                         CreatedBy := '';
+
+                       //14.10.19 ST - Dynamisches Einblenden der Bemerkungen als gelbes Posted Feld
+                       CommentFound := FALSE;
+                       CommentText := '';
+
+                       CommentLine.RESET;
+                       CommentLine.SETRANGE("Table Name",CommentLine."Table Name"::Contact);
+                       CommentLine.SETRANGE("No.","No.");
+                       CommentLine.SETRANGE("Sub No.",0);
+                       IF CommentLine.FINDFIRST THEN BEGIN
+                           CommentFound := TRUE;
+                         REPEAT
+                           IF CommentText = '' THEN
+                             CommentText += CommentLine.Comment
+                           ELSE
+                             IF CommentLine.Date <> 0D THEN
+                               CommentText += ' --- ' + CommentLine.Comment
+                             ELSE
+                               CommentText += ' ' + CommentLine.Comment;
+                         UNTIL CommentLine.NEXT = 0;
+                       END;
+
+                       IF (ControlReady) AND (CommentFound) THEN BEGIN
+                         CurrPage.CommentControl.SendDatatoJavaScript(CommentText, 700, 82);
+                       END;
+
+                       //TOPAS Ende
+                     END;
+
     OnNewRecord=VAR
                   Contact@1001 : Record 5050;
                 BEGIN
@@ -61,42 +118,6 @@ OBJECT Page 50091 Contact Card 2
 
                            IF CRMIntegrationEnabled THEN
                              CRMIsCoupledToRecord := CRMCouplingManagement.IsRecordCoupledToCRM(RECORDID);
-
-                           //TOPAS 15.05.17 ST
-                           IF (Type = Type::Company) AND (Rec."No." <> xRec."No.") AND ("No." <> '') THEN BEGIN
-                             IF ("Betreuer Innendienst" = '') AND ("Salesperson Code" <> '')  THEN
-                                MESSAGE('Der Betreuer Innendienst wurde noch nicht ausgew„hlt.');
-                             IF ("Betreuer Innendienst" <> '') AND ("Salesperson Code" = '')  THEN
-                                MESSAGE('Der Verk„ufercode wurde noch nicht ausgew„hlt.');
-                             IF ("Betreuer Innendienst" = '') AND ("Salesperson Code" = '')  THEN
-                                MESSAGE('Der Verk„ufercode und Betreuer Innendienst wurden noch nicht ausgew„hlt.');
-                           END;
-
-                           IF ("No." <> '') AND ("Company No." <> '') THEN BEGIN
-                           ContactIndustryGroup.SETRANGE("Contact No.","Company No.");
-                           ContactIndustryGroup.SETRANGE("Industry Group Code",'HŽNDLER');
-                           IF ContactIndustryGroup.FINDFIRST THEN
-                             Disti := TRUE
-                           ELSE
-                             Disti := FALSE;
-                           END;
-
-                           //29.08.08 ST - Anzeige "Angelegt von" aus den Žnderungsprotokollposten
-                           ChangeLog.SETRANGE("Table No.",5050);
-                           ChangeLog.SETRANGE("Type of Change",ChangeLog."Type of Change"::Insertion);
-                           ChangeLog.SETRANGE("Primary Key Field 1 Value","No.");
-                           IF ChangeLog.FINDFIRST THEN
-                             CreatedBy := ChangeLog."User ID"
-                           ELSE
-                             CreatedBy := '';
-
-                           //04.07.17 ST ST - Hebt das Bemerkungs Feld rot hervor, wenn eine Bemerkung zum Kontakt vorhanden ist
-                           IF Comment THEN
-                             comment_style := 'Unfavorable'
-                           ELSE
-                             comment_style := 'Standard';
-
-                           //TOPAS Ende
                          END;
 
     ActionList=ACTIONS
@@ -698,10 +719,6 @@ OBJECT Page 50091 Contact Card 2
                 SourceExpr=Disti;
                 Editable=FALSE }
 
-    { 1000000012;2;Field  ;
-                SourceExpr=Comment;
-                StyleExpr=comment_style }
-
     { 26  ;2   ;Field     ;
                 SourceExpr="Last Date Modified" }
 
@@ -738,6 +755,17 @@ OBJECT Page 50091 Contact Card 2
 
     { 1000000009;2;Field  ;
                 SourceExpr=Gesperrt }
+
+    { 1000000014;1;Group  ;
+                CaptionML=[DEU=Bemerkungen;
+                           ENU=Comments];
+                Visible=CommentFound;
+                GroupType=Group }
+
+    { 1000000015;2;Field  ;
+                Name=CommentControl;
+                SourceExpr=CommentText;
+                ControlAddIn=[CreateCustomHTMLTextbox;PublicKeyToken=504c26232bb21f06] }
 
     { 72  ;1   ;Part      ;
                 Name=Kontaktpersonen;
@@ -916,9 +944,12 @@ OBJECT Page 50091 Contact Card 2
       Beteiligte@1000000007 : Record 50005;
       ContactIndustryGroup@1000000003 : Record 5058;
       ChangeLog@1000000005 : Record 405;
+      CommentLine@1000000010 : Record 5061;
       Disti@1000000004 : Boolean;
       CreatedBy@1000000006 : Text;
-      comment_style@1000000009 : Text;
+      CommentText@1000000012 : Text;
+      CommentFound@1000000009 : Boolean;
+      ControlReady@1000000011 : Boolean;
 
     LOCAL PROCEDURE EnableFields@1();
     BEGIN
@@ -950,12 +981,19 @@ OBJECT Page 50091 Contact Card 2
       EnableFields;
     END;
 
+    EVENT CommentControl@-1000000015::ControlAddInReady@1();
+    BEGIN
+      ControlReady := TRUE;
+      CurrPage.UPDATE;
+    END;
+
     BEGIN
     {
       Lfd.Nr. Version   Datum       User  Beschreibung
       ===========================================================================
       1       TOP1.00   02.03.17    ST    šbernahme von Standard Page 5050 Contact Card
       2       TOP1.00   16.05.17    ST    Felder berarbeitet und die neue FactBox "Contact Card Factbox" hinzugefgt
+      3       TOP1.01   14.10.19    ST    Dynamisches Einblenden der Bemerkungen als gelbes Posted Feld
     }
     END.
   }
