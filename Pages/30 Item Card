@@ -2,10 +2,10 @@ OBJECT Page 30 Item Card
 {
   OBJECT-PROPERTIES
   {
-    Date=30.04.19;
-    Time=15:17:21;
+    Date=24.10.19;
+    Time=09:00:00;
     Modified=Yes;
-    Version List=NAVW19.00.00.50528,NAVDACH9.00.00.50528,TOP1.03;
+    Version List=NAVW19.00.00.50528,NAVDACH9.00.00.50528,TOP1.04;
   }
   PROPERTIES
   {
@@ -115,11 +115,29 @@ OBJECT Page 30 Item Card
                            IF Verfuegbarkeit < 0 THEN
                              verfuegbarkeit_style := 'Unfavorable';
 
-                       //04.07.17 ST ST - Hebt das Bemerkungs Feld rot hervor, wenn eine Bemerkung zum Artikel vorhanden ist
-                       IF Comment THEN
-                         comment_style := 'Unfavorable'
-                       ELSE
-                         comment_style := 'Standard';
+                       //14.10.19 ST - Dynamisches Einblenden der Bemerkungen als gelbes Posted Feld
+                       CommentFound := FALSE;
+                       CommentText := '';
+
+                       ItemCommentLine.RESET;
+                       ItemCommentLine.SETRANGE("Table Name",ItemCommentLine."Table Name"::Item);
+                       ItemCommentLine.SETRANGE("No.","No.");
+                       IF ItemCommentLine.FINDFIRST THEN BEGIN
+                         CommentFound := TRUE;
+                         REPEAT
+                           IF CommentText = '' THEN
+                             CommentText += ItemCommentLine.Comment
+                           ELSE
+                             IF ItemCommentLine.Date <> 0D THEN
+                               CommentText += ' --- ' + ItemCommentLine.Comment
+                             ELSE
+                               CommentText += ' ' + ItemCommentLine.Comment;
+                         UNTIL ItemCommentLine.NEXT = 0;
+                       END;
+
+                       IF (ControlReady) AND (CommentFound) THEN BEGIN
+                         CurrPage.CommentControl.SendDatatoJavaScript(CommentText, 700, 82);
+                       END;
 
                        //TOPAS -
                      END;
@@ -1159,10 +1177,6 @@ OBJECT Page 30 Item Card
                          END;
                           }
 
-    { 1000000061;2;Field  ;
-                SourceExpr=Comment;
-                StyleExpr=comment_style }
-
     { 180 ;2   ;Field     ;
                 SourceExpr="Service Item Group";
                 Importance=Additional }
@@ -1231,6 +1245,18 @@ OBJECT Page 30 Item Card
                                  ENU=Default (No),No,Yes];
                 SourceExpr="Prevent Negative Inventory";
                 Visible=ShowPreventNegInventoryDefaultNo }
+
+    { 1000000066;1;Group  ;
+                Name=Comments;
+                CaptionML=[DEU=Bemerkungen;
+                           ENU=Comments];
+                Visible=CommentFound;
+                GroupType=Group }
+
+    { 1000000067;2;Field  ;
+                Name=CommentControl;
+                SourceExpr=CommentText;
+                ControlAddIn=[CreateCustomHTMLTextbox;PublicKeyToken=504c26232bb21f06] }
 
     { 1905885101;1;Group  ;
                 CaptionML=[DEU=Fakturierung;
@@ -1771,6 +1797,7 @@ OBJECT Page 30 Item Card
       Item@1000000013 : Record 27;
       RMA_Artikel@1000000002 : Record 50022;
       Lieferzeit@1000000011 : Record 50035;
+      ItemCommentLine@1000000019 : Record 97;
       TOPAS_Funktionen@1000000008 : Codeunit 50006;
       Anzahl_RMA@1000000001 : Decimal;
       Rahmenrestmenge@1000000003 : Decimal;
@@ -1780,7 +1807,9 @@ OBJECT Page 30 Item Card
       "v_DC-Preis"@1000000007 : Decimal;
       "v_VK-Preis_Euro"@1000000009 : Decimal;
       "v_VK-Preis_USD"@1000000010 : Decimal;
-      comment_style@1000000014 : Text;
+      CommentText@1000000014 : Text;
+      CommentFound@1000000018 : Boolean;
+      ControlReady@1000000017 : Boolean;
       dc_style@1000000015 : Text;
 
     LOCAL PROCEDURE EnableShowStockOutWarning@4();
@@ -1857,6 +1886,12 @@ OBJECT Page 30 Item Card
       SocialListeningMgt.GetItemFactboxVisibility(Rec,SocialListeningSetupVisible,SocialListeningVisible);
     END;
 
+    EVENT CommentControl@-1000000067::ControlAddInReady@1();
+    BEGIN
+      ControlReady := TRUE;
+      CurrPage.UPDATE;
+    END;
+
     BEGIN
     {
       Lfd.Nr. Version   Datum       User  Beschreibung
@@ -1866,6 +1901,7 @@ OBJECT Page 30 Item Card
       3       TOP1.01   11.01.18    ST    "Sicherheitslager fr" hinzugefgt, einige Felder auf VISIBLE=FALSE oder Importance=Additional umgestellt
       4       TOP1.02   05.06.18    ST    PromotedActionCategoriesML Genehmigung anfordern entfernt, TOPAS ActionItems Anordung verbessert
       5       TOP1.03   30.04.19    ST    Feld "Inventory Value Zero" eingebaut unter dem Reiter Fakturierung
+      6       TOP1.04   14.10.19    ST    Dynamisches Einblenden der Bemerkungen als gelbes Posted Feld
     }
     END.
   }
