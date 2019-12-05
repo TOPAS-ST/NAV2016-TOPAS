@@ -2,8 +2,8 @@ OBJECT Codeunit 50014 Job Scheduler
 {
   OBJECT-PROPERTIES
   {
-    Date=26.10.18;
-    Time=14:03:03;
+    Date=22.11.19;
+    Time=09:42:04;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -22,6 +22,8 @@ OBJECT Codeunit 50014 Job Scheduler
                 DataPrivacySetStatus;
               'Typo3_Update' :
                 ExportTypo3AccountUpdateStatus;
+              'System_Pricecelist' :
+                AdjustServicePricesNewPricelist;
             END;
           END;
 
@@ -39,20 +41,29 @@ OBJECT Codeunit 50014 Job Scheduler
     LOCAL PROCEDURE CheckNewServiceAcc@1000000002();
     VAR
       Servicepositionen@1000000000 : Record 50024;
+      wartungsnr_cache@1000000001 : Text;
+      accounts_to_export@1000000002 : Integer;
     BEGIN
+      accounts_to_export := 0;
       Servicepositionen.RESET;
       Servicepositionen.SETRANGE(Art,Servicepositionen.Art::Service);
       Servicepositionen.SETRANGE(Inaktiv,FALSE);
       Servicepositionen.SETRANGE("Zu exportieren",TRUE);
       Servicepositionen.SETRANGE(Exportiert,FALSE);
-      IF Servicepositionen.FINDFIRST THEN BEGIN
-        chr := 10;
-        mail_subject := 'Neue Service Account Daten (' + FORMAT(Servicepositionen.COUNT) + ') fr Typo3 vorhanden';
-        mail_body := 'Es sind neue bzw. aktualisierte Service Accounts (' + FORMAT(Servicepositionen.COUNT) + ') verfgbar.' + FORMAT(chr) +
-                     'Bitte benutzen Sie im Navision in der Maske Service Einzelpositionen die Funktion "Daten - Excel Export"  zum Export der Informationen.';
-        SMPTMail.CreateMessage('','typo3@topas.de','sb@topas.de',mail_subject,mail_body,FALSE);
-        SMPTMail.Send;
-      END;
+      IF Servicepositionen.FINDFIRST THEN
+        REPEAT
+          IF STRPOS(wartungsnr_cache,Servicepositionen."Wartungsvertragsnr.") = 0 THEN BEGIN
+            wartungsnr_cache += Servicepositionen."Wartungsvertragsnr." + ',';
+            accounts_to_export += 1;
+          END;
+        UNTIL Servicepositionen.NEXT = 0;
+
+      chr := 10;
+      mail_subject := 'Neue Service Account Daten (' + FORMAT(accounts_to_export) + ') fr Typo3 vorhanden';
+      mail_body := 'Es sind neue bzw. aktualisierte Service Accounts (' + FORMAT(accounts_to_export) + ') verfgbar.' + FORMAT(chr) +
+                    'Bitte benutzen Sie im Navision in der Maske Service Einzelpositionen die Funktion "Daten - Excel Export"  zum Export der Informationen.';
+      SMPTMail.CreateMessage('','typo3@topas.de','sb@topas.de',mail_subject,mail_body,FALSE);
+      SMPTMail.Send;
     END;
 
     LOCAL PROCEDURE ExportServiceBETCrosslinkAndSyncSystemeMB@1000000000();
@@ -63,7 +74,7 @@ OBJECT Codeunit 50014 Job Scheduler
       FolderPath@1000000004 : Text;
       IsExported@1000000002 : Boolean;
     BEGIN
-      _File.CREATE('\\W2K8R2-FILESRV\it\Navision 2016\Live\Daten\Service-BET-Crosslink.txt');
+      _File.CREATE('\\WIN-FILESRV\it\Navision 2016\Live\Daten\Service-BET-Crosslink.txt');
       _File.CREATEOUTSTREAM(_DatafileOutstream);
       IsExported := XMLPORT.EXPORT(50040, _DatafileOutstream);
       _File.CLOSE;
@@ -73,7 +84,7 @@ OBJECT Codeunit 50014 Job Scheduler
       END;
 
       //Neu: Status "Ordner vorhanden" wird nun in den Wartungsvertr„gen synchronisiert
-      FolderPath := '\\W2K8R2-FILESRV\Daten\Daten NEU\Gemeinsame Ordner\Customer Service\AudioCodes\';
+      FolderPath := '\\WIN-FILESRV\Daten\Daten NEU\Gemeinsame Ordner\Customer Service\AudioCodes\';
       Wartungsvertrag.RESET;
       IF Wartungsvertrag.FINDFIRST THEN
         REPEAT
@@ -104,7 +115,7 @@ OBJECT Codeunit 50014 Job Scheduler
       _DatafileOutstream@1000000000 : OutStream;
       IsExported@1000000002 : Boolean;
     BEGIN
-      _File.CREATE('\\W2K8R2-FILESRV\it\Navision 2016\Live\Daten\Typo3 Account Update.txt');
+      _File.CREATE('\\WIN-FILESRV\it\Navision 2016\Live\Daten\Typo3 Account Update.txt');
       _File.CREATEOUTSTREAM(_DatafileOutstream);
       IsExported := XMLPORT.EXPORT(50041, _DatafileOutstream);
       _File.CLOSE;
@@ -120,7 +131,7 @@ OBJECT Codeunit 50014 Job Scheduler
       _File@1000000001 : File;
       _DatafileInstream@1000000000 : InStream;
     BEGIN
-      _File.OPEN('\\W2K8R2-FILESRV\it\Navision 2016\Live\Daten\Typo3 Account Update.txt');
+      _File.OPEN('\\WIN-FILESRV\it\Navision 2016\Live\Daten\Typo3 Account Update.txt');
       _File.CREATEINSTREAM(_DatafileInstream);
       IF _File.LEN() > 0 THEN BEGIN
         XMLPORT.IMPORT(50041, _DatafileInstream);
@@ -137,7 +148,7 @@ OBJECT Codeunit 50014 Job Scheduler
       mysql_program@1000000000 : Text;
       ExitCode@1000000006 : Integer;
     BEGIN
-      mysql_program := '"\\W2K8R2-FILESRV\Software\software\TOPAS eigen\MySQL\Typo3 Account Update\Typo3_Update_myTOPAS.exe"';
+      mysql_program := '"\\WIN-FILESRV\Software\software\TOPAS eigen\MySQL\Typo3 Account Update\Typo3_Update_myTOPAS.exe"';
       ProcessShell := ProcessShell.Process;
       ProcessShell.StartInfo.UseShellExecute := FALSE;
       ProcessShell.StartInfo.FileName := mysql_program;
@@ -151,7 +162,7 @@ OBJECT Codeunit 50014 Job Scheduler
         ERROR('Fehlercode: %1. Der Job musste nach einem Timeout beendet werden, scheinbar liegt ein Fehler im Update Script vor. Bitte wenden Sie sich an Ihren Administrator.',ExitCode);
       END;
       ExitCode := ProcessShell.ExitCode;
-      IF ExitCode > 1 THEN ERROR('Fehlercode: %1. Weitere Informationen hierzu finden Sie im Status.log.',ExitCode);
+      IF ExitCode > 1 THEN ERROR('Fehlercode: %1. Weitere Informationen hierzu finden Sie im Status.log. Nach Fehlerbeseitigung muss der Administrator den Job wieder auf Bereit setzen.',ExitCode);
       CLEAR(ProcessShell);
       EXIT(1);
     END;
@@ -165,14 +176,14 @@ OBJECT Codeunit 50014 Job Scheduler
       sync_program@1000000000 : Text;
       ExitCode@1000000006 : Integer;
     BEGIN
-      sync_program := '"\\W2K8R2-FILESRV\Software\software\TOPAS eigen\GWAttachments\GWAttachmentsCollector.exe"';
+      sync_program := '"\\WIN-FILESRV\Software\software\TOPAS eigen\GWAttachments\GWAttachmentsCollector.exe"';
       ProcessShell := ProcessShell.Process;
       ProcessShell.StartInfo.UseShellExecute := FALSE;
       ProcessShell.StartInfo.FileName := sync_program;
       ProcessShell.StartInfo.Arguments := 'auto';
       ProcessShell.StartInfo.CreateNoWindow := TRUE;
       ProcessShell.Start();
-      ProcessShell.WaitForExit(60000 * 5); //5 Minuten
+      ProcessShell.WaitForExit(60000 * 10); //10 Minuten
       IF ProcessShell.HasExited = FALSE THEN BEGIN
         ProcessShell.Kill();
         ExitCode := ProcessShell.ExitCode;
@@ -182,6 +193,191 @@ OBJECT Codeunit 50014 Job Scheduler
       IF ExitCode > 1 THEN ERROR('Fehlercode: %1. Weitere Informationen hierzu finden Sie im Status.log.',ExitCode);
       CLEAR(ProcessShell);
       EXIT(1);
+    END;
+
+    PROCEDURE AdjustServicePricesNewPricelist@1000000005();
+    VAR
+      SalesHeader@1000000007 : Record 36;
+      Services@1000000003 : Record 50028;
+      Services_new@1000000004 : Record 50028;
+      Services_del@1000000008 : Record 50028;
+      PreislistenStatus@1000000002 : Record 50001;
+      PreislistenStatusUmst@1000000005 : Record 50001;
+      champs_services_pre@1000000000 : Integer;
+      acts_services_pre@1000000001 : Integer;
+      last_time_buy@1000000006 : Date;
+    BEGIN
+      //Umstellung der Preislisten Information in der Optionstabelle
+      champs_services_pre := 0;
+      acts_services_pre := 0;
+
+      Services_new.RESET;
+      Services_new.SETRANGE("Update letzte Preisliste",TRUE);
+      Services_new.SETRANGE(Status,Services_new.Status::vorab);
+      Services_new.SETFILTER(Preisliste,'<>%1','SCHAEFFLER');
+      Services_new.SETRANGE(Art,Services_new.Art::Champs);
+      IF Services_new.FINDFIRST THEN champs_services_pre := Services_new.COUNT;
+      Services_new.SETRANGE(Art,Services_new.Art::ACTS);
+      IF Services_new.FINDFIRST THEN acts_services_pre := Services_new.COUNT;
+      Services_new.SETRANGE(Art);
+      IF (Services_new.FINDFIRST) AND (champs_services_pre > 0) AND (acts_services_pre > 0) THEN BEGIN
+
+        //vorab Check Versionsnr., ob alle Preise den gleichen Stand haben und nicht ein paar schon umgestellt sind und andere nicht
+        PreislistenStatus.RESET;
+        PreislistenStatus.SETRANGE("Tabellen ID",36);
+        PreislistenStatus.SETRANGE("Feld ID",50351);
+        PreislistenStatus.SETRANGE(Code,'PREISLISTE');
+        PreislistenStatus.SETRANGE("Lfd.-Nr.",0); //vorab
+        IF PreislistenStatus.FINDFIRST THEN BEGIN
+          Services.RESET;
+          Services.SETRANGE("Update letzte Preisliste",TRUE);
+          Services.SETRANGE(Status,Services.Status::neu);
+          Services.SETFILTER(Preisliste,'%1&<>%2',PreislistenStatus."Nr.",'SCHAEFFLER');
+          IF Services.FINDFIRST THEN BEGIN
+            PreislistenStatus.SETRANGE("Lfd.-Nr.",1); // neu
+            PreislistenStatus.FINDFIRST;
+            ERROR('Inkosistenz in der Service Preistabelle gefunden:\' +
+                  'Fr Artikel %1 stimmen Preislisten Status (%2) und Versionnr. (%3) nicht mit den globalen Vorgaben berein.\' +
+                  'Richtig w„re aktuell fr Preislisten Status: %2 die Versionnr.: %4',Services."Artikelnr. 2",Services.Status,Services.Preisliste,PreislistenStatus."Nr.");
+          END;
+
+          //Korrektur fr Artikel, die vorher manuell angelegt wurden, weil diese in den alten Preislisten noch keine Servicepreise hatten, nun aber schon
+          Services_del.RESET;
+          Services_del.SETRANGE(Status,Services_del.Status::neu);
+          Services_del.SETRANGE("Update letzte Preisliste",FALSE);
+          Services_del.SETRANGE("Zuordnung obsolete",FALSE);
+          Services_del.SETFILTER(Preisliste,'<>%1','SCHAEFFLER');
+          IF Services_del.FINDFIRST THEN BEGIN
+            REPEAT
+              Services.RESET;
+              Services.SETRANGE(Status,Services.Status::vorab);
+              Services.SETRANGE("Update letzte Preisliste",TRUE);
+              Services.SETFILTER(Preisliste,'<>%1','SCHAEFFLER');
+              Services.SETRANGE("SUP Artikelnr.",Services_del."SUP Artikelnr.");
+              Services.SETRANGE("Artikelnr. 2",Services_del."Artikelnr. 2");
+              IF Services.FIND('-') THEN BEGIN
+                Services_del.DELETE;
+              END;
+            UNTIL Services_del.NEXT = 0;
+          END;
+        END;
+
+        //Umstellung der globalen Konfiguration der Preislisten
+        PreislistenStatus.RESET;
+        PreislistenStatus.SETRANGE("Tabellen ID",36);
+        PreislistenStatus.SETRANGE("Feld ID",50351);
+        PreislistenStatus.SETRANGE(Code,'PREISLISTE');
+        PreislistenStatus.SETRANGE("Lfd.-Nr.",0); //vorab Preisliste
+        IF PreislistenStatus.FINDFIRST THEN BEGIN
+          IF PreislistenStatus."Nr." = Services_new.Preisliste THEN BEGIN
+            PreislistenStatusUmst.RESET;
+            PreislistenStatusUmst.SETRANGE("Tabellen ID",36);
+            PreislistenStatusUmst.SETRANGE("Feld ID",50351);
+            PreislistenStatusUmst.SETRANGE(Code,'PREISLISTE');
+            IF PreislistenStatusUmst.FINDFIRST THEN
+              REPEAT
+                PreislistenStatusUmst."Lfd.-Nr." += 1;
+                PreislistenStatusUmst.MODIFY;
+                IF PreislistenStatusUmst."Lfd.-Nr." = 2 THEN BEGIN
+                  Services.RESET;
+                  Services.SETRANGE(Status,Services.Status::neu);
+                  Services.SETRANGE("Update letzte Preisliste",TRUE);
+                  Services.SETFILTER(Preisliste,'<>%1','SCHAEFFLER');
+                  IF Services.FINDFIRST THEN BEGIN
+                    last_time_buy := Services."Last Time Buy";
+                    IF last_time_buy = 0D THEN BEGIN
+                      last_time_buy := CALCDATE('<1M-1D>',PreislistenStatus.Startdatum);
+                    END;
+                    PreislistenStatusUmst.Enddatum := last_time_buy;
+                    PreislistenStatusUmst.MODIFY;
+                  END;
+                END;
+                IF PreislistenStatusUmst."Lfd.-Nr." >= 3 THEN //sehr alte Preisliste
+                  PreislistenStatusUmst.DELETE;
+              UNTIL PreislistenStatusUmst.NEXT = 0;
+
+              //EK- und VK-Preise von Startdatum auf Prerelease Datum ab„ndern
+              //Fehlt aktuell noch!!!
+              // PLATZHALTER****
+              //
+
+              PreislistenStatus.RESET;
+              PreislistenStatus.SETRANGE("Tabellen ID",36);
+              PreislistenStatus.SETRANGE("Feld ID",50351);
+              PreislistenStatus.SETRANGE(Code,'PREISLISTE');
+              PreislistenStatus.SETRANGE("Lfd.-Nr.",1); //neue neu Preisliste
+              IF PreislistenStatus.FINDFIRST THEN BEGIN
+                //Nun werden die Servicepreise umgestellt, auáer Spezialpreislisten wie Schaeffler
+                Services.RESET;
+                Services.SETRANGE(Status,Services.Status::neu);
+                Services.SETRANGE("Update letzte Preisliste",TRUE);
+                Services.SETFILTER(Preisliste,'<>%1','SCHAEFFLER');
+                IF Services.FIND('-') THEN BEGIN
+                  WITH Services DO BEGIN
+                    IF Preisliste <> PreislistenStatus."Nr." THEN BEGIN
+                      SETRANGE(Status,Services.Status::alt);
+                      IF FIND('-') THEN BEGIN
+                        DELETEALL;
+                      END;
+                      SETRANGE(Status,Services.Status::neu);
+                      IF FIND('-') THEN BEGIN
+                        REPEAT
+                          RENAME("Service Artikelnr.","SUP Artikelnr.","Artikelnr. 2",W„hrungscode,Services.Status::alt);
+                          "Last Time Buy" := last_time_buy;
+                          MODIFY;
+                        UNTIL NEXT = 0;
+                      END;
+                      SETRANGE(Status,Services.Status::vorab);
+                      IF FIND('-') THEN BEGIN
+                        REPEAT
+                          RENAME("Service Artikelnr.","SUP Artikelnr.","Artikelnr. 2",W„hrungscode,Services.Status::neu);
+                        UNTIL NEXT = 0;
+                      END;
+                    END;
+                  END;
+
+                //Service Artikel, die nicht mehr in der neuen Preisliste zu finden sind, auch mit der neuen Version kompatibel sind
+                Services.RESET;
+                Services.SETRANGE(Status,Services.Status::alt);
+                Services.SETRANGE("Zuordnung obsolete",FALSE);
+                Services.SETRANGE("Update letzte Preisliste",TRUE);
+                IF Services.FIND('-') THEN BEGIN
+                  REPEAT
+                    Services_new.RESET;
+                    Services_new.SETRANGE("SUP Artikelnr.",Services."SUP Artikelnr.");
+                    Services_new.SETRANGE("Artikelnr. 2",Services."Artikelnr. 2");
+                    Services_new.SETRANGE(W„hrungscode,Services.W„hrungscode);
+                    Services_new.SETRANGE("Zuordnung obsolete",FALSE);
+                    Services_new.SETRANGE(Status,Services_new.Status::neu);
+                    IF NOT Services_new.FINDFIRST THEN BEGIN
+                      Services_new.INIT;
+                      Services_new.TRANSFERFIELDS(Services);
+                      Services_new."Last Time Buy" := 0D;
+                      Services_new.Status := Services_new.Status::neu;
+                      Services_new.Preisliste := 'old_services-' + Services_new.Preisliste;
+                      Services_new."Update letzte Preisliste" := FALSE;
+                      Services_new.INSERT(TRUE);
+
+                      //Umstellung der Vorlage, damit diese nicht gel”scht werden beim n„chsten Preislistenlauf
+                      Services."Last Time Buy" := 0D;
+                      Services."Update letzte Preisliste" := FALSE;
+                      Services.MODIFY(TRUE);
+                    END;
+                  UNTIL Services.NEXT = 0;
+                END;
+
+                //Aktuelle Belege auf Preislisten Kalkulation alt umstellen
+                SalesHeader.RESET;
+                SalesHeader.SETRANGE("Territory Code",'SYSTEM');
+                SalesHeader.SETRANGE("Preislisten Kalkulation",SalesHeader."Preislisten Kalkulation"::neu);
+                IF SalesHeader.FINDFIRST THEN BEGIN
+                  SalesHeader.MODIFYALL("Preislisten Kalkulation",SalesHeader."Preislisten Kalkulation"::alt);
+                END;
+              END;
+            END;
+          END;
+        END;
+      END;
     END;
 
     BEGIN
