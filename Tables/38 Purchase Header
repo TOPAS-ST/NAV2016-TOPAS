@@ -2,15 +2,17 @@ OBJECT Table 38 Purchase Header
 {
   OBJECT-PROPERTIES
   {
-    Date=13.06.17;
-    Time=12:41:18;
+    Date=07.11.19;
+    Time=17:27:02;
     Modified=Yes;
-    Version List=NAVW19.00.00.46290,NAVDACH9.00.00.46290,TOP1.00;
+    Version List=NAVW19.00.00.50682,NAVDACH9.00.00.50682,TOP1.01;
   }
   PROPERTIES
   {
     DataCaptionFields=No.,Buy-from Vendor Name;
-    OnInsert=BEGIN
+    OnInsert=VAR
+               ArchiveManagement@1000 : Codeunit 5063;
+             BEGIN
                IF NOT SkipInitialization THEN
                  InitInsert;
 
@@ -19,9 +21,14 @@ OBJECT Table 38 Purchase Header
                    VALIDATE("Buy-from Vendor No.",GETRANGEMIN("Buy-from Vendor No."));
 
                "Doc. No. Occurrence" := ArchiveManagement.GetNextOccurrenceNo(DATABASE::"Purchase Header","Document Type","No.");
+
+               IF "Purchaser Code" = '' THEN
+                 SetDefaultPurchaser;
              END;
 
-    OnDelete=BEGIN
+    OnDelete=VAR
+               ArchiveManagement@1000 : Codeunit 5063;
+             BEGIN
                IF NOT UserSetupMgt.CheckRespCenter(1,"Responsibility Center") THEN
                  ERROR(
                    Text023,
@@ -30,29 +37,13 @@ OBJECT Table 38 Purchase Header
                PurchPost.DeleteHeader(
                  Rec,PurchRcptHeader,PurchInvHeader,PurchCrMemoHeader,
                  ReturnShptHeader,PurchInvHeaderPrepmt,PurchCrMemoHeaderPrepmt);
-               CASE "Document Type" OF
-                 "Document Type"::Quote:
-                   BEGIN
-                     PurchSetup.GET;
-                     CASE PurchSetup."Archiving Purchase Quote" OF
-                       PurchSetup."Archiving Purchase Quote"::Always:
-                         ArchiveManagement.ArchPurchDocumentNoConfirm(Rec);
-                       PurchSetup."Archiving Purchase Quote"::Question:
-                         ArchiveManagement.ArchivePurchDocument(Rec);
-                     END;
-                   END;
-                 "Document Type"::Order,"Document Type"::"Blanket Order","Document Type"::"Return Order":
-                   BEGIN
-                     PurchSetup.GET;
-                     IF PurchSetup."Arch. Orders and Ret. Orders" OR PurchSetup."Archiving Blanket Purch. Order" THEN
-                       ArchiveManagement.ArchPurchDocumentNoConfirm(Rec);
-                   END;
-               END;
+
+               ArchiveManagement.AutoArchivePurchDocument(Rec);
 
                VALIDATE("Applies-to ID",'');
                VALIDATE("Incoming Document Entry No.",0);
 
-               ApprovalsMgmt.DeleteApprovalEntry(DATABASE::"Purchase Header","Document Type","No.");
+               ApprovalsMgmt.DeleteApprovalEntries(RECORDID);
                PurchLine.LOCKTABLE;
 
                WhseRequest.SETRANGE("Source Type",DATABASE::"Purchase Line");
@@ -103,6 +94,7 @@ OBJECT Table 38 Purchase Header
                                                                 IF ("Buy-from Vendor No." <> xRec."Buy-from Vendor No.") AND
                                                                    (xRec."Buy-from Vendor No." <> '')
                                                                 THEN BEGIN
+                                                                  CheckDropShipmentLineExists;
                                                                   IF HideValidationDialog THEN
                                                                     Confirmed := TRUE
                                                                   ELSE
@@ -309,7 +301,8 @@ OBJECT Table 38 Purchase Header
                                                                 END ELSE
                                                                   "Payment Method Code" := Vend."Payment Method Code";
 
-                                                                "Shipment Method Code" := Vend."Shipment Method Code";
+                                                                IF "Buy-from Vendor No." = Vend."No." THEN
+                                                                  "Shipment Method Code" := Vend."Shipment Method Code";
                                                                 "Vendor Posting Group" := Vend."Vendor Posting Group";
                                                                 GLSetup.GET;
                                                                 IF GLSetup."Bill-to/Sell-to VAT Calc." = GLSetup."Bill-to/Sell-to VAT Calc."::"Bill-to/Pay-to No." THEN BEGIN
@@ -322,7 +315,7 @@ OBJECT Table 38 Purchase Header
                                                                 "Currency Code" := Vend."Currency Code";
                                                                 "Invoice Disc. Code" := Vend."Invoice Disc. Code";
                                                                 "Language Code" := Vend."Language Code";
-                                                                "Purchaser Code" := Vend."Purchaser Code";
+                                                                SetPurchaserCode(Vend."Purchaser Code","Purchaser Code");
                                                                 VALIDATE("Payment Terms Code");
                                                                 VALIDATE("Prepmt. Payment Terms Code");
                                                                 VALIDATE("Payment Method Code");
@@ -390,7 +383,7 @@ OBJECT Table 38 Purchase Header
                                                                   PurchLine.SETFILTER("Sales Order Line No.",'<>0');
                                                                   IF NOT PurchLine.ISEMPTY THEN
                                                                     ERROR(
-                                                                      Text006,
+                                                                      YouCannotChangeFieldErr,
                                                                       FIELDCAPTION("Ship-to Code"));
                                                                 END;
 
@@ -582,7 +575,8 @@ OBJECT Table 38 Purchase Header
 
                                                    CaptionML=[DEU=Lagerortcode;
                                                               ENU=Location Code] }
-    { 29  ;   ;Shortcut Dimension 1 Code;Code20   ;TableRelation="Dimension Value".Code WHERE (Global Dimension No.=CONST(1));
+    { 29  ;   ;Shortcut Dimension 1 Code;Code20   ;TableRelation="Dimension Value".Code WHERE (Global Dimension No.=CONST(1),
+                                                                                               Blocked=CONST(No));
                                                    OnValidate=BEGIN
                                                                 ValidateShortcutDimCode(1,"Shortcut Dimension 1 Code");
                                                               END;
@@ -590,7 +584,8 @@ OBJECT Table 38 Purchase Header
                                                    CaptionML=[DEU=Shortcutdimensionscode 1;
                                                               ENU=Shortcut Dimension 1 Code];
                                                    CaptionClass='1,2,1' }
-    { 30  ;   ;Shortcut Dimension 2 Code;Code20   ;TableRelation="Dimension Value".Code WHERE (Global Dimension No.=CONST(2));
+    { 30  ;   ;Shortcut Dimension 2 Code;Code20   ;TableRelation="Dimension Value".Code WHERE (Global Dimension No.=CONST(2),
+                                                                                               Blocked=CONST(No));
                                                    OnValidate=BEGIN
                                                                 ValidateShortcutDimCode(2,"Shortcut Dimension 2 Code");
                                                               END;
@@ -729,10 +724,12 @@ OBJECT Table 38 Purchase Header
 
                                                    CaptionML=[DEU=Sprachcode;
                                                               ENU=Language Code] }
-    { 43  ;   ;Purchaser Code      ;Code10        ;TableRelation=Salesperson/Purchaser;
+    { 43  ;   ;Purchaser Code      ;Code20        ;TableRelation=Salesperson/Purchaser;
                                                    OnValidate=VAR
                                                                 ApprovalEntry@1001 : Record 454;
                                                               BEGIN
+                                                                ValidatePurchaserOnPurchHeader(Rec,FALSE,FALSE);
+
                                                                 ApprovalEntry.SETRANGE("Table ID",DATABASE::"Purchase Header");
                                                                 ApprovalEntry.SETRANGE("Document Type","Document Type");
                                                                 ApprovalEntry.SETRANGE("Document No.","No.");
@@ -906,14 +903,14 @@ OBJECT Table 38 Purchase Header
                                                                   PurchLine.SETFILTER("Sales Order Line No.",'<>0');
                                                                   IF NOT PurchLine.ISEMPTY THEN
                                                                     ERROR(
-                                                                      Text006,
+                                                                      YouCannotChangeFieldErr,
                                                                       FIELDCAPTION("Sell-to Customer No."));
 
                                                                   PurchLine.SETRANGE("Sales Order Line No.");
                                                                   PurchLine.SETFILTER("Special Order Sales Line No.",'<>0');
                                                                   IF NOT PurchLine.ISEMPTY THEN
                                                                     ERROR(
-                                                                      Text006,
+                                                                      YouCannotChangeFieldErr,
                                                                       FIELDCAPTION("Sell-to Customer No."));
                                                                 END;
 
@@ -1481,8 +1478,7 @@ OBJECT Table 38 Purchase Header
                                                    CaptionML=[DEU=Lfd. Nr. eingehender Beleg;
                                                               ENU=Incoming Document Entry No.] }
     { 170 ;   ;Creditor No.        ;Code20        ;CaptionML=[DEU=Gl„ubiger-Identifikationsnummer;
-                                                              ENU=Creditor No.];
-                                                   Numeric=Yes }
+                                                              ENU=Creditor No.] }
     { 171 ;   ;Payment Reference   ;Code50        ;OnValidate=BEGIN
                                                                 IF "Payment Reference" <> '' THEN
                                                                   TESTFIELD("Creditor No.");
@@ -1532,6 +1528,10 @@ OBJECT Table 38 Purchase Header
                                                                 Cont@1002 : Record 5050;
                                                               BEGIN
                                                                 TESTFIELD(Status,Status::Open);
+
+                                                                IF "Buy-from Contact No." <> '' THEN
+                                                                  IF Cont.GET("Buy-from Contact No.") THEN
+                                                                    Cont.CheckIfPrivacyBlockedGeneric;
 
                                                                 IF ("Buy-from Contact No." <> xRec."Buy-from Contact No.") AND
                                                                    (xRec."Buy-from Contact No." <> '')
@@ -1609,6 +1609,10 @@ OBJECT Table 38 Purchase Header
                                                                 Cont@1002 : Record 5050;
                                                               BEGIN
                                                                 TESTFIELD(Status,Status::Open);
+
+                                                                IF "Pay-to Contact No." <> '' THEN
+                                                                  IF Cont.GET("Pay-to Contact No.") THEN
+                                                                    Cont.CheckIfPrivacyBlockedGeneric;
 
                                                                 IF ("Pay-to Contact No." <> xRec."Pay-to Contact No.") AND
                                                                    (xRec."Pay-to Contact No." <> '')
@@ -1753,6 +1757,8 @@ OBJECT Table 38 Purchase Header
                                                               ENU=Promised Receipt Date] }
     { 5792;   ;Lead Time Calculation;DateFormula  ;OnValidate=BEGIN
                                                                 TESTFIELD(Status,Status::Open);
+                                                                LeadTimeMgt.CheckLeadTimeIsNotNegative("Lead Time Calculation");
+
                                                                 IF "Lead Time Calculation" <> xRec."Lead Time Calculation" THEN
                                                                   UpdatePurchLines(FIELDCAPTION("Lead Time Calculation"),CurrFieldNo <> 0);
                                                               END;
@@ -1814,6 +1820,7 @@ OBJECT Table 38 Purchase Header
                                                                     RespCenter.TABLECAPTION,UserSetupMgt.GetPurchasesFilter2("Assigned User ID"));
                                                               END;
 
+                                                   DataClassification=EndUserIdentifiableInformation;
                                                    CaptionML=[DEU=Zugewiesene Benutzer-ID;
                                                               ENU=Assigned User ID] }
     { 9001;   ;Pending Approvals   ;Integer       ;FieldClass=FlowField;
@@ -1826,7 +1833,7 @@ OBJECT Table 38 Purchase Header
     { 11000;  ;Registration No.    ;Text20        ;CaptionML=[DEU=Steuernummer;
                                                               ENU=Registration No.] }
     { 50005;  ;Auftragsnr.         ;Code20        ;OnValidate=BEGIN
-                                                                //TOPAS 24.10.16 ST - Auftragsnr. Eingabe holt die verknpfte Rahmenauftragsnr. aus dem Auftrag in die Bestellung
+                                                                //TOPAS 24.10.16 ST - Auftragsnr. Eingabe holt die verknpfte Rahmenauftragsnr. aus dem Auftrag in die Bestellung +
                                                                 IF SalesHeader.GET(SalesHeader."Document Type" :: Order,"Auftragsnr.") THEN BEGIN
                                                                   SalesLine.RESET;
                                                                   SalesLine.SETFILTER(Type,'%1',SalesLine.Type :: Item);
@@ -1846,15 +1853,17 @@ OBJECT Table 38 Purchase Header
                                                                   ELSE
                                                                     VALIDATE("Rahmenauftragsnr.",'');
                                                                 END;
-                                                                // TOPAS Ende
+                                                                // TOPAS -
                                                               END;
 
-                                                   Description=TOPAS 27.11.2013-ST Bezug zum Auftrag }
-    { 50006;  ;Rahmenauftragsnr.   ;Code20        ;Description=TOPAS 19.03.2015-ST Bezug zum Rahmenauftrag }
-    { 50601;  ;Zu exportieren      ;Boolean       ;Description=TOPAS 23.07.2010-ST }
-    { 50602;  ;Exportiert          ;Boolean       ;Description=TOPAS 23.07.2010-ST }
-    { 50603;  ;Exportdatum         ;Date          ;Description=TOPAS 23.07.2010-ST }
-    { 50604;  ;Info                ;Text30        ;Description=TOPAS 19.03.2015-ST Zusatzinfofeld }
+                                                   Description=TOPAS 27.11.13 ST - Bezug zum Auftrag }
+    { 50006;  ;Rahmenauftragsnr.   ;Code20        ;Description=TOPAS 19.03.15 ST - Bezug zum Rahmenauftrag }
+    { 50601;  ;Zu exportieren      ;Boolean       ;Description=TOPAS 23.07.10 ST }
+    { 50602;  ;Exportiert          ;Boolean       ;Description=TOPAS 23.07.10 ST }
+    { 50603;  ;Exportdatum         ;Date          ;Description=TOPAS 23.07.10 ST }
+    { 50604;  ;Info                ;Text30        ;Description=TOPAS 19.03.15 ST - Zusatzinfofeld }
+    { 51305;  ;Angelegt von        ;Code50        ;DataClassification=ToBeClassified;
+                                                   Description=TOPAS 07.11.19 ST }
   }
   KEYS
   {
@@ -1874,7 +1883,7 @@ OBJECT Table 38 Purchase Header
       Text003@1003 : TextConst 'DEU=Sie k”nnen einen %1 nicht umbenennen.;ENU=You cannot rename a %1.';
       Text004@1004 : TextConst 'DEU=M”chten Sie %1 „ndern?;ENU=Do you want to change %1?';
       Text005@1005 : TextConst 'DEU=Sie k”nnen %1 nicht zurcksetzen, da der Beleg eine oder mehrere Zeilen enth„lt.;ENU=You cannot reset %1 because the document still has one or more lines.';
-      Text006@1006 : TextConst 'DEU=Sie k”nnen %1 nicht „ndern, da die Bestellung zu einem oder mehreren Auftr„gen geh”rt.;ENU=You cannot change %1 because the order is associated with one or more sales orders.';
+      YouCannotChangeFieldErr@1006 : TextConst '@@@=%1 - fieldcaption;DEU=Sie k”nnen %1 nicht „ndern, da die Bestellung zu einem oder mehreren Auftr„gen geh”rt.;ENU=You cannot change %1 because the order is associated with one or more sales orders.';
       Text007@1007 : TextConst 'DEU=%1 ist gr”áer als %2 in der Tabelle %3.\;ENU=%1 is greater than %2 in the %3 table.\';
       Text008@1008 : TextConst 'DEU=Žnderung best„tigen?;ENU=Confirm change?';
       Text009@1009 : TextConst 'DEU="Das L”schen dieses Belegs verursacht eine Lcke in der Nummernserie der Lieferungen. ";ENU="Deleting this document will cause a gap in the number series for receipts. "';
@@ -1886,9 +1895,9 @@ OBJECT Table 38 Purchase Header
       Text015@1015 : TextConst 'DEU=Die leere Gutschrift %1 wird erzeugt, um die Lcke in der Nummernserie auszufllen.\\;ENU=An empty posted credit memo %1 will be created to fill this gap in the number series.\\';
       Text016@1016 : TextConst 'DEU=Wenn Sie %1 „ndern, werden vorhandene Einkaufszeilen gel”scht und neue Einkaufszeilen basierend auf den neuen Informationen des Kopfes werden erstellt.\\;ENU=If you change %1, the existing purchase lines will be deleted and new purchase lines based on the new information in the header will be created.\\';
       Text018@1017 : TextConst 'DEU=Sie mssen die vorhandenen Einkaufszeilen l”schen, bevor Sie das Feld %1 „ndern k”nnen.;ENU=You must delete the existing purchase lines before you can change %1.';
-      Text019@1018 : TextConst 'DEU=Sie haben das Feld %1 im Einkaufskopf ge„ndert, aber die dazugeh”rigen Einkaufszeilen wurden nicht ge„ndert.\;ENU=You have changed %1 on the purchase header, but it has not been changed on the existing purchase lines.\';
+      LinesNotUpdatedMsg@1018 : TextConst '@@@=You have changed Posting Date on the purchase header, but it has not been changed on the existing purchase lines.;DEU=Sie haben das Feld %1 im Einkaufskopf ge„ndert, aber die dazugeh”rigen Einkaufszeilen wurden nicht ge„ndert.;ENU=You have changed %1 on the purchase header, but it has not been changed on the existing purchase lines.';
       Text020@1019 : TextConst 'DEU=Sie mssen die vorhandenen Einkaufszeilen manuell aktualisieren.;ENU=You must update the existing purchase lines manually.';
-      Text021@1020 : TextConst 'DEU=Die Žnderung kann eventuell den Wechselkurs, der fr die Preiskalkulation der Einkaufszeilen verwendet wurde, beinflussen.;ENU=The change may affect the exchange rate used on the price calculation of the purchase lines.';
+      AffectExchangeRateMsg@1020 : TextConst 'DEU=Die Žnderung kann eventuell den Wechselkurs beeinflussen, der fr die Preiskalkulation in den Einkaufszeilen verwendet wurde.;ENU=The change may affect the exchange rate that is used for price calculation on the purchase lines.';
       Text022@1021 : TextConst 'DEU=M”chten Sie den Wechselkurs „ndern?;ENU=Do you want to update the exchange rate?';
       Text023@1022 : TextConst 'DEU=Sie k”nnen diesen Beleg nicht l”schen. Ihre Benutzereinrichtung l„sst nur %1 %2 zu.;ENU=You cannot delete this document. Your identification is set up to process from %1 %2 only.';
       Text025@1024 : TextConst 'DEU="Sie haben das Feld %1 ge„ndert. Beachten Sie, dass die Neuberechnung der MwSt. Differenzen im Dezimalbereich hervorrufen kann und Sie daher anschlieáend die Betr„ge berprfen mssen. ";ENU="You have modified the %1 field. Note that the recalculation of VAT may cause penny differences, so you must check the amounts afterwards. "';
@@ -1928,6 +1937,7 @@ OBJECT Table 38 Purchase Header
       Location@1057 : Record 14;
       WhseRequest@1058 : Record 5765;
       InvtSetup@1059 : Record 313;
+      SalespersonPurchaser@1932 : Record 13;
       NoSeriesMgt@1060 : Codeunit 396;
       TransferExtendedText@1061 : Codeunit 378;
       GenJnlApply@1062 : Codeunit 225;
@@ -1936,7 +1946,7 @@ OBJECT Table 38 Purchase Header
       DimMgt@1065 : Codeunit 408;
       ApprovalsMgmt@1082 : Codeunit 1535;
       UserSetupMgt@1066 : Codeunit 5700;
-      ArchiveManagement@1074 : Codeunit 5063;
+      LeadTimeMgt@1000 : Codeunit 5404;
       ApplyVendEntries@1068 : Page 233;
       CurrencyDate@1069 : Date;
       HideValidationDialog@1070 : Boolean;
@@ -1960,11 +1970,12 @@ OBJECT Table 38 Purchase Header
       DropShptNameAddressDetails@1094 : Text[512];
       SpecOrderNameAddressDetails@1121 : Text[512];
       UpdateDocumentDate@1120 : Boolean;
-      Text053@1095 : TextConst 'DEU=Fr den Beleg vom Typ ''%1'' mit der Nummer %2 sind ungebuchte Vorauszahlungsbetr„ge vorhanden.;ENU=There are unposted prepayment amounts on the document of type %1 with the number %2.';
+      PrepaymentInvoicesNotPaidErr@1074 : TextConst '@@@=You cannot post the document of type Order with the number 1001 before all related prepayment invoices are posted.;DEU=Sie k”nnen den Beleg vom Typ %1 mit der Nummer %2 nicht buchen, bevor alle zugeh”rigen Vorauszahlungsrechnungen gebucht worden sind.;ENU=You cannot post the document of type %1 with the number %2 before all related prepayment invoices are posted.';
       Text054@1096 : TextConst 'DEU=Fr den Beleg vom Typ %1 mit der Nummer %2 sind unbezahlte Vorauszahlungsrechnungen vorhanden.;ENU=There are unpaid prepayment invoices that are related to the document of type %1 with the number %2.';
       DeferralLineQst@1155 : TextConst '@@@="%1=The posting date on the document.";DEU=Sie haben %1 auf dem Einkaufskopf ge„ndert. M”chten Sie die Abgrenzungspl„ne fr die Zeilen mit diesem Datum „ndern?;ENU=You have changed the %1 on the purchase header, do you want to update the deferral schedules for the lines with this date?';
       ChangeCurrencyQst@1073 : TextConst 'DEU=Wenn Sie %1 „ndern, werden die vorhandenen Einkaufszeilen gel”scht und neue Einkaufszeilen auf der Grundlage der neuen Kopfinformationen erstellt. M”glicherweise mssen Sie die Preisinformationen manuell aktualisieren.\\M”chten Sie %1 „ndern?;ENU=If you change %1, the existing purchase lines will be deleted and new purchase lines based on the new information in the header will be created. You may need to update the price information manually.\\Do you want to change %1?';
       PostedDocsToPrintCreatedMsg@1081 : TextConst 'DEU=Mindestens ein Beleg wurde w„hrend des L”schens gebucht, den Sie ber den dazugeh”renden gebuchten Beleg drucken k”nnen.;ENU=One or more documents have been posted during deletion, which you can print from the related posted document.';
+      SplitMessageTxt@1085 : TextConst '@@@=Some message text 1.\Some message text 2.;DEU=%1\%2;ENU=%1\%2';
       "***TOPAS_VAR***"@1000000000 : Integer;
       SalesHeader@1000000003 : Record 36;
       SalesLine@1000000002 : Record 37;
@@ -2042,7 +2053,9 @@ OBJECT Table 38 Purchase Header
           END;
       END;
 
-      IF "Document Type" IN ["Document Type"::Order,"Document Type"::Invoice,"Document Type"::"Return Order"] THEN
+      IF "Document Type" IN
+         ["Document Type"::Order,"Document Type"::Invoice,"Document Type"::"Return Order","Document Type"::Quote]
+      THEN
         "Order Date" := WORKDATE;
 
       IF "Document Type" = "Document Type"::Invoice THEN
@@ -2071,6 +2084,10 @@ OBJECT Table 38 Purchase Header
         "Inbound Whse. Handling Time" := InvtSetup."Inbound Whse. Handling Time";
 
       "Responsibility Center" := UserSetupMgt.GetRespCenter(1,"Responsibility Center");
+
+      //TOPAS 07.11.19 ST - Erfassung des Erstellers +
+      "Angelegt von" := USERID;
+      //TOPAS -
     END;
 
     LOCAL PROCEDURE InitNoSeries@52();
@@ -2460,20 +2477,26 @@ OBJECT Table 38 Purchase Header
     END;
 
     LOCAL PROCEDURE MessageIfPurchLinesExist@5(ChangedFieldName@1000 : Text[100]);
+    VAR
+      MessageText@1001 : Text;
     BEGIN
-      IF PurchLinesExist AND NOT HideValidationDialog THEN
-        MESSAGE(
-          Text019 +
-          Text020,
-          ChangedFieldName);
+      IF PurchLinesExist AND NOT HideValidationDialog THEN BEGIN
+        MessageText := STRSUBSTNO(LinesNotUpdatedMsg,ChangedFieldName);
+        MessageText := STRSUBSTNO(SplitMessageTxt,MessageText,Text020);
+        MESSAGE(MessageText);
+      END;
     END;
 
     LOCAL PROCEDURE PriceMessageIfPurchLinesExist@7(ChangedFieldName@1000 : Text[100]);
+    VAR
+      MessageText@1001 : Text;
     BEGIN
-      IF PurchLinesExist AND NOT HideValidationDialog THEN
-        MESSAGE(
-          Text019 +
-          Text021,ChangedFieldName);
+      IF PurchLinesExist AND NOT HideValidationDialog THEN BEGIN
+        MessageText := STRSUBSTNO(LinesNotUpdatedMsg,ChangedFieldName);
+        IF "Currency Code" <> '' THEN
+          MessageText := STRSUBSTNO(SplitMessageTxt,MessageText,AffectExchangeRateMsg);
+        MESSAGE(MessageText);
+      END;
     END;
 
     LOCAL PROCEDURE UpdateCurrencyFactor@12();
@@ -2772,6 +2795,7 @@ OBJECT Table 38 Purchase Header
     VAR
       ContBusRel@1003 : Record 5054;
       Vend@1001 : Record 23;
+      Contact@1002 : Record 5050;
     BEGIN
       IF Vend.GET(VendorNo) THEN BEGIN
         IF Vend."Primary Contact No." <> '' THEN
@@ -2788,6 +2812,10 @@ OBJECT Table 38 Purchase Header
         END;
         "Pay-to Contact" := Vend.Contact;
       END;
+
+      IF "Pay-to Contact No." <> '' THEN
+        IF Contact.GET("Pay-to Contact No.") THEN
+          Contact.CheckIfPrivacyBlockedGeneric;
     END;
 
     LOCAL PROCEDURE UpdateBuyFromVend@25(ContactNo@1002 : Code[20]);
@@ -3105,6 +3133,16 @@ OBJECT Table 38 Purchase Header
       EXIT(NOT SalesLine3.ISEMPTY);
     END;
 
+    LOCAL PROCEDURE CheckDropShipmentLineExists@153();
+    VAR
+      SalesShipmentLine@1000 : Record 111;
+    BEGIN
+      SalesShipmentLine.SETRANGE("Purchase Order No.","No.");
+      SalesShipmentLine.SETRANGE("Drop Shipment",TRUE);
+      IF NOT SalesShipmentLine.ISEMPTY THEN
+        ERROR(YouCannotChangeFieldErr,FIELDCAPTION("Buy-from Vendor No."));
+    END;
+
     PROCEDURE QtyToReceiveIsZero@30() : Boolean;
     BEGIN
       PurchLine.RESET;
@@ -3120,7 +3158,7 @@ OBJECT Table 38 Purchase Header
     BEGIN
       IF ApprovalsMgmt.PrePostApprovalCheckPurch(Rec) THEN BEGIN
         IF PrepaymentMgt.TestPurchasePrepayment(Rec) THEN
-          ERROR(STRSUBSTNO(Text053,"Document Type","No."));
+          ERROR(STRSUBSTNO(PrepaymentInvoicesNotPaidErr,"Document Type","No."));
         IF PrepaymentMgt.TestPurchasePayment(Rec) THEN
           IF NOT CONFIRM(STRSUBSTNO(Text054,"Document Type","No."),TRUE) THEN
             EXIT(FALSE);
@@ -3372,6 +3410,92 @@ OBJECT Table 38 Purchase Header
         UpdatePurchLines(PurchLine.FIELDCAPTION("Deferral Code"),FALSE);
     END;
 
+    PROCEDURE BatchConfirmUpdateDeferralDate@59(VAR BatchConfirm@1000 : ' ,Skip,Update';ReplacePostingDate@1001 : Boolean;PostingDateReq@1002 : Date);
+    BEGIN
+      IF (NOT ReplacePostingDate) OR (PostingDateReq = "Posting Date") OR (BatchConfirm = BatchConfirm::Skip) THEN
+        EXIT;
+
+      IF NOT DeferralHeadersExist THEN
+        EXIT;
+
+      "Posting Date" := PostingDateReq;
+      CASE BatchConfirm OF
+        BatchConfirm::" ":
+          BEGIN
+            ConfirmUpdateDeferralDate;
+            IF Confirmed THEN
+              BatchConfirm := BatchConfirm::Update
+            ELSE
+              BatchConfirm := BatchConfirm::Skip;
+          END;
+        BatchConfirm::Update:
+          UpdatePurchLines(PurchLine.FIELDCAPTION("Deferral Code"),FALSE);
+      END;
+      COMMIT;
+    END;
+
+    PROCEDURE SetShipToAddress@117(ShipToName@1000 : Text[50];ShipToName2@1001 : Text[50];ShipToAddress@1002 : Text[50];ShipToAddress2@1003 : Text[50];ShipToCity@1004 : Text[30];ShipToPostCode@1005 : Code[20];ShipToCounty@1006 : Text[30];ShipToCountryRegionCode@1007 : Code[10]);
+    BEGIN
+      "Ship-to Name" := ShipToName;
+      "Ship-to Name 2" := ShipToName2;
+      "Ship-to Address" := ShipToAddress;
+      "Ship-to Address 2" := ShipToAddress2;
+      "Ship-to City" := ShipToCity;
+      "Ship-to Post Code" := ShipToPostCode;
+      "Ship-to County" := ShipToCounty;
+      "Ship-to Country/Region Code" := ShipToCountryRegionCode;
+    END;
+
+    LOCAL PROCEDURE SetPurchaserCode@933(PurchaserCodeToCheck@1000 : Code[20];VAR PurchaserCodeToAssign@1001 : Code[20]);
+    BEGIN
+      IF PurchaserCodeToCheck <> '' THEN
+        IF SalespersonPurchaser.GET(PurchaserCodeToCheck) THEN
+          IF SalespersonPurchaser.VerifySalesPersonPurchaserPrivacyBlocked(SalespersonPurchaser) THEN
+            PurchaserCodeToAssign := ''
+          ELSE
+            PurchaserCodeToAssign := PurchaserCodeToCheck;
+    END;
+
+    PROCEDURE ValidatePurchaserOnPurchHeader@912(PurchaseHeader2@1000 : Record 38;IsTransaction@1001 : Boolean;IsPostAction@1002 : Boolean);
+    BEGIN
+      IF PurchaseHeader2."Purchaser Code" <> '' THEN
+        IF SalespersonPurchaser.GET(PurchaseHeader2."Purchaser Code") THEN
+          IF SalespersonPurchaser.VerifySalesPersonPurchaserPrivacyBlocked(SalespersonPurchaser) THEN BEGIN
+            IF IsTransaction THEN
+              ERROR(SalespersonPurchaser.GetPrivacyBlockedTransactionText(SalespersonPurchaser,IsPostAction,FALSE));
+            IF NOT IsTransaction THEN
+              ERROR(SalespersonPurchaser.GetPrivacyBlockedGenericText(SalespersonPurchaser,FALSE));
+          END;
+    END;
+
+    PROCEDURE InitFromPurchHeader@109(SourcePurchHeader@1000 : Record 38);
+    BEGIN
+      "Document Date" := SourcePurchHeader."Document Date";
+      "Expected Receipt Date" := SourcePurchHeader."Expected Receipt Date";
+      "Shortcut Dimension 1 Code" := SourcePurchHeader."Shortcut Dimension 1 Code";
+      "Shortcut Dimension 2 Code" := SourcePurchHeader."Shortcut Dimension 2 Code";
+      "Dimension Set ID" := SourcePurchHeader."Dimension Set ID";
+      "Location Code" := SourcePurchHeader."Location Code";
+      SetShipToAddress(
+        SourcePurchHeader."Ship-to Name",SourcePurchHeader."Ship-to Name 2",SourcePurchHeader."Ship-to Address",
+        SourcePurchHeader."Ship-to Address 2",SourcePurchHeader."Ship-to City",SourcePurchHeader."Ship-to Post Code",
+        SourcePurchHeader."Ship-to County",SourcePurchHeader."Ship-to Country/Region Code");
+      "Ship-to Contact" := SourcePurchHeader."Ship-to Contact";
+    END;
+
+    LOCAL PROCEDURE SetDefaultPurchaser@76();
+    VAR
+      UserSetup@1000 : Record 91;
+    BEGIN
+      IF NOT UserSetup.GET(USERID) THEN
+        EXIT;
+
+      IF UserSetup."Salespers./Purch. Code" <> '' THEN
+        IF SalespersonPurchaser.GET(UserSetup."Salespers./Purch. Code") THEN
+          IF NOT SalespersonPurchaser.VerifySalesPersonPurchaserPrivacyBlocked(SalespersonPurchaser) THEN
+            VALIDATE("Purchaser Code",UserSetup."Salespers./Purch. Code");
+    END;
+
     LOCAL PROCEDURE "***TOPAS_Func***"@1000000000();
     BEGIN
     END;
@@ -3434,10 +3558,11 @@ OBJECT Table 38 Purchase Header
 
     BEGIN
     {
-      Lfd.Nr.  Version  Datum       User   Beschreibung
+      Lfd.Nr. Version   Datum       User    Beschreibung
       ===========================================================================
-      1        TOP1.00  20.10.16    UB     TOPAS Felder 50005,50006 und 50601-50604 angelegt
-      2        TOP1.00  24.10.16    ST     TOPAS Programmierung bernommen
+      1       TOP1.00   20.10.16    UB      TOPAS Felder 50005,50006 und 50601-50604 angelegt
+      2       TOP1.00   24.10.16    ST      TOPAS Programmierung bernommen
+      3       TOP1.01   07.11.19    ST      Neues Feld "Angelegt von" und Erfassung des Erstellers
     }
     END.
   }
