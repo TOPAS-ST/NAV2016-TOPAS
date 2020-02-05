@@ -2,8 +2,8 @@ OBJECT Table 50024 Serviceleist. & Leihstellungen
 {
   OBJECT-PROPERTIES
   {
-    Date=20.11.19;
-    Time=18:09:45;
+    Date=22.01.20;
+    Time=17:30:00;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -580,6 +580,7 @@ OBJECT Table 50024 Serviceleist. & Leihstellungen
       Text033@1140049 : TextConst 'DEU=Ausnahmefehler: \\Es konnte keine Seriennr. Zuordnung fr die Service Buchung gefunden werden, obwohl es eine Ankndigung dafr gab. \Der Vorgang wird abgebrochen. Bitte wenden Sie sich an den Administrator.';
       Text034@1140056 : TextConst 'DEU=Sie k”nnen hier keine Artikelnr. eingeben.';
       Text035@1140057 : TextConst 'DEU=Bitte verteilen Sie zun„chst die %1 Basissysteme in verschiedene Systemvertr„ge auf, bevor Sie mit der Vorbelegung weiterverfahren k”nnen.';
+      Text036@1000000006 : TextConst 'DEU=Achtung: In ein oder mehreren Zeilen wurde der %1 automatisch angepasst, da die Angaben im Wartungsvertrag gegenber der urspr. Buchung abweichen sind. Bitte berprfen Sie die Angaben.';
       Text070@1140054 : TextConst 'DEU=M”chten Sie wirklich mit dem Verschieben von Systempositionen beginnen?';
       Text071@1140053 : TextConst 'DEU=Die Verschiebung von Basisger„ten ist derzeit nicht gestattet.';
       Text072@1140052 : TextConst 'DEU=Fr Seriennr. %1 konnte das Feld %2 nicht gefllt werden, da im neu zugewiesenen Systemvertrag kein aktives Basisger„t gefunden werden konnte.';
@@ -769,15 +770,16 @@ OBJECT Table 50024 Serviceleist. & Leihstellungen
       PruefeServicePos@1140008 : Record 50024;
       HoleNeueSystemPos@1140016 : Record 50024;
       PruefeNachfolgeSystemPos@1140018 : Record 50024;
-      TempLizenzTab@1140004 : Record 50024;
+      ServiceTab@1000000001 : Record 50024;
+      TempServiceTab@1140004 : Record 50024;
       HoleTempSN@1140024 : Record 50024;
-      LizenzTab@1140003 : Record 50024;
       ersetzt_lfdnr@1140019 : Code[20];
       geh”rtzu@1140007 : Code[20];
       zupruefende_seriennr@1140017 : Code[20];
       urspr_seriennr@1140021 : Code[20];
       seriennr_ersetzt@1140020 : Boolean;
       artikelnr@1140023 : Code[20];
+      product_key_changed@1000000000 : Boolean;
       k@1140014 : Integer;
       z@1140022 : Integer;
     BEGIN
@@ -828,6 +830,7 @@ OBJECT Table 50024 Serviceleist. & Leihstellungen
           artikelnr := Artikelposten."Item No.";
           urspr_seriennr := '';
           ersetzt_lfdnr := '';
+          product_key_changed := FALSE;
 
           //Wegen RMA Verfahren muss auf Seriennr. Žnderung geprft werden und diese dann weiter verwendet werden
           PruefeServicePos.RESET;
@@ -888,30 +891,30 @@ OBJECT Table 50024 Serviceleist. & Leihstellungen
               END;
             END;
 
-          TempLizenzTab.RESET;
-          TempLizenzTab.SETFILTER(Art,'%1',TempLizenzTab.Art::Tempor„r);
-          TempLizenzTab.SETFILTER("Auftragsnr.",'%1',Auftragsnr);
-          TempLizenzTab.SETFILTER("Auftragszeilennr.",'%1',AUzeilennr);
-          TempLizenzTab.SETFILTER("Nr.",'%1',Lieferscheinnr);
-          TempLizenzTab.SETFILTER("Belegzeilennr.",'%1',Lieferscheinzeilennr);
-          TempLizenzTab.SETFILTER("Seriennr.",'%1',zupruefende_seriennr);
-          IF NOT TempLizenzTab.FINDFIRST THEN BEGIN
-            LizenzTab.INIT;
-            LizenzTab.Art := LizenzTab.Art::Tempor„r;
-            LizenzTab."Nr." := Lieferscheinnr;
-            LizenzTab."Belegzeilennr." := Lieferscheinzeilennr;
-            LizenzTab.INSERT(TRUE);
-            LizenzTab."Debitornr." := Debnr;
-            //LizenzTab.VALIDATE("Artikelnr.",Artikelposten."Item No.");
-            LizenzTab.VALIDATE("Artikelnr.", artikelnr);
-            LizenzTab.Serviceleistung := 'WARTUNGSVERTRAG';
+          TempServiceTab.RESET;
+          TempServiceTab.SETFILTER(Art,'%1',TempServiceTab.Art::Tempor„r);
+          TempServiceTab.SETFILTER("Auftragsnr.",'%1',Auftragsnr);
+          TempServiceTab.SETFILTER("Auftragszeilennr.",'%1',AUzeilennr);
+          TempServiceTab.SETFILTER("Nr.",'%1',Lieferscheinnr);
+          TempServiceTab.SETFILTER("Belegzeilennr.",'%1',Lieferscheinzeilennr);
+          TempServiceTab.SETFILTER("Seriennr.",'%1',zupruefende_seriennr);
+          IF NOT TempServiceTab.FINDFIRST THEN BEGIN
+            ServiceTab.INIT;
+            ServiceTab.Art := ServiceTab.Art::Tempor„r;
+            ServiceTab."Nr." := Lieferscheinnr;
+            ServiceTab."Belegzeilennr." := Lieferscheinzeilennr;
+            ServiceTab.INSERT(TRUE);
+            ServiceTab."Debitornr." := Debnr;
+            //ServiceTab.VALIDATE("Artikelnr.",Artikelposten."Item No.");
+            ServiceTab.VALIDATE("Artikelnr.", artikelnr);
+            ServiceTab.Serviceleistung := 'WARTUNGSVERTRAG';
             IF Artikelposten."Item Tracking" = Artikelposten."Item Tracking"::"Serial No." THEN
-              LizenzTab.Menge := Artikelposten.Quantity * (-1)
+              ServiceTab.Menge := Artikelposten.Quantity * (-1)
             ELSE
-              LizenzTab.Menge := "Lizenz Anzahl";
-            LizenzTab."Seriennr." := zupruefende_seriennr;
+              ServiceTab.Menge := "Lizenz Anzahl";
+            ServiceTab."Seriennr." := zupruefende_seriennr;
             IF urspr_seriennr <> '' THEN BEGIN
-              LizenzTab."Urspr. Seriennr." := urspr_seriennr;
+              ServiceTab."Urspr. Seriennr." := urspr_seriennr;
             END;
             //Prfe, ob RMA vorhanden und Ersatz vorliegt
             PruefeServicePos.RESET;
@@ -920,29 +923,44 @@ OBJECT Table 50024 Serviceleist. & Leihstellungen
             PruefeServicePos.SETFILTER("Artikelnr.",'%1',Artikelposten."Item No.");
             PruefeServicePos.SETFILTER("Seriennr.",'%1',Artikelposten."Serial No.");
             IF (PruefeServicePos.FINDLAST) AND (PruefeServicePos.Reklamiert) AND (PruefeServicePos.Ersatzverfahren) THEN BEGIN
-              LizenzTab.Ersatzverfahren := TRUE;
-              LizenzTab."Urspr. Seriennr." := urspr_seriennr;
+              ServiceTab.Ersatzverfahren := TRUE;
+              ServiceTab."Urspr. Seriennr." := urspr_seriennr;
             END;
-            LizenzTab.Ursprungsland := Artikelposten.Ursprungsland;
-            LizenzTab."Product Key" := Artikelposten."Product Key";
-            LizenzTab."Seriennr. 2" := Artikelposten."Serial No. 2";
+            ServiceTab.Ursprungsland := Artikelposten.Ursprungsland;
+            ServiceTab."Product Key" := Artikelposten."Product Key";
+
+            //Korrektur des Product Keys, wenn dieser im Wartungsvertrag manuell angepasst wurde
+            PruefeServicePos.RESET;
+            PruefeServicePos.SETFILTER(Inaktiv,'%1',FALSE);
+            PruefeServicePos.SETFILTER(Art,'%1',PruefeServicePos.Art::Service);
+            PruefeServicePos.SETFILTER("Urspr. Lieferscheinnr.",'%1',Lieferscheinnr);
+            PruefeServicePos.SETFILTER("Urspr. Lieferscheinzeilennr.",'%1',Lieferscheinzeilennr);
+            PruefeServicePos.SETFILTER("Artikelnr.",'%1',Artikelposten."Item No.");
+            PruefeServicePos.SETFILTER("Seriennr.",'%1',Artikelposten."Serial No.");
+            IF (PruefeServicePos.FINDLAST) AND (PruefeServicePos."Product Key" <> Artikelposten."Product Key")
+            AND (PruefeServicePos."Product Key" <> '') THEN BEGIN
+              ServiceTab."Product Key" := PruefeServicePos."Product Key";
+              product_key_changed := TRUE;
+            END;
+
+            ServiceTab."Seriennr. 2" := Artikelposten."Serial No. 2";
             ItemAppEntry.SETRANGE("Outbound Item Entry No.",Artikelposten."Entry No.");
             IF ItemAppEntry.FINDFIRST THEN BEGIN
               ItemLedgerEntryEK.SETRANGE("Entry No.",ItemAppEntry."Inbound Item Entry No.");
               IF ItemLedgerEntryEK.FINDFIRST THEN BEGIN
                 PurchShipHeader.SETRANGE("No.",ItemLedgerEntryEK."Document No.");
                 IF PurchShipHeader.FINDFIRST THEN
-                  LizenzTab."Eingangs BET" := PurchShipHeader."Order No.";
+                  ServiceTab."Eingangs BET" := PurchShipHeader."Order No.";
               END;
             END;
-            LizenzTab."Auftragsnr." := Auftragsnr;
-            LizenzTab."Auftragszeilennr." := AUzeilennr;
+            ServiceTab."Auftragsnr." := Auftragsnr;
+            ServiceTab."Auftragszeilennr." := AUzeilennr;
             Liefzeile.GET(Lieferscheinnr,Lieferscheinzeilennr);
-            LizenzTab."Urspr. Auftragsnr." := Liefzeile."Order No.";
-            LizenzTab."Urspr. Auftragszeilennr." := Liefzeile."Order Line No.";
-            LizenzTab.Verl„ngerung := PrfeWartungvorhanden("SUP Artikelnr",Lieferscheinnr,Lieferscheinzeilennr,
-                                      LizenzTab."Seriennr.",Debnr);
-            LizenzTab.MODIFY;
+            ServiceTab."Urspr. Auftragsnr." := Liefzeile."Order No.";
+            ServiceTab."Urspr. Auftragszeilennr." := Liefzeile."Order Line No.";
+            ServiceTab.Verl„ngerung := PrfeWartungvorhanden("SUP Artikelnr",Lieferscheinnr,Lieferscheinzeilennr,
+                                      ServiceTab."Seriennr.",Debnr);
+            ServiceTab.MODIFY;
           END;
         UNTIL Artikelposten.NEXT = 0;
       END ELSE BEGIN
@@ -958,28 +976,28 @@ OBJECT Table 50024 Serviceleist. & Leihstellungen
         PruefeServicePos.SETFILTER(Inaktiv,'%1',FALSE);
         IF PruefeServicePos.FINDFIRST THEN BEGIN
           REPEAT
-            TempLizenzTab.RESET;
-            TempLizenzTab.SETFILTER(Art,'%1',TempLizenzTab.Art::Tempor„r);
-            TempLizenzTab.SETFILTER("Auftragsnr.",'%1',Auftragsnr);
-            TempLizenzTab.SETFILTER("Auftragszeilennr.",'%1',AUzeilennr);
-            TempLizenzTab.SETFILTER("Nr.",'%1',Lieferscheinnr);
-            TempLizenzTab.SETFILTER("Belegzeilennr.",'%1',Lieferscheinzeilennr);
-            TempLizenzTab.SETFILTER("Seriennr.",'%1',PruefeServicePos."Seriennr.");
-            TempLizenzTab.SETFILTER("Product Key",'%1',PruefeServicePos."Product Key");
-            IF NOT TempLizenzTab.FINDFIRST THEN BEGIN
-              LizenzTab.INIT;
-              LizenzTab.Art := LizenzTab.Art::Tempor„r;
-              LizenzTab."Nr." := Lieferscheinnr;
-              LizenzTab."Belegzeilennr." := Lieferscheinzeilennr;
-              LizenzTab.INSERT(TRUE);
-              LizenzTab."Debitornr." := Debnr;
-              LizenzTab.VALIDATE("Artikelnr.",PruefeServicePos."Artikelnr.");
-              LizenzTab.Serviceleistung := 'WARTUNGSVERTRAG';
-              LizenzTab.Menge := PruefeServicePos.Menge;
-              LizenzTab."Seriennr." := PruefeServicePos."Seriennr.";
-              LizenzTab.Ursprungsland := PruefeServicePos.Ursprungsland;
-              LizenzTab."Product Key" := PruefeServicePos."Product Key";
-              LizenzTab."Seriennr. 2" := PruefeServicePos."Seriennr. 2";
+            TempServiceTab.RESET;
+            TempServiceTab.SETFILTER(Art,'%1',TempServiceTab.Art::Tempor„r);
+            TempServiceTab.SETFILTER("Auftragsnr.",'%1',Auftragsnr);
+            TempServiceTab.SETFILTER("Auftragszeilennr.",'%1',AUzeilennr);
+            TempServiceTab.SETFILTER("Nr.",'%1',Lieferscheinnr);
+            TempServiceTab.SETFILTER("Belegzeilennr.",'%1',Lieferscheinzeilennr);
+            TempServiceTab.SETFILTER("Seriennr.",'%1',PruefeServicePos."Seriennr.");
+            TempServiceTab.SETFILTER("Product Key",'%1',PruefeServicePos."Product Key");
+            IF NOT TempServiceTab.FINDFIRST THEN BEGIN
+              ServiceTab.INIT;
+              ServiceTab.Art := ServiceTab.Art::Tempor„r;
+              ServiceTab."Nr." := Lieferscheinnr;
+              ServiceTab."Belegzeilennr." := Lieferscheinzeilennr;
+              ServiceTab.INSERT(TRUE);
+              ServiceTab."Debitornr." := Debnr;
+              ServiceTab.VALIDATE("Artikelnr.",PruefeServicePos."Artikelnr.");
+              ServiceTab.Serviceleistung := 'WARTUNGSVERTRAG';
+              ServiceTab.Menge := PruefeServicePos.Menge;
+              ServiceTab."Seriennr." := PruefeServicePos."Seriennr.";
+              ServiceTab.Ursprungsland := PruefeServicePos.Ursprungsland;
+              ServiceTab."Product Key" := PruefeServicePos."Product Key";
+              ServiceTab."Seriennr. 2" := PruefeServicePos."Seriennr. 2";
               ItemLedgerEntryVK.RESET;
               ItemLedgerEntryVK.SETRANGE("Serial No.",PruefeServicePos."Seriennr.");
               ItemLedgerEntryVK.SETRANGE("Document No.",PruefeServicePos."Nr.");
@@ -990,17 +1008,17 @@ OBJECT Table 50024 Serviceleist. & Leihstellungen
                 IF ItemLedgerEntryEK.FINDFIRST THEN BEGIN
                   PurchShipHeader.SETRANGE("No.",ItemLedgerEntryEK."Document No.");
                   IF PurchShipHeader.FINDFIRST THEN
-                    LizenzTab."Eingangs BET" := PurchShipHeader."Order No.";
+                    ServiceTab."Eingangs BET" := PurchShipHeader."Order No.";
                 END;
               END;
-              LizenzTab."Auftragsnr." := Auftragsnr;
-              LizenzTab."Auftragszeilennr." := AUzeilennr;
-              LizenzTab."Urspr. Auftragsnr." := PruefeServicePos."Auftragsnr.";
-              LizenzTab."Urspr. Auftragszeilennr." := PruefeServicePos."Auftragszeilennr.";
-              LizenzTab.Fremderwerb := PruefeServicePos.Fremderwerb;
-              LizenzTab.Verl„ngerung := PrfeWartungvorhanden("SUP Artikelnr",Lieferscheinnr,Lieferscheinzeilennr,
-                                        LizenzTab."Seriennr.",Debnr);
-              LizenzTab.MODIFY;
+              ServiceTab."Auftragsnr." := Auftragsnr;
+              ServiceTab."Auftragszeilennr." := AUzeilennr;
+              ServiceTab."Urspr. Auftragsnr." := PruefeServicePos."Auftragsnr.";
+              ServiceTab."Urspr. Auftragszeilennr." := PruefeServicePos."Auftragszeilennr.";
+              ServiceTab.Fremderwerb := PruefeServicePos.Fremderwerb;
+              ServiceTab.Verl„ngerung := PrfeWartungvorhanden("SUP Artikelnr",Lieferscheinnr,Lieferscheinzeilennr,
+                                        ServiceTab."Seriennr.",Debnr);
+              ServiceTab.MODIFY;
             END;
           UNTIL PruefeServicePos.NEXT = 0;
         END ELSE BEGIN
@@ -1016,23 +1034,23 @@ OBJECT Table 50024 Serviceleist. & Leihstellungen
           ServiceRelaDoc.SETFILTER("Belegzeilennr.",'%1',Lieferscheinzeilennr);
           ServiceRelaDoc.SETFILTER(Fremderwerb,'%1',TRUE);
           IF ServiceRelaDoc.FINDFIRST THEN BEGIN
-            TempLizenzTab.RESET;
-            TempLizenzTab.SETFILTER(Art,'%1',TempLizenzTab.Art::Tempor„r);
-            TempLizenzTab.SETFILTER("Debitornr.",'%1',Debnr);
-            TempLizenzTab.SETFILTER("Artikelnr.",'%1',ServiceRelaDoc."Ger„te Artikelnr.");
-            TempLizenzTab.SETFILTER("Auftragsnr.",'%1',Auftragsnr);
-            TempLizenzTab.SETFILTER("Auftragszeilennr.",'%1',AUzeilennr);
-            TempLizenzTab.SETFILTER("Nr.",'%1',Lieferscheinnr);
-            TempLizenzTab.SETFILTER("Belegzeilennr.",'%1',Lieferscheinzeilennr);
-            IF TempLizenzTab.FINDFIRST THEN BEGIN
+            TempServiceTab.RESET;
+            TempServiceTab.SETFILTER(Art,'%1',TempServiceTab.Art::Tempor„r);
+            TempServiceTab.SETFILTER("Debitornr.",'%1',Debnr);
+            TempServiceTab.SETFILTER("Artikelnr.",'%1',ServiceRelaDoc."Ger„te Artikelnr.");
+            TempServiceTab.SETFILTER("Auftragsnr.",'%1',Auftragsnr);
+            TempServiceTab.SETFILTER("Auftragszeilennr.",'%1',AUzeilennr);
+            TempServiceTab.SETFILTER("Nr.",'%1',Lieferscheinnr);
+            TempServiceTab.SETFILTER("Belegzeilennr.",'%1',Lieferscheinzeilennr);
+            IF TempServiceTab.FINDFIRST THEN BEGIN
               Artikel.GET(ServiceRelaDoc."Ger„te Artikelnr.");
               IF Artikel."Item Tracking Code" = 'KEINE' THEN BEGIN
-                IF TempLizenzTab.COUNT >= 1 THEN
+                IF TempServiceTab.COUNT >= 1 THEN
                   EXIT
                 ELSE
                   z := 1;
               END ELSE
-                z := ServiceRelaDoc."Menge kalk." - TempLizenzTab.COUNT;
+                z := ServiceRelaDoc."Menge kalk." - TempServiceTab.COUNT;
             END ELSE BEGIN
               Artikel.GET(ServiceRelaDoc."Ger„te Artikelnr.");
               IF Artikel."Item Tracking Code" = 'KEINE' THEN
@@ -1042,20 +1060,20 @@ OBJECT Table 50024 Serviceleist. & Leihstellungen
             END;
 
             FOR k := 1 TO z DO BEGIN
-              LizenzTab.INIT;
-              LizenzTab.Art := LizenzTab.Art::Tempor„r;
-              LizenzTab."Nr." := Lieferscheinnr;
-              LizenzTab."Belegzeilennr." := Lieferscheinzeilennr;
-              LizenzTab.INSERT(TRUE);
-              LizenzTab."Debitornr." := ServiceRelaDoc."Debitornr.";
-              LizenzTab.VALIDATE("Artikelnr.",ServiceRelaDoc."Ger„te Artikelnr.");
-              LizenzTab.Serviceleistung := 'WARTUNGSVERTRAG';
+              ServiceTab.INIT;
+              ServiceTab.Art := ServiceTab.Art::Tempor„r;
+              ServiceTab."Nr." := Lieferscheinnr;
+              ServiceTab."Belegzeilennr." := Lieferscheinzeilennr;
+              ServiceTab.INSERT(TRUE);
+              ServiceTab."Debitornr." := ServiceRelaDoc."Debitornr.";
+              ServiceTab.VALIDATE("Artikelnr.",ServiceRelaDoc."Ger„te Artikelnr.");
+              ServiceTab.Serviceleistung := 'WARTUNGSVERTRAG';
               IF Artikel."Item Tracking Code" = 'KEINE' THEN
-                LizenzTab.Menge := ServiceRelaDoc."Menge kalk."
+                ServiceTab.Menge := ServiceRelaDoc."Menge kalk."
               ELSE BEGIN
-                LizenzTab.Menge := 1;
+                ServiceTab.Menge := 1;
                 HoleTempSN.RESET;
-                HoleTempSN.SETFILTER("Lfd. Nr.",'<>%1',LizenzTab."Lfd. Nr.");
+                HoleTempSN.SETFILTER("Lfd. Nr.",'<>%1',ServiceTab."Lfd. Nr.");
                 HoleTempSN.SETFILTER(Art,'%1',HoleTempSN.Art::Tempor„r);
                 HoleTempSN.SETFILTER("Debitornr.",'%1',ServiceRelaDoc."Debitornr.");
                 HoleTempSN.SETFILTER("Artikelnr.",'%1',ServiceRelaDoc."Ger„te Artikelnr.");
@@ -1065,30 +1083,30 @@ OBJECT Table 50024 Serviceleist. & Leihstellungen
                 HoleTempSN.SETFILTER("Seriennr.",'<>%1','');
                 IF HoleTempSN.FINDFIRST THEN
                   REPEAT
-                    TempLizenzTab.RESET;
-                    TempLizenzTab.SETRANGE(Art,TempLizenzTab.Art::Tempor„r);
-                    TempLizenzTab.SETRANGE("Debitornr.",Debnr);
-                    TempLizenzTab.SETRANGE("Artikelnr.",ServiceRelaDoc."Ger„te Artikelnr.");
-                    TempLizenzTab.SETRANGE("Auftragsnr.",Auftragsnr);
-                    TempLizenzTab.SETRANGE("Auftragszeilennr.",AUzeilennr);
-                    TempLizenzTab.SETRANGE("Nr.",Lieferscheinnr);
-                    TempLizenzTab.SETRANGE("Belegzeilennr.",Lieferscheinzeilennr);
-                    TempLizenzTab.SETRANGE("Seriennr.",HoleTempSN."Seriennr.");
-                    IF NOT TempLizenzTab.FINDFIRST THEN
-                      LizenzTab.VALIDATE("Seriennr.",HoleTempSN."Seriennr.");
-                  UNTIL (HoleTempSN.NEXT = 0) OR (LizenzTab."Seriennr." <> '');
+                    TempServiceTab.RESET;
+                    TempServiceTab.SETRANGE(Art,TempServiceTab.Art::Tempor„r);
+                    TempServiceTab.SETRANGE("Debitornr.",Debnr);
+                    TempServiceTab.SETRANGE("Artikelnr.",ServiceRelaDoc."Ger„te Artikelnr.");
+                    TempServiceTab.SETRANGE("Auftragsnr.",Auftragsnr);
+                    TempServiceTab.SETRANGE("Auftragszeilennr.",AUzeilennr);
+                    TempServiceTab.SETRANGE("Nr.",Lieferscheinnr);
+                    TempServiceTab.SETRANGE("Belegzeilennr.",Lieferscheinzeilennr);
+                    TempServiceTab.SETRANGE("Seriennr.",HoleTempSN."Seriennr.");
+                    IF NOT TempServiceTab.FINDFIRST THEN
+                      ServiceTab.VALIDATE("Seriennr.",HoleTempSN."Seriennr.");
+                  UNTIL (HoleTempSN.NEXT = 0) OR (ServiceTab."Seriennr." <> '');
               END;
               Artikel.GET(ServiceRelaDoc."Ger„te Artikelnr.");
-              LizenzTab.Ursprungsland := Artikel."Country/Region of Origin Code";
-              LizenzTab."Auftragsnr." := Auftragsnr;
-              LizenzTab."Auftragszeilennr." := AUzeilennr;
-              LizenzTab."Urspr. Auftragsnr." := 'AU_' + DELCHR(Lieferscheinnr,'<','LS_');
-              LizenzTab."Urspr. Auftragszeilennr." := Lieferscheinzeilennr;
-              LizenzTab.Basisger„t := ServiceRelaDoc.Basisger„t;
-              LizenzTab.Fremderwerb := TRUE;
-              LizenzTab.Verl„ngerung := PrfeWartungvorhanden("SUP Artikelnr",Lieferscheinnr,Lieferscheinzeilennr,
-                                        LizenzTab."Seriennr.",Debnr);
-              LizenzTab.MODIFY;
+              ServiceTab.Ursprungsland := Artikel."Country/Region of Origin Code";
+              ServiceTab."Auftragsnr." := Auftragsnr;
+              ServiceTab."Auftragszeilennr." := AUzeilennr;
+              ServiceTab."Urspr. Auftragsnr." := 'AU_' + DELCHR(Lieferscheinnr,'<','LS_');
+              ServiceTab."Urspr. Auftragszeilennr." := Lieferscheinzeilennr;
+              ServiceTab.Basisger„t := ServiceRelaDoc.Basisger„t;
+              ServiceTab.Fremderwerb := TRUE;
+              ServiceTab.Verl„ngerung := PrfeWartungvorhanden("SUP Artikelnr",Lieferscheinnr,Lieferscheinzeilennr,
+                                        ServiceTab."Seriennr.",Debnr);
+              ServiceTab.MODIFY;
             END;
           END ELSE BEGIN
             ERROR(Text015,Lieferscheinnr,Lieferscheinzeilennr);
@@ -1098,6 +1116,9 @@ OBJECT Table 50024 Serviceleist. & Leihstellungen
       END;
 
       COMMIT;
+
+      IF product_key_changed THEN
+        MESSAGE(Text036,Artikelposten.FIELDCAPTION("Product Key"));
     END;
 
     PROCEDURE CreateSystemFromSalesHeader@1140004(VAR ShipmentNo@1140000 : Code[20];SOR_eingeschlossen@1140005 : Boolean);
