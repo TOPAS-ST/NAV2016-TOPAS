@@ -2,8 +2,8 @@ OBJECT Page 50102 Navision Administrations Tools
 {
   OBJECT-PROPERTIES
   {
-    Date=02.04.19;
-    Time=11:50:28;
+    Date=27.11.19;
+    Time=11:55:24;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -257,6 +257,17 @@ OBJECT Page 50102 Navision Administrations Tools
                                    UNTIL UserTab.NEXT = 0;
 
                                  MESSAGE(Text012, mandant);
+                               END;
+                                }
+      { 1000000048;2 ;Action    ;
+                      Name=Lieferbedingungscode_„ndern;
+                      CaptionML=DEU=Lieferbedingungscode „ndern;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=UpdateShipment;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 Korrigiere_Lieferbedingungscode;
                                END;
                                 }
     }
@@ -544,6 +555,14 @@ OBJECT Page 50102 Navision Administrations Tools
                 SourceExpr=mandant;
                 TableRelation=Company }
 
+    { 1000000049;1;Group  ;
+                CaptionML=DEU=Lieferbedingscode „ndern;
+                GroupType=Group }
+
+    { 1000000050;2;Group  ;
+                CaptionML=DEU=Lieferbedingungscode „ndern;
+                GroupType=Group }
+
   }
   CODE
   {
@@ -650,15 +669,15 @@ OBJECT Page 50102 Navision Administrations Tools
       IF Servicepositionen.FIND('-') THEN
         REPEAT
           neuer_ek := Servicepositionen.ServicePreiseNeuKalkulieren(Servicepositionen."Artikelnr.",Servicepositionen."SUP Artikelnr.",
-          Servicepositionen."Dauer Serviceleistung",'DC',FALSE,Servicepositionen."Service W„hrungscode",Servicepositionen."Quotenr.",1);
+          Servicepositionen."Dauer Serviceleistung",'DC',FALSE,Servicepositionen."Service W„hrungscode",Servicepositionen."Quotenr.",0);
           neuer_msrp := Servicepositionen.ServicePreiseNeuKalkulieren(Servicepositionen."Artikelnr.",Servicepositionen."SUP Artikelnr.",
-          Servicepositionen."Dauer Serviceleistung",'MSRP',FALSE,Servicepositionen."Service W„hrungscode",Servicepositionen."Quotenr.",1);
+          Servicepositionen."Dauer Serviceleistung",'MSRP',FALSE,Servicepositionen."Service W„hrungscode",Servicepositionen."Quotenr.",0);
           MESSAGE('Pos %1 Neuer EK fr %2 (SN: %3): %4 (Alt: %5)',
           Servicepositionen."Lfd. Nr.",Servicepositionen."Artikelnr.",Servicepositionen."Seriennr.",neuer_ek,
           Servicepositionen."Service DC");
           Servicepositionen."Service DC" := neuer_ek;
           Servicepositionen."Service MSRP" := neuer_msrp;
-          Servicepositionen."Service Artikelnr." := Servicepositionen.ServiceArtikelnrErmitteln(Servicepositionen."Artikelnr.",Servicepositionen."SUP Artikelnr.",Servicepositionen."Service W„hrungscode");
+          Servicepositionen."Service Artikelnr." := Servicepositionen.ServiceArtikelnrErmitteln(Servicepositionen."Artikelnr.",Servicepositionen."SUP Artikelnr.",Servicepositionen."Service W„hrungscode",0);
           Servicepositionen.MODIFY(TRUE);
         UNTIL Servicepositionen.NEXT = 0;
     END;
@@ -717,6 +736,32 @@ OBJECT Page 50102 Navision Administrations Tools
       MESSAGE('Ausgeschiedene Kontakte korrigiert: %1 (von %2)',zaehler2, zaehler);
     END;
 
+    LOCAL PROCEDURE Korrigiere_Lieferbedingungscode@1000000005();
+    VAR
+      Debitor@1000000000 : Record 18;
+    BEGIN
+      //Debitoren mit Lieferbedingungscode AB_HAN auf AB_25°K_FH umstellen
+
+      zaehler  := 0;
+      zaehler2 := 0;
+
+      Debitor.RESET;
+      Debitor.SETRANGE("Shipment Method Code",'AB_HAN');
+      //Debitor.SETRANGE(Blocked,FALSE);
+
+      IF Debitor.FIND('-') THEN
+        REPEAT
+          zaehler += 1;
+          IF Debitor."Shipment Method Code" = 'AB_HAN' THEN BEGIN
+            Debitor."Shipment Method Code" := 'AB_25°K_FH';
+            Debitor.MODIFY;
+            zaehler2 += 1;
+          END;
+        UNTIL Debitor.NEXT = 0;
+
+      MESSAGE('Von %1 gefundenen Debitoren wurden  %2 umgestellt',zaehler2, zaehler);
+    END;
+
     PROCEDURE Debitornr_umbuchen@1000000003(Alte_Debnr@1000000000 : Code[20];Neue_Debnr@1000000001 : Code[20]);
     VAR
       Customer@1000000002 : Record 18;
@@ -757,26 +802,28 @@ OBJECT Page 50102 Navision Administrations Tools
         REPEAT
           IF (FORMAT(Sheet.Range('D'+j).Value) = '-2146826246') //Interner Wert fr #NV, dann berspringen
           OR (STRLEN(FORMAT(Sheet.Range('D'+j).Value)) > 20) THEN j := INCSTR(j);
-          IF FORMAT(Sheet.Range('D'+j).Value) = '' THEN
+          IF (FORMAT(Sheet.Range('A'+j).Value) = '') OR (FORMAT(Sheet.Range('D'+j).Value) = '') THEN
             leerzeilen += 1
           ELSE BEGIN
-            Kontakte.SETRANGE("E-Mail",FORMAT(Sheet.Range('A'+j).Value));
+            Kontakte.RESET;
+            Kontakte.SETFILTER("E-Mail",'@' + CONVERTSTR(FORMAT(Sheet.Range('A'+j).Value),'@','?'));
             IF Kontakte.FINDFIRST THEN BEGIN
-              zaehler += 1;
-
-              Unsub_Verteiler.RESET;
-              Unsub_Verteiler.SETFILTER("Contact No.",'%1',FORMAT(Sheet.Range('D'+j).Value));
-              Unsub_Verteiler.SETFILTER("Mailing Group Code",'%1','UNSUB');
-              IF NOT Unsub_Verteiler.FINDFIRST THEN BEGIN
-                Unsub_Verteiler.INIT;
-                Unsub_Verteiler."Contact No." := FORMAT(Sheet.Range('D'+j).Value);
-                Unsub_Verteiler."Mailing Group Code" := 'UNSUB';
-                Unsub_Verteiler.INSERT(TRUE);
-                zaehler2 += 1;
-              END;
-              Sheet.Range('C'+j).Value := 'x';
-              //Sheet.Range('D'+j).Value := TOPAS_API.CreateExcelHyperlinkToNav(Kontakte.TABLENAME,1,5050,FORMAT(Sheet.Range('D'+j).Value));
-              Sheet.Range('F'+j).Value := Kontakte.COUNT;
+              REPEAT
+                zaehler += 1;
+                Unsub_Verteiler.RESET;
+                Unsub_Verteiler.SETFILTER("Contact No.",'%1',Kontakte."No.");
+                Unsub_Verteiler.SETFILTER("Mailing Group Code",'%1','UNSUB');
+                IF NOT Unsub_Verteiler.FINDFIRST THEN BEGIN
+                  Unsub_Verteiler.INIT;
+                  Unsub_Verteiler."Contact No." := Kontakte."No.";
+                  Unsub_Verteiler."Mailing Group Code" := 'UNSUB';
+                  Unsub_Verteiler.INSERT(TRUE);
+                  zaehler2 += 1;
+                END;
+                Sheet.Range('C'+j).Value := 'x';
+                //Sheet.Range('D'+j).Value := TOPAS_API.CreateExcelHyperlinkToNav(Kontakte.TABLENAME,1,5050,FORMAT(Sheet.Range('D'+j).Value));
+                Sheet.Range('F'+j).Value := Kontakte.COUNT;
+              UNTIL Kontakte.NEXT = 0;
             END ELSE
               Sheet.Range('C'+j).Value := '-';
           END;
