@@ -2,8 +2,8 @@ OBJECT Codeunit 50005 Bullzip PDF
 {
   OBJECT-PROPERTIES
   {
-    Date=23.10.17;
-    Time=10:02:07;
+    Date=24.01.19;
+    Time=09:55:10;
     Modified=Yes;
     Version List=PDF10.25.0.2552;
   }
@@ -150,6 +150,13 @@ OBJECT Codeunit 50005 Bullzip PDF
             // Do not show errors in PDF user interface.
             pdfSettings.SetValue('SuppressErrors', 'yes');
 
+            // PDF Document Settings
+            //pdfSettings.SetValue('Target','');
+            //pdfSettings.SetValue('Author','');
+            //pdfSettings.SetValue('Title','');
+            pdfSettings.SetValue('Subject','order ack.');
+            //pdfSettings.SetValue('Keywords','');
+
             // You can see more features and settings at
             // http://www.biopdf.com/guide/settings.php
 
@@ -183,7 +190,7 @@ OBJECT Codeunit 50005 Bullzip PDF
 
           END;
 
-        UNTIL (SalesHeader.NEXT=0);
+        UNTIL (SalesHeader.NEXT = 0);
       END;
 
       IF printerselection_inserted THEN BEGIN
@@ -319,6 +326,13 @@ OBJECT Codeunit 50005 Bullzip PDF
             // Do not show errors in PDF user interface.
             pdfSettings.SetValue('SuppressErrors', 'yes');
 
+            // PDF Document Settings
+            //pdfSettings.SetValue('Target','');
+            //pdfSettings.SetValue('Author','');
+            //pdfSettings.SetValue('Title','');
+            pdfSettings.SetValue('Subject','invoice');
+            //pdfSettings.SetValue('Keywords','');
+
             // You can see more features and settings at
             // http://www.biopdf.com/guide/settings.php
 
@@ -352,7 +366,178 @@ OBJECT Codeunit 50005 Bullzip PDF
 
           END;
 
-        UNTIL (InvHeader.NEXT=0);
+        UNTIL (InvHeader.NEXT = 0);
+      END;
+
+      IF printerselection_inserted THEN BEGIN
+        IF lPrinterSelection.GET(USERID,ReportID) THEN BEGIN
+          //lPrinterSelection."Printer Name" := pdfUtil.GetWindowsDefaultPrinterName;
+          //lPrinterSelection.MODIFY;
+          lPrinterSelection.DELETE;
+        END;
+      END ELSE BEGIN
+        IF lPrinterSelection.GET(USERID,ReportID) THEN BEGIN
+          lPrinterSelection."Printer Name" := OriginalPrinter;
+          lPrinterSelection.MODIFY(TRUE);
+        END;
+      END;
+
+      IF WindowIsOpen THEN
+        Window.CLOSE;
+      WindowIsOpen := FALSE;
+
+      CLEAR(pdfSettings);
+      CLEAR(pdfUtil);
+      CLEAR(wshShell);
+    END;
+
+    PROCEDURE BullzipPDF_Shipment@1000000003(VAR SalesShipHeader@1140003 : Record 110;baseFolder@1140001 : Text[1000];ReportID@1140002 : Integer);
+    VAR
+      SalesShipHeader2@1140004 : Record 110;
+    BEGIN
+      //Lieferschein per PDF
+
+      CREATE(pdfSettings,FALSE,TRUE);
+      CREATE(pdfUtil,FALSE,TRUE);
+      printerselection_inserted := FALSE;
+      OriginalPrinter := '';
+
+      IF SalesShipHeader.FINDFIRST THEN BEGIN
+
+        // The status file is used to check for errors and determine when the PDF is ready.
+        //statusFolder := ENVIRON('APPDATA') + '\Bullzip PDF';
+        CREATE(wshShell,FALSE,TRUE);
+        statusFolder := wshShell.ExpandEnvironmentStrings('%TEMP%' + '\Bullzip PDF\');
+        TOPAS_API.NewFolder(statusFolder);
+        statusFileName := statusFolder + '\status.ini';
+
+        // You can get a free test certificate at http://www.pdfpowertool.com
+        //certificateFileName := baseFolder + '\ressources\certificate.pfx';
+        //certificatePassword := 'password';
+        // Set file name of background PDF.
+        // Performance can be increased if you use an EPS file for background instead of a PDF.
+        // Letterhead-A4.eps is a sample EPS background.
+        // Note that using EPS files as background requires the Expert edition of the PDF Printer.
+        //backgroundFileName := baseFolder + '\ressources\letterhead-a4.pdf';
+
+        //mergeBeforeFileName := baseFolder + '\ressources\Before.pdf';
+        //mergeAfterFileName := baseFolder + '\ressources\After.pdf';
+
+        counter := 0;
+        Window.OPEN('generiere PDF zu Beleg ########1\\'+
+                    'Dokumente generiert    ########2',DocNo,counter);
+        WindowIsOpen := TRUE;
+
+        IF NOT lPrinterSelection.GET(USERID,ReportID) THEN BEGIN
+          lPrinterSelection.INIT;
+          lPrinterSelection."User ID" := USERID;
+          lPrinterSelection."Report ID" := ReportID;
+          lPrinterSelection."Printer Name" := 'Bullzip PDF Printer';
+          lPrinterSelection.INSERT;
+          printerselection_inserted := TRUE;
+        END ELSE BEGIN
+            OriginalPrinter := lPrinterSelection."Printer Name";
+            lPrinterSelection."Printer Name" := 'Bullzip PDF Printer';
+            lPrinterSelection.MODIFY(TRUE);
+        END;
+
+        REPEAT
+
+          DocNo := SalesShipHeader."No.";
+          Window.UPDATE(1, DocNo);
+          Window.UPDATE(2, counter);
+
+          // Set file name for output file.
+          pdfFileName := baseFolder + '\' + SalesShipHeader."No." + '.pdf';
+
+          // Delete old output file if it already exist.
+          //IF EXISTS(pdfFileName) THEN ERASE(pdfFileName);
+
+          // Multiple PDF printers could be installed.
+          // Let the automation know which one to control.
+          pdfSettings.printerName := pdfUtil.DefaultPrinterName;
+
+          // Set output file name
+          pdfSettings.SetValue('Output', pdfFileName);
+
+          // Make sure no dialogs are shown during conversion.
+          pdfSettings.SetValue('ShowSaveAs', 'never');
+          pdfSettings.SetValue('ShowSettings', 'never');
+          pdfSettings.SetValue('ShowPDF', 'no');
+          pdfSettings.SetValue('ShowProgress', 'no');
+          pdfSettings.SetValue('ShowProgressFinished', 'no');
+          pdfSettings.SetValue('ConfirmOverwrite', 'no');
+
+          // Set file name of status file to wait for.
+          pdfSettings.SetValue('StatusFile', statusFileName);
+
+          // Add a text watermark.
+          //pdfSettings.SetValue('WatermarkText', 'PDF EXAMPLE - order ' + InvHeader."No.");
+          //pdfSettings.SetValue('WatermarkColor', '#FF0000');
+          //pdfSettings.SetValue('WatermarkVerticalPosition', 'top');
+          //pdfSettings.SetValue('WatermarkHorizontalPosition', 'right');
+          //pdfSettings.SetValue('WatermarkRotation', '90');
+          //pdfSettings.SetValue('WatermarkOutlineWidth', '0.5');
+          //pdfSettings.SetValue('WatermarkFontSize', '20');
+          //pdfSettings.SetValue('WatermarkVerticalAdjustment', '5');
+          //pdfSettings.SetValue('WatermarkHorizontalAdjustment', '1');
+
+          // Add a background.
+          // If a professional or expert license is installed the quality of the
+          // background will improve.
+          //pdfSettings.SetValue('Superimpose', backgroundFileName);
+          //pdfSettings.SetValue('SuperimposeLayer', 'bottom');
+
+          // Merge with other PDF files.
+          //pdfSettings.SetValue('MergeFile', mergeBeforeFileName + '|.|' + mergeAfterFileName);
+
+          // Sign with a digital certificate.
+          //pdfSettings.SetValue('SignCertificate', certificateFileName);
+          //pdfSettings.SetValue('SignPassword', certificatePassword);
+          //pdfSettings.SetValue('ShowSignature', 'yes');
+
+          // Do not show errors in PDF user interface.
+          pdfSettings.SetValue('SuppressErrors', 'yes');
+
+          // PDF Document Settings
+          //pdfSettings.SetValue('Target','');
+          //pdfSettings.SetValue('Author','');
+          //pdfSettings.SetValue('Title','');
+          pdfSettings.SetValue('Subject','shipment');
+          //pdfSettings.SetValue('Keywords','');
+
+          // You can see more features and settings at
+          // http://www.biopdf.com/guide/settings.php
+
+          // Write settings to printer.
+          // This writes a file name runonce.ini. It is a configuration that is used
+          // for the next print job. The printer will delete the runonce.ini after it
+          // is read.
+          pdfSettings.WriteSettings(TRUE);
+
+          //IF EXISTS(statusFileName) THEN ERASE(statusFileName);
+          CREATE(wshFile,FALSE,TRUE);
+          IF wshFile.FileExists(statusFileName) THEN wshFile.DeleteFile(statusFileName);
+          CLEAR(wshFile);
+
+          SalesShipHeader2.COPY(SalesShipHeader);
+          SalesShipHeader2.SETRECFILTER;
+          REPORT.RUNMODAL(ReportID, FALSE, FALSE, SalesShipHeader2);
+
+          IF pdfUtil.WaitForFile(statusFileName, 20000)  THEN BEGIN
+            // Check status file for errors.
+            IF pdfUtil.ReadIniString(statusFileName, 'Status', 'Errors', '') <> '0' THEN BEGIN
+              ERROR('Error creating PDF. ' + pdfUtil.ReadIniString(statusFileName, 'Status', 'MessageText', ''));
+            END;
+          END ELSE BEGIN
+            // The timeout elapsed. Something is wrong.
+            ERROR('Error creating ' + pdfFileName)
+          END;
+
+          counter += 1;
+          Window.UPDATE(2,counter);
+
+        UNTIL (SalesShipHeader.NEXT = 0);
       END;
 
       IF printerselection_inserted THEN BEGIN
@@ -485,6 +670,13 @@ OBJECT Codeunit 50005 Bullzip PDF
           // Do not show errors in PDF user interface.
           pdfSettings.SetValue('SuppressErrors', 'yes');
 
+          // PDF Document Settings
+          //pdfSettings.SetValue('Target','');
+          //pdfSettings.SetValue('Author','');
+          //pdfSettings.SetValue('Title','');
+          pdfSettings.SetValue('Subject','purchase');
+          //pdfSettings.SetValue('Keywords','');
+
           // You can see more features and settings at
           // http://www.biopdf.com/guide/settings.php
 
@@ -516,7 +708,7 @@ OBJECT Codeunit 50005 Bullzip PDF
           counter += 1;
           Window.UPDATE(2,counter);
 
-        UNTIL (PurchHeader.NEXT=0);
+        UNTIL (PurchHeader.NEXT = 0);
       END;
 
       IF printerselection_inserted THEN BEGIN
@@ -545,7 +737,7 @@ OBJECT Codeunit 50005 Bullzip PDF
     VAR
       Wartungsvertrag@1140004 : Record 50011;
       Servicepositionen@1140006 : Record 50024;
-      wartungsnr_save@1140005 : ARRAY [2] OF Text[1024];
+      wartungsnr_cache@1140005 : Text;
       vertrag_gedruckt@1140003 : Boolean;
     BEGIN
       //Servicevertr„ge per PDF
@@ -596,25 +788,23 @@ OBJECT Codeunit 50005 Bullzip PDF
 
         REPEAT
 
-          wartungsnr_save[1] := '';
-          wartungsnr_save[2] := '';
+          wartungsnr_cache := '';
           vertrag_gedruckt := FALSE;
           Customer.GET(ShipHeader."Sell-to Customer No.");
           IF Customer."Service via EMail" = TRUE THEN BEGIN
             Servicepositionen.RESET;
-            Servicepositionen.SETFILTER(Art,'%1',Servicepositionen.Art :: Service);
+            Servicepositionen.SETFILTER(Art,'%1',Servicepositionen.Art::Service);
             Servicepositionen.SETFILTER(Servicepositionen."Nr.",'%1',ShipHeader."No.");
             Servicepositionen.SETFILTER(Inaktiv,'%1',FALSE);
             IF Servicepositionen.FINDFIRST THEN BEGIN
               REPEAT
-                IF (STRPOS(wartungsnr_save[1],Servicepositionen."Wartungsvertragsnr.") = 0)
-                AND (STRPOS(wartungsnr_save[2],Servicepositionen."Wartungsvertragsnr.") = 0) THEN
+                IF STRPOS(wartungsnr_cache,Servicepositionen."Wartungsvertragsnr.") = 0 THEN
                   vertrag_gedruckt := FALSE;
                 IF vertrag_gedruckt = FALSE THEN BEGIN
                   Wartungsvertrag.RESET;
                   Wartungsvertrag.SETFILTER("Wartungsvertragsnr.",'%1',Servicepositionen."Wartungsvertragsnr.");
-                  Wartungsvertrag.SETFILTER(Status,'<>%1&<>%2',Wartungsvertrag.Status :: ACTS,
-                                            Wartungsvertrag.Status :: "Champs Partner");
+                  Wartungsvertrag.SETFILTER(Status,'<>%1&<>%2',Wartungsvertrag.Status::ACTS,
+                                            Wartungsvertrag.Status::"Champs Partner");
                   IF Wartungsvertrag.FINDFIRST THEN BEGIN
 
                     DocNo := Wartungsvertrag."Wartungsvertragsnr.";
@@ -673,6 +863,13 @@ OBJECT Codeunit 50005 Bullzip PDF
                     // Do not show errors in PDF user interface.
                     pdfSettings.SetValue('SuppressErrors', 'yes');
 
+                    // PDF Document Settings
+                    //pdfSettings.SetValue('Target','');
+                    //pdfSettings.SetValue('Author','');
+                    //pdfSettings.SetValue('Title','');
+                    pdfSettings.SetValue('Subject','service agreement');
+                    //pdfSettings.SetValue('Keywords','');
+
                     // You can see more features and settings at
                     // http://www.biopdf.com/guide/settings.php
 
@@ -689,31 +886,28 @@ OBJECT Codeunit 50005 Bullzip PDF
 
                     REPORT.RUNMODAL(ReportID, FALSE, FALSE, Wartungsvertrag);
 
-                    IF pdfUtil.WaitForFile(statusFileName, 20000)  THEN BEGIN
+                    IF pdfUtil.WaitForFile(statusFileName, 15000)  THEN BEGIN
                       // Check status file for errors.
                       IF pdfUtil.ReadIniString(statusFileName, 'Status', 'Errors', '') <> '0' THEN BEGIN
                         ERROR('Error creating PDF. ' + pdfUtil.ReadIniString(statusFileName, 'Status', 'MessageText', ''));
                       END;
                     END ELSE BEGIN
                       // The timeout elapsed. Something is wrong.
-                      ERROR('Error creating ' + pdfFileName)
+                      MESSAGE('Fehler beim Erstellen von ' + pdfFileName + '.\Vermutlich liegt ein Fehler im Servicevertrag vor.');
                     END;
 
                     counter += 1;
                     Window.UPDATE(2,counter);
 
                     vertrag_gedruckt := TRUE;
-                    IF STRLEN(wartungsnr_save[1] + Servicepositionen."Wartungsvertragsnr.") <= 1024 THEN
-                      wartungsnr_save[1] := wartungsnr_save[1] + Servicepositionen."Wartungsvertragsnr."
-                    ELSE
-                    wartungsnr_save[2] := wartungsnr_save[2] + Servicepositionen."Wartungsvertragsnr.";
+                    wartungsnr_cache := wartungsnr_cache + Servicepositionen."Wartungsvertragsnr."
 
                   END;
                 END;
               UNTIL Servicepositionen.NEXT = 0;
             END;
           END;
-        UNTIL (ShipHeader.NEXT=0);
+        UNTIL (ShipHeader.NEXT = 0);
       END;
 
       IF printerselection_inserted THEN BEGIN
