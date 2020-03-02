@@ -2,8 +2,8 @@ OBJECT Page 50104 Belegausgabe per Batch
 {
   OBJECT-PROPERTIES
   {
-    Date=13.12.19;
-    Time=09:28:29;
+    Date=02.03.20;
+    Time=10:13:05;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -228,6 +228,7 @@ OBJECT Page 50104 Belegausgabe per Batch
       Service_Infotext_enu@1000000024 : TextConst 'DEU=After successful registration under https://www.topas-systems.de/my-topas you can see our service contract conditions.';
       CHAMPS_Agreement_deu@1000000025 : TextConst 'DEU=Zus„tzlich erhalten Sie eine AV CHAMPS Vereinbarung. Bitte schicken Sie diese unterschrieben an uns zurck oder bersenden uns Ihren hauseigenen AV-Vertrag zur Zeichnung.';
       CHAMPS_Agreement_enu@1000000026 : TextConst 'DEU=Additionally, you will receive an AV CHAMPS agreement. Please send this signed back to us or you send us your in-house agreement.';
+      shipments@1000000028 : Integer;
 
     PROCEDURE Run_Batch@1140010();
     BEGIN
@@ -581,6 +582,7 @@ OBJECT Page 50104 Belegausgabe per Batch
             body := '';
             email_addr := '';
             attach_files := '';
+            shipments := 0;
             Customer.GET(inv_header."Bill-to Customer No.");
             IF (Customer."Rech via EMail" = TRUE) OR (belegnr <> '') THEN BEGIN
               IF inv_header."Language Code" <> 'ENU' THEN BEGIN
@@ -599,18 +601,35 @@ OBJECT Page 50104 Belegausgabe per Batch
               ship_header.SETFILTER("Order No.",'%1',inv_header."Order No.");
               ship_header.SETFILTER("Posting Date",'%1',inv_header."Posting Date");
               IF ship_header.FINDFIRST THEN BEGIN
-                IF inv_header."Language Code" <> 'ENU' THEN
-                  body += 'Das Paket wurde mit ' + ship_header."Shipping Agent Code" + ': ' + ship_header."Package Tracking No." + ' verschickt.'
-                ELSE
-                  body += 'The packet was sent via ' + ship_header."Shipping Agent Code" + ': ' + ship_header."Package Tracking No.";
                 REPEAT
                   ship_line.RESET;
                   ship_line.SETRANGE("Document No.",ship_header."No.");
                   ship_line.SETFILTER("Manufacturer Code",'59|85');
                   ship_line.SETFILTER(Quantity,'>%1',0);
-                  IF ship_line.FINDFIRST THEN
-                      attach_files := attach_files + ',' + AttachmentPath + ship_header."No." + '.pdf';
+                  IF ship_line.FINDFIRST THEN BEGIN
+                    attach_files := attach_files + ',' + AttachmentPath + ship_header."No." + '.pdf';
+                    shipments += 1;
+                  END;
                 UNTIL ship_header.NEXT = 0;
+                IF inv_header."Language Code" <> 'ENU' THEN BEGIN
+                  body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
+                          'anbei erhalten Sie Ihre Rechnung und %1.' + FORMAT(chr);
+                  IF shipments > 1 THEN
+                    body := STRSUBSTNO(body,'Ihre Lieferscheine')
+                  ELSE
+                    body := STRSUBSTNO(body,'Ihren Lieferschein');
+                END ELSE BEGIN
+                  body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
+                          'attached you will find your invoice and %1.' + FORMAT(chr);
+                  IF shipments > 1 THEN
+                    body := STRSUBSTNO(body,'your delivery notes')
+                  ELSE
+                    body := STRSUBSTNO(body,'your delivery note');
+                END;
+                IF inv_header."Language Code" <> 'ENU' THEN
+                  body += 'Das Paket wurde mit ' + ship_header."Shipping Agent Code" + ': ' + ship_header."Package Tracking No." + ' verschickt.'
+                ELSE
+                  body += 'The packet was sent via ' + ship_header."Shipping Agent Code" + ': ' + ship_header."Package Tracking No.";
               END;
 
               //Email-Adresse wird ausfindig gemacht, wird keine gefunden, wird dennoch eine E-Mail generiert
