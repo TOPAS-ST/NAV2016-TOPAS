@@ -2,8 +2,8 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
 {
   OBJECT-PROPERTIES
   {
-    Date=06.02.20;
-    Time=15:37:23;
+    Date=03.03.20;
+    Time=10:56:56;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -29,6 +29,7 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
       Text015@1000000040 : TextConst 'DEU=Abbruch! Kein 13B2-Eintrag in %1.';
       Text016@1000000036 : TextConst 'DEU=Quote ist abgelaufen\Zeilennr.: %1\Quotenr.: %2\''Quotedatum: %3';
       Text017@1000000037 : TextConst 'DEU=Quotemenge reicht nicht aus. Bitte berprfen!';
+      Text018@1000000045 : TextConst 'DEU=Das %1 %2 weicht vom Tagesdatum %3 ab. M”chten Sie dennoch fortfahren?';
       Text020@1000000038 : TextConst 'DEU=Der Kunde ist MAT Label spezifiziert:\Bitte hinterlegen Sie in Zeile %1 einen Wert im Feld %2.';
       Text021@1000000039 : TextConst 'DEU=In Zeile %1 muss die %2 gleich der Menge %3 entsprechen. Bitte korrigieren.';
       Text030@1000000028 : TextConst 'DEU=In Zeilennr. %1 wurde eine Minus-Marge gefunden. Bitte korrigieren.';
@@ -63,69 +64,78 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
       Text130@1000000024 : TextConst 'DEU=Die Kalkulation fr Service Artikel %1 in Zeile %2 hat sich ge„ndert, m”chten Sie den aktuelleren DC bernehmen?';
       Text140@1000000027 : TextConst 'DEU=Die Restmenge des Rahmenauftrages %1 ,in Zeilennr. %2 wurde mit %3 berschritten. Bitte passen Sie den Rahmenauftrag entsprechend an.';
 
-    PROCEDURE CheckPurchaseBeforePost@1000000000(OrderNo@1000000001 : Code[20]) : Boolean;
+    PROCEDURE CheckPurchaseBeforePost@1000000000(PurchaseHeader@1000000002 : Record 38) : Boolean;
     VAR
       ReservEntry@1000000000 : Record 337;
     BEGIN
-      //TOPAS 07.11.11 UB Beginn - šberprfung 13B2 'liefern'
-      PurchaseLine.RESET;
-      PurchaseLine.SETFILTER("Document No.",'%1',OrderNo);
-      PurchaseLine.SETFILTER("Qty. to Receive",'>%1',0);
-      IF PurchaseLine.FINDFIRST THEN BEGIN
-        REPEAT
-          IF ((PurchaseLine."Gen. Bus. Posting Group"='13B2') AND (PurchaseLine."VAT Prod. Posting Group"<>'13B2')) THEN
-            ERROR('MWSt-Produktbuchungsgruppe und Gesch„ftsbuchungsgruppe mssen beide 13B2 enthalten, Zeilen bitte berprfen');
-          IF ((PurchaseLine."VAT Prod. Posting Group"='13B2') AND (PurchaseLine."Gen. Bus. Posting Group"<>'13B2')) THEN
-            ERROR('MWSt-Produktbuchungsgruppe und Gesch„ftsbuchungsgruppe mssen beide 13B2 enthalten, Zeilen bitte berprfen');
-       UNTIL PurchaseLine.NEXT = 0;
+      WITH PurchaseHeader DO BEGIN
+        //TOPAS 07.11.11 UB Beginn - šberprfung 13B2 'liefern'
+        PurchaseLine.RESET;
+        PurchaseLine.SETFILTER("Document No.",'%1',"No.");
+        PurchaseLine.SETFILTER("Qty. to Receive",'>%1',0);
+        IF PurchaseLine.FINDFIRST THEN BEGIN
+          REPEAT
+            IF ((PurchaseLine."Gen. Bus. Posting Group"='13B2') AND (PurchaseLine."VAT Prod. Posting Group"<>'13B2')) THEN
+              ERROR('MWSt-Produktbuchungsgruppe und Gesch„ftsbuchungsgruppe mssen beide 13B2 enthalten, Zeilen bitte berprfen');
+            IF ((PurchaseLine."VAT Prod. Posting Group"='13B2') AND (PurchaseLine."Gen. Bus. Posting Group"<>'13B2')) THEN
+              ERROR('MWSt-Produktbuchungsgruppe und Gesch„ftsbuchungsgruppe mssen beide 13B2 enthalten, Zeilen bitte berprfen');
+         UNTIL PurchaseLine.NEXT = 0;
+        END;
+
+        //'fakturieren'
+        PurchaseLine.RESET;
+        PurchaseLine.SETFILTER("Document No.",'%1',"No.");
+        PurchaseLine.SETFILTER("Qty. to Invoice",'>%1',0);
+        IF PurchaseLine.FINDFIRST THEN BEGIN
+          REPEAT
+            IF ((PurchaseLine."Gen. Bus. Posting Group"='13B2') AND (PurchaseLine."VAT Prod. Posting Group"<>'13B2')) THEN
+              ERROR('MWSt-Produktbuchungsgruppe und Gesch„ftsbuchungsgruppe mssen beide 13B2 enthalten, Zeilen bitte berprfen');
+            IF ((PurchaseLine."VAT Prod. Posting Group"='13B2') AND (PurchaseLine."Gen. Bus. Posting Group"<>'13B2')) THEN
+              ERROR('MWSt-Produktbuchungsgruppe und Gesch„ftsbuchungsgruppe mssen beide 13B2 enthalten, Zeilen bitte berprfen');
+          UNTIL PurchaseLine.NEXT = 0;
+        END;
+
+        //Reservierungsposten werden auf Fehler untersucht
+        PurchaseLine.RESET;
+        PurchaseLine.SETRANGE("Document No.","No.");
+        PurchaseLine.SETRANGE(Type,PurchaseLine.Type::Item);
+        PurchaseLine.SETFILTER("Qty. to Receive",'<>0');
+        IF PurchaseLine.FINDFIRST THEN
+          REPEAT
+            ReservEntry.SETCURRENTKEY(
+              "Source ID","Source Ref. No.","Source Type","Source Subtype",
+              "Source Batch Name","Source Prod. Order Line");
+            ReservEntry.SETRANGE("Source ID","No.");
+            ReservEntry.SETRANGE("Source Ref. No.",PurchaseLine."Line No.");
+            ReservEntry.SETRANGE("Source Type",DATABASE::"Purchase Line");
+            ReservEntry.SETRANGE("Source Subtype",1);
+            ReservEntry.SETRANGE("Source Batch Name",'');
+            ReservEntry.SETFILTER("Qty. to Handle (Base)",'<>0');
+            IF ReservEntry.FINDFIRST THEN
+              REPEAT
+                IF Item.GET(ReservEntry."Item No.") AND ((Item."Item Tracking Code" = 'PRODUCTKEY')
+                OR (Item."Item Tracking Code" = 'SERIENNR+P')) AND (ReservEntry."Product Key" = '') THEN
+                  ERROR(Text000,PurchaseLine.TABLECAPTION,PurchaseLine.FIELDCAPTION("Line No."),PurchaseLine."Line No.",
+                  ReservEntry.FIELDCAPTION("Serial No."),ReservEntry."Serial No.",ReservEntry.FIELDCAPTION("Product Key"));
+              UNTIL ReservEntry.NEXT = 0;
+          UNTIL PurchaseLine.NEXT = 0;
+
+        {
+        IF SumUpItemTracking(ReservEntry,TempHandlingSpecification,FALSE,TRUE) THEN BEGIN
+          ReservEntry.SETRANGE("Reservation Status",ReservEntry."Reservation Status"::Prospect);
+          IF NOT ReservEntry.ISEMPTY THEN
+            ReservEntry.DELETEALL;
+          EXIT(TRUE);
+        END;
+        }
+
+        //03.03.20 ST - Buchungsdatum Prfung
+        IF "Posting Date" <> WORKDATE THEN
+          IF NOT CONFIRM(Text018,FALSE,FIELDCAPTION("Posting Date"),"Posting Date",WORKDATE) THEN
+            ERROR('');
+
       END;
 
-      //'fakturieren'
-      PurchaseLine.RESET;
-      PurchaseLine.SETFILTER("Document No.",'%1',OrderNo);
-      PurchaseLine.SETFILTER("Qty. to Invoice",'>%1',0);
-      IF PurchaseLine.FINDFIRST THEN BEGIN
-        REPEAT
-          IF ((PurchaseLine."Gen. Bus. Posting Group"='13B2') AND (PurchaseLine."VAT Prod. Posting Group"<>'13B2')) THEN
-            ERROR('MWSt-Produktbuchungsgruppe und Gesch„ftsbuchungsgruppe mssen beide 13B2 enthalten, Zeilen bitte berprfen');
-          IF ((PurchaseLine."VAT Prod. Posting Group"='13B2') AND (PurchaseLine."Gen. Bus. Posting Group"<>'13B2')) THEN
-            ERROR('MWSt-Produktbuchungsgruppe und Gesch„ftsbuchungsgruppe mssen beide 13B2 enthalten, Zeilen bitte berprfen');
-        UNTIL PurchaseLine.NEXT = 0;
-      END;
-
-      //Reservierungsposten werden auf Fehler untersucht
-      PurchaseLine.RESET;
-      PurchaseLine.SETRANGE("Document No.",OrderNo);
-      PurchaseLine.SETRANGE(Type,PurchaseLine.Type::Item);
-      PurchaseLine.SETFILTER("Qty. to Receive",'<>0');
-      IF PurchaseLine.FINDFIRST THEN
-        REPEAT
-          ReservEntry.SETCURRENTKEY(
-            "Source ID","Source Ref. No.","Source Type","Source Subtype",
-            "Source Batch Name","Source Prod. Order Line");
-          ReservEntry.SETRANGE("Source ID",OrderNo);
-          ReservEntry.SETRANGE("Source Ref. No.",PurchaseLine."Line No.");
-          ReservEntry.SETRANGE("Source Type",DATABASE::"Purchase Line");
-          ReservEntry.SETRANGE("Source Subtype",1);
-          ReservEntry.SETRANGE("Source Batch Name",'');
-          ReservEntry.SETFILTER("Qty. to Handle (Base)",'<>0');
-          IF ReservEntry.FINDFIRST THEN
-            REPEAT
-              IF Item.GET(ReservEntry."Item No.") AND ((Item."Item Tracking Code" = 'PRODUCTKEY')
-              OR (Item."Item Tracking Code" = 'SERIENNR+P')) AND (ReservEntry."Product Key" = '') THEN
-                ERROR(Text000,PurchaseLine.TABLECAPTION,PurchaseLine.FIELDCAPTION("Line No."),PurchaseLine."Line No.",
-                ReservEntry.FIELDCAPTION("Serial No."),ReservEntry."Serial No.",ReservEntry.FIELDCAPTION("Product Key"));
-            UNTIL ReservEntry.NEXT = 0;
-        UNTIL PurchaseLine.NEXT = 0;
-
-      {
-      IF SumUpItemTracking(ReservEntry,TempHandlingSpecification,FALSE,TRUE) THEN BEGIN
-        ReservEntry.SETRANGE("Reservation Status",ReservEntry."Reservation Status"::Prospect);
-        IF NOT ReservEntry.ISEMPTY THEN
-          ReservEntry.DELETEALL;
-        EXIT(TRUE);
-      END;
-      }
       EXIT(FALSE);
     END;
 
@@ -795,7 +805,12 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
         IF "Betreuer Innendienst" = 'MULTI' THEN ERROR(Text010,FIELDCAPTION("Betreuer Innendienst"));
         IF Teams = 'MULTI' THEN ERROR(Text010,FIELDCAPTION(Teams));
 
-        //13.10.08 ST  - Neu, 25.02.11-ST Žnderung 15.09.11 UB - Žnderung 13b2, 29.06.12 ST - Zusammenfassung und weitere Anpassungen 13B2
+        //03.03.20 ST - Buchungsdatum Prfung
+        IF "Posting Date" <> WORKDATE THEN
+          IF NOT CONFIRM(Text018,FALSE,FIELDCAPTION("Posting Date"),"Posting Date",WORKDATE) THEN
+            ERROR('');
+
+        //13.10.08 ST  - Neu, 25.02.11 ST Žnderung 15.09.11 UB - Žnderung 13b2, 29.06.12 ST - Zusammenfassung und weitere Anpassungen 13B2
         SalesLine.RESET;
         SalesLine.SETFILTER("Document No.",'%1',"No.");
         SalesLine.SETFILTER("Qty. to Invoice",'>%1',0);
