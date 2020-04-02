@@ -2,8 +2,8 @@ OBJECT Page 50104 Belegausgabe per Batch
 {
   OBJECT-PROPERTIES
   {
-    Date=02.03.20;
-    Time=10:13:05;
+    Date=04.03.20;
+    Time=08:21:24;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -16,6 +16,7 @@ OBJECT Page 50104 Belegausgabe per Batch
     OnInit=BEGIN
              AttachmentPath := 'F:\Daten NEU\Gemeinsame Ordner\Customer Service\EMailVersand\';
              LagerortcodeFilter := 'ZENT';
+             DocuwareServiceEnable := TRUE;
              //Performance Tests - Umstellung auf lokalen Pfad tempor„r:
              //AttachmentPath := 'O:\EMailVersand\';
 
@@ -61,6 +62,16 @@ OBJECT Page 50104 Belegausgabe per Batch
                                  IF selected > 1 THEN ERROR(Text000);
 
                                  Run_Batch;
+                               END;
+                                }
+      { 1000000015;1 ;ActionGroup;
+                      CaptionML=DEU=Funktionen }
+      { 1000000016;2 ;Action    ;
+                      Name=Docuware_Disable;
+                      CaptionML=DEU=Docuware deaktivieren;
+                      Image=Stop;
+                      OnAction=BEGIN
+                                 DocuwareServiceEnable := FALSE;
                                END;
                                 }
     }
@@ -199,6 +210,7 @@ OBJECT Page 50104 Belegausgabe per Batch
       Certificates_PDF@1000000011 : Boolean;
       TOPAS_API@1140002 : Codeunit 50001;
       Bullzip_PDF@1140016 : Codeunit 50005;
+      DocuWare@1000000029 : Codeunit 50016;
       WshShell@1000000017 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{72C24DD5-D70A-438B-8A42-98424B88AFB8}:'Windows Script Host Object Model'.WshShell";
       AttachmentPath@1140001 : Text;
       belege@1140017 : Text;
@@ -229,10 +241,15 @@ OBJECT Page 50104 Belegausgabe per Batch
       CHAMPS_Agreement_deu@1000000025 : TextConst 'DEU=Zus„tzlich erhalten Sie eine AV CHAMPS Vereinbarung. Bitte schicken Sie diese unterschrieben an uns zurck oder bersenden uns Ihren hauseigenen AV-Vertrag zur Zeichnung.';
       CHAMPS_Agreement_enu@1000000026 : TextConst 'DEU=Additionally, you will receive an AV CHAMPS agreement. Please send this signed back to us or you send us your in-house agreement.';
       shipments@1000000028 : Integer;
+      DocuwareServiceEnable@1000000030 : Boolean;
 
     PROCEDURE Run_Batch@1140010();
     BEGIN
       belege := '';
+      IF belegnr <> '' THEN
+        DocuwareServiceEnable := FALSE
+      ELSE
+        DocuwareServiceEnable := TRUE;
 
       //Auftragsbest„tigungen
       IF AU_Best_Druck THEN BEGIN
@@ -317,6 +334,9 @@ OBJECT Page 50104 Belegausgabe per Batch
           UNTIL sales_header.NEXT = 0;
 
         END;
+
+        //Alle Auftragsbest„tigungen als PDF an DocuWare Scan Ordner senden
+        IF DocuwareServiceEnable THEN DocuWare.ExportDocsToFolder(2);
       END;
 
 
@@ -372,6 +392,9 @@ OBJECT Page 50104 Belegausgabe per Batch
           UNTIL sales_header.NEXT = 0;
 
         END;
+
+        //Alle Auftrags„nderungsbest„tigungen als PDF an DocuWare Scan Ordner senden
+        IF DocuwareServiceEnable THEN DocuWare.ExportDocsToFolder(3);
       END;
 
 
@@ -613,18 +636,24 @@ OBJECT Page 50104 Belegausgabe per Batch
                 UNTIL ship_header.NEXT = 0;
                 IF inv_header."Language Code" <> 'ENU' THEN BEGIN
                   body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
-                          'anbei erhalten Sie Ihre Rechnung und %1.' + FORMAT(chr);
+                          'anbei erhalten Sie Ihre Rechnung%1.' + FORMAT(chr);
                   IF shipments > 1 THEN
-                    body := STRSUBSTNO(body,'Ihre Lieferscheine')
+                    body := STRSUBSTNO(body,' und Ihre Lieferscheine')
                   ELSE
-                    body := STRSUBSTNO(body,'Ihren Lieferschein');
+                    IF shipments = 1 THEN
+                      body := STRSUBSTNO(body,' und Ihren Lieferschein')
+                    ELSE
+                      body := STRSUBSTNO(body,'');
                 END ELSE BEGIN
                   body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
-                          'attached you will find your invoice and %1.' + FORMAT(chr);
+                          'attached you will find your invoice%1.' + FORMAT(chr);
                   IF shipments > 1 THEN
-                    body := STRSUBSTNO(body,'your delivery notes')
+                    body := STRSUBSTNO(body,' and your delivery notes')
                   ELSE
-                    body := STRSUBSTNO(body,'your delivery note');
+                    IF shipments = 1 THEN
+                      body := STRSUBSTNO(body,' and your delivery note')
+                    ELSE
+                      body := STRSUBSTNO(body,'');
                 END;
                 IF inv_header."Language Code" <> 'ENU' THEN
                   body += 'Das Paket wurde mit ' + ship_header."Shipping Agent Code" + ': ' + ship_header."Package Tracking No." + ' verschickt.'
