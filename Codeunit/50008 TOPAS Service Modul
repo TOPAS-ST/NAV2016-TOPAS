@@ -2,8 +2,8 @@ OBJECT Codeunit 50008 TOPAS Service Modul
 {
   OBJECT-PROPERTIES
   {
-    Date=07.10.19;
-    Time=09:00:00;
+    Date=07.04.20;
+    Time=11:00:00;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -34,9 +34,11 @@ OBJECT Codeunit 50008 TOPAS Service Modul
       Text52002@1000000014 : TextConst 'DEU=Fr Artikelnr. %1 konnte kein Service DC errechnet werden. Anscheinend fehlt in der Service Preisliste die Zuordnung zum Support Artikel %2. šberprfen Sie auch den Einkaufsw„hrungscode des Artikels %1 im Beleg.';
       Text52003@1000000015 : TextConst 'DEU=Es konnte kein Service Preis errechnet werden.';
       Text52004@1000000016 : TextConst 'DEU=Bitte hinterlegen Sie einen Prozentsatz fr Artikel %1 in der Optionstabelle (Feld Lfd.-Nr.), damit der Upgrade-Preis auf Grundlage des MSRP''s vom Ger„t %2 ermittelt werden kann.';
-      Text52005@1000000017 : TextConst 'DEU=Bitte hinterlegen Sie die Laufzeit fr Artikel %1 in der Optionstabelle (Feld Code), damit der Service-Preis fr Artikel %2 richtig ermittelt werden kann.';
+      Text52005@1000000017 : TextConst 'DEU=Bitte hinterlegen Sie die Laufzeit fr Artikel %1 in der %2 (Feld %3), damit der Service-Preis fr Artikel %4 richtig ermittelt werden kann.';
       Text52006@1000000018 : TextConst 'DEU=Bitte hinterlegen Sie den MSRP-Preis als Vk-Preis im Artikel %1, damit der Service Vk-Preis berechnet werden kann. Vergewissern Sie sich auch, dass das Arbeitsdatum innerhalb des Start- und Enddatums des Vk-Preises liegt.\Oder setzen Sie den Haken "%2" im Artikel.';
       Text52007@1000000019 : TextConst 'DEU=Bitte hinterlegen Sie fr Artikel %1 in der Service Preistabelle sowohl den ACTS Euro und/oder den ACTS USD MSRP (%2).';
+      Text53000@1000000027 : TextConst 'DEU=Der angegebene Service Quote %1 ist nicht gltig. Bitte prfen Sie das Gltigkeitsdatum, Service Artikelnr., Quotepreis oder Herstellercode.';
+      Text53001@1000000028 : TextConst 'DEU=Der angegebene Service Quote %1 existiert nicht.';
       Text37_000@1000000024 : TextConst 'DEU=M”chten Sie wirklich alle Service Kalkulationen im Beleg mit dem Kurs vom %1 neu rechnen lassen?\Hinweis: Sie berschreiben damit auch manuell festgelegte VK-Preise. Die Service DC''s werden auch neu gerechnet. Zudem wird bei allen Positionen, sowohl fr Systemartikel als auch Service Kalkulationen, der %2 aktualisiert.';
       Text39_000@1000000021 : TextConst 'DEU=Diese Funktion ist nur fr Artikel mit Kennzeichnung %1 gestattet.';
       Text39_001@1000000022 : TextConst 'DEU=Die Einkaufszeile wurde aktualisiert. Der EK-Preis betr„gt nun %1.';
@@ -1066,7 +1068,7 @@ OBJECT Codeunit 50008 TOPAS Service Modul
         MESSAGE(Text51009);
     END;
 
-    PROCEDURE Gen_Service_DC@1140008(SUP_Artikelnr@1140007 : Code[20];"Basis Artikelnr"@1140006 : Code[20];Laufzeit@1140005 : Integer;Runden@1140002 : Boolean;W„hrung@1140009 : Code[20];Quotenr@1140024 : Code[10];SalesHeader@1000000002 : Record 36) : Decimal;
+    PROCEDURE GetServiceCost@1140008(ServiceKalkulation@1140007 : Record 50027;Feld@1000000007 : Code[20];Runden@1140002 : Boolean;W„hrung@1140009 : Code[20];PreislistenKalkulation@1000000002 : 'neu,alt';Kalkulation@1000000005 : Boolean) : Decimal;
     VAR
       Service_PL@1140001 : Record 50028;
       ServiceTab@1140022 : Record 50024;
@@ -1090,6 +1092,9 @@ OBJECT Codeunit 50008 TOPAS Service Modul
       normal_discount@1140013 : Decimal;
       spezial_discount@1140011 : Decimal;
       v_service_laufzeit@1140012 : Decimal;
+      v_kalkulations_laufzeit@1000000006 : Decimal;
+      basis_laufzeit_jahre@1000000003 : Decimal;
+      service_msrp@1000000004 : Decimal;
     BEGIN
       //***************************************************************************************************
       //              TOPAS 2011-07-26 ST  Generiert den DC fr den jeweiligen Champ Artikel
@@ -1104,230 +1109,236 @@ OBJECT Codeunit 50008 TOPAS Service Modul
       //              TOPAS 2017-08-14 ST  Trennung von ACTS AHR und ACTS SUPP > neue Gruppe ACTS_AHR
       //***************************************************************************************************
 
-      IF Runden = TRUE THEN
-        rundgs_faktor := 1
-      ELSE
-        rundgs_faktor := 0.01;
-
-      normal_discount := 0;
-      additional_discount := 0;
-      spezial_discount := 1;
-
-      Item.GET(SUP_Artikelnr);
-      IF (Item."Software Upgrade Protection" = TRUE) THEN BEGIN
-
-        ACTS := FALSE;
-        ACTS_AHR := FALSE;
-        ACHAT := FALSE;
-        ACTS_SCHAEFFLER := FALSE;
-        ACTS_MSS_SCHAEFFLER := FALSE;
-        ACTS_MSS := FALSE;
-        APSS_OB := FALSE;
-        CHAMPS := FALSE;
-        CHAMPS_PARTNER := FALSE;
-        RE_INSTATEMENT_FEE:= FALSE;
-
-        IF Item.Artikelgruppe = 'ACTS' THEN
-          ACTS := TRUE
+      WITH ServiceKalkulation DO BEGIN
+        IF Runden = TRUE THEN
+          rundgs_faktor := 1
         ELSE
-          IF (Item.Artikelgruppe = 'ACTS/ACHAT') OR (Item.Artikelgruppe = 'ACTS_AHR') THEN
-            ACTS_AHR := TRUE
+          rundgs_faktor := 0.01;
+
+        normal_discount := 0;
+        additional_discount := 0;
+        spezial_discount := 1;
+        service_msrp := 0;
+
+        Item.GET("SUP Artikelnr.");
+        IF (Item."Software Upgrade Protection" = TRUE) THEN BEGIN
+
+          ACTS := FALSE;
+          ACTS_AHR := FALSE;
+          ACHAT := FALSE;
+          ACTS_SCHAEFFLER := FALSE;
+          ACTS_MSS_SCHAEFFLER := FALSE;
+          ACTS_MSS := FALSE;
+          APSS_OB := FALSE;
+          CHAMPS := FALSE;
+          CHAMPS_PARTNER := FALSE;
+          RE_INSTATEMENT_FEE:= FALSE;
+
+          IF Item.Artikelgruppe = 'ACTS' THEN
+            ACTS := TRUE
           ELSE
-            IF Item.Artikelgruppe = 'ACHAT' THEN
-              ACHAT := TRUE
+            IF (Item.Artikelgruppe = 'ACTS/ACHAT') OR (Item.Artikelgruppe = 'ACTS_AHR') THEN
+              ACTS_AHR := TRUE
             ELSE
-              IF Item.Artikelgruppe = 'ACTS_SCHAEFFLER' THEN
-                ACTS_SCHAEFFLER := TRUE
+              IF Item.Artikelgruppe = 'ACHAT' THEN
+                ACHAT := TRUE
               ELSE
-                IF Item.Artikelgruppe = 'ACTS_MSS_SCHAEFFLER' THEN
-                  ACTS_MSS_SCHAEFFLER := TRUE
+                IF Item.Artikelgruppe = 'ACTS_SCHAEFFLER' THEN
+                  ACTS_SCHAEFFLER := TRUE
                 ELSE
-                  IF Item.Artikelgruppe = 'ACTS_MSS' THEN
-                    ACTS_MSS := TRUE
+                  IF Item.Artikelgruppe = 'ACTS_MSS_SCHAEFFLER' THEN
+                    ACTS_MSS_SCHAEFFLER := TRUE
                   ELSE
-                    IF Item.Artikelgruppe = 'CHAMPS_PARTNER' THEN
-                      CHAMPS_PARTNER := TRUE
+                    IF Item.Artikelgruppe = 'ACTS_MSS' THEN
+                      ACTS_MSS := TRUE
                     ELSE
-                      IF Item.Artikelgruppe = 'APSS_OB' THEN
-                        APSS_OB := TRUE
+                      IF Item.Artikelgruppe = 'CHAMPS_PARTNER' THEN
+                        CHAMPS_PARTNER := TRUE
                       ELSE
-                        IF Item.Artikelgruppe = 'CHAMPS_FEE' THEN
-                          RE_INSTATEMENT_FEE := TRUE
+                        IF Item.Artikelgruppe = 'APSS_OB' THEN
+                          APSS_OB := TRUE
                         ELSE
-                          IF Item.Artikelgruppe = 'CHAMPS' THEN
-                            CHAMPS := TRUE;
+                          IF Item.Artikelgruppe = 'CHAMPS_FEE' THEN
+                            RE_INSTATEMENT_FEE := TRUE
+                          ELSE
+                            IF Item.Artikelgruppe = 'CHAMPS' THEN
+                              CHAMPS := TRUE;
 
-        IF (Item.Artikelgruppe <> 'CHAMPS') AND (Item.Artikelgruppe <> 'CHAMPS_PARTNER')
-        AND (Item.Artikelgruppe <> 'ACTS')  AND (Item.Artikelgruppe <> 'ACTS_AHR')
-        AND (Item.Artikelgruppe <> 'ACHAT') AND (Item.Artikelgruppe <> 'ACTS/ACHAT')
-        AND (Item.Artikelgruppe <> 'ACTS_SCHAEFFLER') AND (Item.Artikelgruppe <> 'ACTS_MSS_SCHAEFFLER')
-        AND (Item.Artikelgruppe <> 'ACTS_MSS') AND (Item.Artikelgruppe <> 'APSS_OB')
-        AND (Item.Artikelgruppe <> 'SUPPORT & SOFTWARE') AND (Item.Artikelgruppe <> 'DIENSTLEISTUNG')
-        AND (Item.Artikelgruppe <> 'CHAMPS_FEE') THEN
-          ERROR(Text52000);
+          IF Kalkulation THEN BEGIN
+            IF (Item.Artikelgruppe <> 'CHAMPS') AND (Item.Artikelgruppe <> 'CHAMPS_PARTNER')
+            AND (Item.Artikelgruppe <> 'ACTS')  AND (Item.Artikelgruppe <> 'ACTS_AHR')
+            AND (Item.Artikelgruppe <> 'ACHAT') AND (Item.Artikelgruppe <> 'ACTS/ACHAT')
+            AND (Item.Artikelgruppe <> 'ACTS_SCHAEFFLER') AND (Item.Artikelgruppe <> 'ACTS_MSS_SCHAEFFLER')
+            AND (Item.Artikelgruppe <> 'ACTS_MSS') AND (Item.Artikelgruppe <> 'APSS_OB')
+            AND (Item.Artikelgruppe <> 'SUPPORT & SOFTWARE') AND (Item.Artikelgruppe <> 'DIENSTLEISTUNG')
+            AND (Item.Artikelgruppe <> 'CHAMPS_FEE') THEN
+              ERROR(Text52000);
+          END;
 
-        Opt_laufzeit.RESET;
-        Opt_laufzeit.SETFILTER("Tabellen ID",'%1',50024);
-        Opt_laufzeit.SETFILTER("Feld ID",'%1',44);
-        Opt_laufzeit.SETFILTER("Nr.",'%1',SUP_Artikelnr);
-        IF Opt_laufzeit.FINDFIRST THEN
-          EVALUATE(v_laufzeit,COPYSTR(Opt_laufzeit.Code,1,STRPOS(Opt_laufzeit.Code,'M')-1))
-        ELSE
-          ERROR(Text52001,SUP_Artikelnr,"Basis Artikelnr");
+          Opt_laufzeit.RESET;
+          Opt_laufzeit.SETFILTER("Tabellen ID",'%1',50024);
+          Opt_laufzeit.SETFILTER("Feld ID",'%1',44);
+          Opt_laufzeit.SETFILTER("Nr.",'%1',"SUP Artikelnr.");
+          IF Opt_laufzeit.FINDFIRST THEN
+            EVALUATE(v_laufzeit,COPYSTR(Opt_laufzeit.Code,1,STRPOS(Opt_laufzeit.Code,'M')-1))
+          ELSE
+            IF Kalkulation THEN
+              ERROR(Text52001,"SUP Artikelnr.","Ger„te Artikelnr.")
+            ELSE
+              v_laufzeit := 12;
 
-        Service_PL.RESET;
-        Service_PL.SETFILTER("Zuordnung obsolete",'%1',FALSE);
-        IF (ACTS = TRUE) OR (ACTS_AHR = TRUE) OR (ACHAT = TRUE) OR (ACTS_MSS = TRUE)
-        OR (ACTS_SCHAEFFLER = TRUE) OR (ACTS_MSS_SCHAEFFLER = TRUE) THEN
-          Service_PL.SETFILTER(Art,'%1',Service_PL.Art::ACTS)
-        ELSE
-          Service_PL.SETFILTER(Art,'%1',Service_PL.Art::Champs);
-        SUP_Artikelnr := ServiceTab.FakeSUPArtikelErmitteln(SUP_Artikelnr);
-        Service_PL.SETFILTER("SUP Artikelnr.",'%1',SUP_Artikelnr);
-        Service_PL.SETFILTER("Artikelnr.",'%1',"Basis Artikelnr");
-        Service_PL.SETFILTER(Status,'%1',SalesHeader."Preislisten Kalkulation");
-        Service_PL.SETFILTER(W„hrungscode,'%1',W„hrung);
-        IF Service_PL.FINDFIRST THEN BEGIN
+          basis_laufzeit_jahre := ROUND(v_laufzeit / 12, 1);
 
-          //IF Service_PL."Update letzte Preisliste" = FALSE THEN
-          //  MESSAGE(Text120,"Basis Artikelnr",Service_PL.Preisliste,Service_PL."Letzte Aktualisierung");
+          EVALUATE(v_kalkulations_laufzeit,COPYSTR(Laufzeit,1,STRPOS(Laufzeit,'M')-1));
 
-          //CHAMPS und PARTNER EK Konditionen
-          IF (CHAMPS = TRUE) OR (CHAMPS_PARTNER = TRUE) THEN BEGIN
-            normal_discount := 0.72;
-            v_service_laufzeit := Laufzeit DIV 12;
-            CASE v_service_laufzeit OF
-              0..1 : additional_discount := 0;
-              2 : additional_discount := 0.02; // -2%
-              3 : additional_discount := 0.09; // -9%
-              4 : additional_discount := 0.12; // -12%
-              5..100 : additional_discount := 0.15; // -15%
+          IF "Quotenr." <> '' THEN BEGIN
+            service_msrp := GetServiceQuotePrice("Quotenr.",Kalkulation);
+          END;
+
+          IF service_msrp = 0 THEN BEGIN
+            Service_PL.RESET;
+            Service_PL.SETFILTER("Zuordnung obsolete",'%1',FALSE);
+            IF (ACTS = TRUE) OR (ACTS_AHR = TRUE) OR (ACHAT = TRUE) OR (ACTS_MSS = TRUE)
+            OR (ACTS_SCHAEFFLER = TRUE) OR (ACTS_MSS_SCHAEFFLER = TRUE) THEN
+              Service_PL.SETFILTER(Art,'%1',Service_PL.Art::ACTS)
+            ELSE
+              Service_PL.SETFILTER(Art,'%1',Service_PL.Art::Champs);
+            Service_PL.SETFILTER("SUP Artikelnr.",'%1',ServiceTab.FakeSUPArtikelErmitteln("SUP Artikelnr."));
+            Service_PL.SETFILTER("Artikelnr.",'%1',"Ger„te Artikelnr.");
+            Service_PL.SETFILTER(Status,'%1',PreislistenKalkulation);
+            Service_PL.SETFILTER(W„hrungscode,'%1',W„hrung);
+            IF Service_PL.FINDFIRST THEN BEGIN
+              service_msrp := Service_PL.MSRP;
             END;
           END;
 
-          //ACTS EK Konditionen
-          IF ACTS = TRUE THEN BEGIN
-            IF ServiceTab.ServiceQuoteIsValid(Quotenr) = TRUE THEN
-              normal_discount := 0.62
-            ELSE BEGIN
-              normal_discount := 0.75;
-              v_service_laufzeit := Laufzeit DIV 12;
-              CASE v_service_laufzeit OF
-                0..1 : additional_discount := 0;
-                2 : additional_discount := 0.02; // -2%
-                3 : additional_discount := 0.09; // -9%
-                4 : additional_discount := 0.12; // -12%
-                5..100 : additional_discount := 0.15; // -15%
+          IF service_msrp <> 0 THEN BEGIN
+
+            IF Feld = 'DC' THEN BEGIN
+              //IF Service_PL."Update letzte Preisliste" = FALSE THEN
+              //  MESSAGE(Text120,"Basis Artikelnr",Service_PL.Preisliste,Service_PL."Letzte Aktualisierung");
+
+              //CHAMPS und PARTNER EK Konditionen
+              IF (CHAMPS = TRUE) OR (CHAMPS_PARTNER = TRUE) THEN BEGIN
+                normal_discount := 0.72;
+                v_service_laufzeit := v_kalkulations_laufzeit DIV 12;
+                CASE v_service_laufzeit OF
+                  0..1 : additional_discount := 0;
+                  2 : additional_discount := 0.02; // -2%
+                  3 : additional_discount := 0.09; // -9%
+                  4 : additional_discount := 0.12; // -12%
+                  5..100 : additional_discount := 0.15; // -15%
+                END;
               END;
+
+              //ACTS EK Konditionen
+              IF ACTS = TRUE THEN BEGIN
+                IF ServiceTab.CheckSpecial_ACTS_MSS_Quote("Quotenr.") = TRUE THEN
+                  normal_discount := 0.62
+                ELSE BEGIN
+                  normal_discount := 0.75;
+                  v_service_laufzeit := v_kalkulations_laufzeit DIV 12;
+                  CASE v_service_laufzeit OF
+                    0..1 : additional_discount := 0;
+                    2 : additional_discount := 0.02; // -2%
+                    3 : additional_discount := 0.09; // -9%
+                    4 : additional_discount := 0.12; // -12%
+                    5..100 : additional_discount := 0.15; // -15%
+                  END;
+                END;
+              END;
+
+              //ACTS AHR EK Konditionen
+              IF ACTS_AHR = TRUE THEN BEGIN
+                IF ServiceTab.CheckSpecial_ACTS_MSS_Quote("Quotenr.") = TRUE THEN
+                  normal_discount := 0.62
+                ELSE BEGIN
+                  normal_discount := 0.8;
+                  v_service_laufzeit := v_kalkulations_laufzeit DIV 12;
+                  CASE v_service_laufzeit OF
+                    0..1 : additional_discount := 0;
+                    2 : additional_discount := 0.02; // -2%
+                    3 : additional_discount := 0.09; // -9%
+                    4 : additional_discount := 0.12; // -12%
+                    5..100 : additional_discount := 0.15; // -15%
+                  END;
+                END;
+              END;
+
+              //ACTS Managed Spare Service EK Konditionen
+              IF ACTS_MSS = TRUE THEN BEGIN
+                //MSS ohne Quote von -10% auf -20% , mit Quote (in Annahme) von -15% auf -20% ge„ndert
+                //auch wenn die Werte nun gleich sind, bleibt diese Abfrage bzgl. Quote hier stehen
+                IF ServiceTab.CheckSpecial_ACTS_MSS_Quote("Quotenr.") = TRUE THEN
+                  normal_discount := 0.8
+                ELSE BEGIN
+                  normal_discount := 0.8;
+                  v_service_laufzeit := v_kalkulations_laufzeit DIV 12;
+                  CASE v_service_laufzeit OF
+                    0..1 : additional_discount := 0;
+                    2 : additional_discount := 0.02; // -2%
+                    3 : additional_discount := 0.09; // -9%
+                    4 : additional_discount := 0.12; // -12%
+                    5..100 : additional_discount := 0.15; // -15%
+                  END;
+                END;
+              END;
+
+              //ACHAT EK Konditionen
+              IF ACHAT = TRUE THEN BEGIN
+                normal_discount := 0.8;
+                additional_discount := 0;
+                spezial_discount := 1 / 0.8 * 0.58 // fr ACHAT 1 / 0.8 (Zurckrechnung Champ DC auf 100 % MSRP) * 0.58 EK ACHAT
+              END;
+
+              //ACTS Schaeffler EK Konditionen
+              IF ACTS_SCHAEFFLER = TRUE THEN BEGIN
+                normal_discount := 0.5;
+              END;
+
+              //ACTS MSS Schaeffler EK Konditionen
+              IF ACTS_MSS_SCHAEFFLER = TRUE THEN BEGIN
+                normal_discount := 0.8;
+              END;
+
+              //APSS One Box EK Konditionen
+              IF APSS_OB = TRUE THEN BEGIN
+                IF ServiceTab.CheckSpecial_ACTS_MSS_Quote("Quotenr.") = TRUE THEN
+                  normal_discount := 0.62
+                ELSE BEGIN
+                  normal_discount := 0.65;
+                  v_service_laufzeit := v_kalkulations_laufzeit DIV 12;
+                  CASE v_service_laufzeit OF
+                    0..1 : additional_discount := 0;
+                    2 : additional_discount := 0.02; // -5%
+                    3 : additional_discount := 0.09; // -12%
+                    4 : additional_discount := 0.12; // -12%
+                    5..100 : additional_discount := 0.15; // -15%
+                  END;
+                END;
+              END;
+
+              //Re Instatement Fee
+              IF RE_INSTATEMENT_FEE = TRUE THEN BEGIN
+                normal_discount := 0.72;
+                spezial_discount := 1.25; //Fee 1.25
+              END;
+
+              EXIT((ROUND((((service_msrp * (normal_discount - additional_discount)) * basis_laufzeit_jahre) *
+                  (v_kalkulations_laufzeit / v_laufzeit)) * spezial_discount,rundgs_faktor)));
             END;
-          END;
 
-          //ACTS AHR EK Konditionen
-          IF ACTS_AHR = TRUE THEN BEGIN
-            IF ServiceTab.ServiceQuoteIsValid(Quotenr) = TRUE THEN
-              normal_discount := 0.62
-            ELSE BEGIN
-              normal_discount := 0.8;
-              v_service_laufzeit := Laufzeit DIV 12;
-              CASE v_service_laufzeit OF
-                0..1 : additional_discount := 0;
-                2 : additional_discount := 0.02; // -2%
-                3 : additional_discount := 0.09; // -9%
-                4 : additional_discount := 0.12; // -12%
-                5..100 : additional_discount := 0.15; // -15%
-              END;
+            IF Feld = 'MSRP' THEN BEGIN
+              EXIT(ROUND((service_msrp * basis_laufzeit_jahre) * (v_kalkulations_laufzeit / v_laufzeit),rundgs_faktor));
             END;
-          END;
-
-          //ACTS Managed Spare Service EK Konditionen
-          IF ACTS_MSS = TRUE THEN BEGIN
-            //MSS ohne Quote von -10% auf -20% , mit Quote (in Annahme) von -15% auf -20% ge„ndert
-            //auch wenn die Werte nun gleich sind, bleibt diese Abfrage bzgl. Quote hier stehen
-            IF ServiceTab.ServiceQuoteIsValid(Quotenr) = TRUE THEN
-              normal_discount := 0.8
-            ELSE BEGIN
-              normal_discount := 0.8;
-              v_service_laufzeit := Laufzeit DIV 12;
-              CASE v_service_laufzeit OF
-                0..1 : additional_discount := 0;
-                2 : additional_discount := 0.02; // -2%
-                3 : additional_discount := 0.09; // -9%
-                4 : additional_discount := 0.12; // -12%
-                5..100 : additional_discount := 0.15; // -15%
-              END;
-            END;
-          END;
-
-          //ACHAT EK Konditionen
-          IF ACHAT = TRUE THEN BEGIN
-            normal_discount := 0.8;
-            additional_discount := 0;
-            spezial_discount := 1 / 0.8 * 0.58 // fr ACHAT 1 / 0.8 (Zurckrechnung Champ DC auf 100 % MSRP) * 0.58 EK ACHAT
-          END;
-
-          //ACTS Schaeffler EK Konditionen
-          IF ACTS_SCHAEFFLER = TRUE THEN BEGIN
-            normal_discount := 0.5;
-          END;
-
-          //ACTS MSS Schaeffler EK Konditionen
-          IF ACTS_MSS_SCHAEFFLER = TRUE THEN BEGIN
-            normal_discount := 0.8;
-          END;
-
-          //APSS One Box EK Konditionen
-          IF APSS_OB = TRUE THEN BEGIN
-            IF ServiceTab.ServiceQuoteIsValid(Quotenr) = TRUE THEN
-              normal_discount := 0.62
-            ELSE BEGIN
-              normal_discount := 0.65;
-              v_service_laufzeit := Laufzeit DIV 12;
-              CASE v_service_laufzeit OF
-                0..1 : additional_discount := 0;
-                2 : additional_discount := 0.02; // -5%
-                3 : additional_discount := 0.09; // -12%
-                4 : additional_discount := 0.12; // -12%
-                5..100 : additional_discount := 0.15; // -15%
-              END;
-            END;
-          END;
-
-          //Re Instatement Fee
-          IF RE_INSTATEMENT_FEE = TRUE THEN BEGIN
-            normal_discount := 0.72;
-            spezial_discount := 1.25; //Fee 1.25
-          END;
-
-          EXIT((ROUND((((Service_PL.MSRP * (normal_discount - additional_discount)) * Service_PL."Laufzeit in Jahren") *
-              (Laufzeit/v_laufzeit)) * spezial_discount,rundgs_faktor)));
-
-        END ELSE BEGIN
-          IF (SUP_Artikelnr = 'SW-UPGRADE-ACS-1Y') OR (SUP_Artikelnr = 'EXTD-HW-WARR/YR')
-          OR (SUP_Artikelnr = 'ENH-SUPP-PROG/YR') OR (SUP_Artikelnr = 'ENH-SUPP-PROG/3 YR') THEN BEGIN
-            {
-            //11.02.15 ST deaktiviert, da fr diese eigenen Serviceleistungen kein DC erwnscht ist
-            Opt_prozent.RESET;
-            Opt_prozent.SETFILTER("Tabellen ID",'%1',50024);
-            Opt_prozent.SETFILTER("Feld ID",'%1',5);
-            Opt_prozent.SETFILTER("Nr.",SUP_Artikelnr);
-            IF Opt_prozent.FINDFIRST THEN
-              BEGIN
-                Item.GET("Basis Artikelnr");
-                EkPreise.RESET;
-                EkPreise.SETFILTER("Item No.",'%1',"Basis Artikelnr");
-                EkPreise.SETFILTER("Vendor No.",'%1',Item."Vendor No.");
-                EkPreise.SETFILTER("Currency Code",'%1','');
-                IF EkPreise.FINDLAST THEN
-                  EXIT(ROUND((EkPreise."Direct Unit Cost" * Opt_prozent.Prozentsatz/100) * (Laufzeit/v_laufzeit),rundgs_faktor))
-              END;
-            }
           END ELSE
-            ERROR(Text52002,"Basis Artikelnr",SUP_Artikelnr);
+            IF Kalkulation THEN
+              ERROR(Text52002,"Ger„te Artikelnr.","SUP Artikelnr.");
         END;
       END;
     END;
 
-    PROCEDURE Gen_Service_VK@1140007("SUP Artikelnr"@1140001 : Code[20];"Basis Artikelnr"@1140013 : Code[20];Laufzeit@1140008 : Integer;Belegnr@1140007 : Code[20];Zeilennr@1140006 : Integer;Fremderworben@1140014 : Boolean;Basisger„t@1140011 : Boolean;Runden@1140000 : Boolean;Kalk_Prozentsatz@1140015 : Decimal;MSRP_W„hrung@1140022 : Code[10];W„hrungsfaktor@1000000003 : Decimal;Beleg_W„hrung@1000000004 : Code[10];SalesHeader@1000000005 : Record 36) : Decimal;
+    PROCEDURE CalcSalesService@1140007(ServiceKalkulation@1000000006 : Record 50027;Runden@1140000 : Boolean;Kalk_Prozentsatz@1140015 : Decimal;MSRP_W„hrung@1140022 : Code[10];W„hrungsfaktor@1000000003 : Decimal;Beleg_W„hrung@1000000004 : Code[10];SalesHeader@1000000005 : Record 36;Kalkulation@1000000008 : Boolean) : Decimal;
     VAR
       Currency@1000000002 : Record 4;
       CurrExchRate@1000000001 : Record 330;
@@ -1336,7 +1347,8 @@ OBJECT Codeunit 50008 TOPAS Service Modul
       Item@1000000000 : Record 27;
       BesterVkPreis@1140002 : Decimal;
       basissatz@1140012 : Decimal;
-      v_laufzeit@1140010 : Decimal;
+      basis_laufzeit@1140010 : Decimal;
+      kalkulations_laufzeit@1000000007 : Decimal;
       v_prozentsatz@1140016 : Decimal;
       marge@1140019 : Decimal;
       ACTS@1140017 : Boolean;
@@ -1355,66 +1367,82 @@ OBJECT Codeunit 50008 TOPAS Service Modul
       //             Position auf eine gltige Auftrags- oder Lieferscheinposition bezieht
       //***************************************************************************************************
 
-      IF (Zeilennr = 0) AND (Belegnr = '') THEN BEGIN
-        MESSAGE(Text52003);
-        EXIT(0);
-      END;
+      WITH ServiceKalkulation DO BEGIN
+        IF ("Belegnr." = '') AND ("Belegzeilennr." = 0) THEN BEGIN
+          MESSAGE(Text52003);
+          EXIT(0);
+        END;
 
-      marge := 1;
-      normal_discount := 1;
+        marge := 1;
+        normal_discount := 1;
 
-      IF Runden THEN
-        rundgs_faktor := 1
-      ELSE
-        rundgs_faktor := 0.01;
-
-      Item.GET("SUP Artikelnr");
-      IF (Item."Software Upgrade Protection" = TRUE) THEN BEGIN
-
-        IF (Item.Artikelgruppe <> 'CHAMPS') AND (Item.Artikelgruppe <> 'CHAMPS_PARTNER')
-        AND (Item.Artikelgruppe <> 'ACTS')  AND (Item.Artikelgruppe <> 'ACTS_AHR')
-        AND (Item.Artikelgruppe <> 'ACHAT') AND (Item.Artikelgruppe <> 'ACTS/ACHAT')
-        AND (Item.Artikelgruppe <> 'ACTS_SCHAEFFLER') AND (Item.Artikelgruppe <> 'ACTS_MSS_SCHAEFFLER')
-        AND (Item.Artikelgruppe <> 'ACTS_MSS') AND (Item.Artikelgruppe <> 'APSS_OB')
-        AND (Item.Artikelgruppe <> 'SUPPORT & SOFTWARE') AND (Item.Artikelgruppe <> 'DIENSTLEISTUNG')
-        AND (Item.Artikelgruppe <> 'CHAMPS_FEE') THEN
-          ERROR(Text52000);
-
-        IF (Item.Artikelgruppe = 'ACTS') OR (Item.Artikelgruppe = 'ACTS_AHR')
-        OR (Item.Artikelgruppe = 'ACTS/ACHAT') OR (Item.Artikelgruppe = 'ACTS_MSS') THEN
-          ACTS := TRUE
+        IF Runden THEN
+          rundgs_faktor := 1
         ELSE
-          IF Item.Artikelgruppe = 'ACHAT' THEN
-            ACHAT := TRUE
-          ELSE
-            IF Item.Artikelgruppe = 'ACTS_SCHAEFFLER' THEN
-              ACTS_SCHAEFFLER := TRUE
+          rundgs_faktor := 0.01;
+
+        Item.GET("SUP Artikelnr.");
+        IF (Item."Software Upgrade Protection" = TRUE) THEN BEGIN
+
+          IF (Item.Artikelgruppe <> 'CHAMPS') AND (Item.Artikelgruppe <> 'CHAMPS_PARTNER')
+          AND (Item.Artikelgruppe <> 'ACTS')  AND (Item.Artikelgruppe <> 'ACTS_AHR')
+          AND (Item.Artikelgruppe <> 'ACHAT') AND (Item.Artikelgruppe <> 'ACTS/ACHAT')
+          AND (Item.Artikelgruppe <> 'ACTS_SCHAEFFLER') AND (Item.Artikelgruppe <> 'ACTS_MSS_SCHAEFFLER')
+          AND (Item.Artikelgruppe <> 'ACTS_MSS') AND (Item.Artikelgruppe <> 'APSS_OB')
+          AND (Item.Artikelgruppe <> 'SUPPORT & SOFTWARE') AND (Item.Artikelgruppe <> 'DIENSTLEISTUNG')
+          AND (Item.Artikelgruppe <> 'CHAMPS_FEE') THEN
+            IF Kalkulation THEN
+              ERROR(Text52000)
             ELSE
-              IF Item.Artikelgruppe = 'ACTS_MSS_SCHAEFFLER' THEN
-                ACTS_MSS_SCHAEFFLER := TRUE
+              EXIT(0);
+
+          IF (Item.Artikelgruppe = 'ACTS') OR (Item.Artikelgruppe = 'ACTS_AHR')
+          OR (Item.Artikelgruppe = 'ACTS/ACHAT') OR (Item.Artikelgruppe = 'ACTS_MSS') THEN
+            ACTS := TRUE
+          ELSE
+            IF Item.Artikelgruppe = 'ACHAT' THEN
+              ACHAT := TRUE
+            ELSE
+              IF Item.Artikelgruppe = 'ACTS_SCHAEFFLER' THEN
+                ACTS_SCHAEFFLER := TRUE
               ELSE
-                IF Item.Artikelgruppe = 'APSS_OB' THEN
-                  APSS_OB := TRUE
+                IF Item.Artikelgruppe = 'ACTS_MSS_SCHAEFFLER' THEN
+                  ACTS_MSS_SCHAEFFLER := TRUE
                 ELSE
-                  IF Item.Artikelgruppe = 'CHAMPS_FEE' THEN
-                    RE_INSTATEMENT_FEE := TRUE
+                  IF Item.Artikelgruppe = 'APSS_OB' THEN
+                    APSS_OB := TRUE
                   ELSE
-                    CHAMPS := TRUE;
+                    IF Item.Artikelgruppe = 'CHAMPS_FEE' THEN
+                      RE_INSTATEMENT_FEE := TRUE
+                    ELSE
+                      CHAMPS := TRUE;
 
-        //VK Kondition CHAMPS zertifizierte Partner = -20% MSRP
-        IF Item.Artikelgruppe = 'CHAMPS_PARTNER' THEN
-          IF Kalk_Prozentsatz <= 20 THEN
-            v_prozentsatz := 80
+          //VK Kondition CHAMPS zertifizierte Partner = -20% MSRP
+          IF Item.Artikelgruppe = 'CHAMPS_PARTNER' THEN
+            IF Kalk_Prozentsatz <= 20 THEN
+              v_prozentsatz := 80
+            ELSE
+              v_prozentsatz := 100 - Kalk_Prozentsatz;
+
+          Opt_laufzeit.RESET;
+          Opt_laufzeit.SETRANGE("Tabellen ID",50024);
+          Opt_laufzeit.SETRANGE("Feld ID",44);
+          Opt_laufzeit.SETRANGE("Nr.","SUP Artikelnr.");
+          IF Opt_laufzeit.FINDFIRST THEN
+            EVALUATE(basis_laufzeit,COPYSTR(Opt_laufzeit.Code,1,STRPOS(Opt_laufzeit.Code,'M')-1))
           ELSE
-            v_prozentsatz := 100 - Kalk_Prozentsatz;
+            IF Kalkulation THEN
+              ERROR(Text52005,"SUP Artikelnr.",Opt_laufzeit.TABLECAPTION,Opt_laufzeit.FIELDCAPTION(Code),"Ger„te Artikelnr.")
+            ELSE
+              basis_laufzeit := 12;
 
-          Item.GET("Basis Artikelnr");
+          EVALUATE(kalkulations_laufzeit,COPYSTR(Laufzeit,1,STRPOS(Laufzeit,'M')-1));
+
+          Item.GET("Ger„te Artikelnr.");
           IF MSRP_W„hrung = '' THEN
-            BesterVkPreis := FindMSRP("Basis Artikelnr",WORKDATE,Beleg_W„hrung,
-                                  Item."Base Unit of Measure","SUP Artikelnr",SalesHeader)
+            BesterVkPreis := FindMSRP(ServiceKalkulation,basis_laufzeit,WORKDATE,Beleg_W„hrung,Item."Base Unit of Measure",SalesHeader)
           ELSE
-            BesterVkPreis := FindMSRP("Basis Artikelnr",WORKDATE,MSRP_W„hrung,
-                                  Item."Base Unit of Measure","SUP Artikelnr",SalesHeader);
+            BesterVkPreis := FindMSRP(ServiceKalkulation,basis_laufzeit,WORKDATE,MSRP_W„hrung,Item."Base Unit of Measure",SalesHeader);
 
           //05.04.18 ST - EKW MSRP wird ggf. in MW umgerechnet
           IF (Beleg_W„hrung = '') AND (MSRP_W„hrung <> '') THEN BEGIN
@@ -1424,96 +1452,91 @@ OBJECT Codeunit 50008 TOPAS Service Modul
           END;
 
           IF BesterVkPreis <> 0 THEN BEGIN
-            Opt_laufzeit.RESET;
-            Opt_laufzeit.SETRANGE("Tabellen ID",50024);
-            Opt_laufzeit.SETRANGE("Feld ID",44);
-            Opt_laufzeit.SETRANGE("Nr.","SUP Artikelnr");
-            IF Opt_laufzeit.FINDFIRST THEN BEGIN
-              EVALUATE(v_laufzeit,COPYSTR(Opt_laufzeit.Code,1,STRPOS(Opt_laufzeit.Code,'M')-1));
 
-              //***************************************************************************************************
-              //                                  Service Konditionen deklarieren
-              //***************************************************************************************************
+            //***************************************************************************************************
+            //                                  Service Konditionen deklarieren
+            //***************************************************************************************************
 
-              IF ACTS = TRUE THEN BEGIN
-                v_service_laufzeit := Laufzeit DIV 12;
-                CASE v_service_laufzeit OF
-                  0..1 : normal_discount := 1;
-                  2 : normal_discount := 0.98; // -2%
-                  3 : normal_discount := 0.91; // -9%
-                  4 : normal_discount := 0.88; // -12%
-                  5..100 : normal_discount := 0.85; // -15%
-                END;
-                v_prozentsatz := 100 - Kalk_Prozentsatz
+            IF ACTS = TRUE THEN BEGIN
+              v_service_laufzeit := kalkulations_laufzeit DIV 12;
+              CASE v_service_laufzeit OF
+                0..1 : normal_discount := 1;
+                2 : normal_discount := 0.98; // -2%
+                3 : normal_discount := 0.91; // -9%
+                4 : normal_discount := 0.88; // -12%
+                5..100 : normal_discount := 0.85; // -15%
               END;
+              v_prozentsatz := 100 - Kalk_Prozentsatz
+            END;
 
-              IF ACHAT = TRUE THEN BEGIN
-                marge := 1 / ((100 - Kalk_Prozentsatz) / 100);
-                normal_discount := 0.58;
-                v_prozentsatz := 100;
+            IF ACHAT = TRUE THEN BEGIN
+              marge := 1 / ((100 - Kalk_Prozentsatz) / 100);
+              normal_discount := 0.58;
+              v_prozentsatz := 100;
+            END;
+
+            IF ACTS_SCHAEFFLER = TRUE THEN BEGIN
+              v_prozentsatz := 100 - Kalk_Prozentsatz;
+            END;
+
+            IF ACTS_MSS_SCHAEFFLER = TRUE THEN BEGIN
+              v_prozentsatz := 100 - Kalk_Prozentsatz;
+            END;
+
+            IF APSS_OB = TRUE THEN BEGIN
+              v_service_laufzeit := kalkulations_laufzeit DIV 12;
+              CASE v_service_laufzeit OF
+                0..1 : normal_discount := 1;
+                2 : normal_discount := 0.98; // -2%
+                3 : normal_discount := 0.91; // -9%
+                4 : normal_discount := 0.88; // -12%
+                5..100 : normal_discount := 0.85; // -15%
               END;
+              v_prozentsatz := 100 - Kalk_Prozentsatz;
+            END;
 
-              IF ACTS_SCHAEFFLER = TRUE THEN BEGIN
-                v_prozentsatz := 100 - Kalk_Prozentsatz;
-              END;
+            IF CHAMPS = TRUE THEN BEGIN
+              Opt_proz.RESET;
+              Opt_proz.SETRANGE("Tabellen ID",50024);
+              Opt_proz.SETRANGE("Feld ID",5);
+              Opt_proz.SETRANGE("Nr.","SUP Artikelnr.");
+              IF Opt_proz.FINDFIRST THEN BEGIN
+                v_prozentsatz := Opt_proz.Prozentsatz;
+                IF Basisger„t = TRUE THEN
+                  basissatz := Opt_proz.Werte
+                ELSE
+                  basissatz := 0;
+              END ELSE
+                IF v_prozentsatz = 0 THEN ERROR(Text52004,"SUP Artikelnr.","Ger„te Artikelnr.");
+            END;
 
-              IF ACTS_MSS_SCHAEFFLER = TRUE THEN BEGIN
-                v_prozentsatz := 100 - Kalk_Prozentsatz;
-              END;
+            IF RE_INSTATEMENT_FEE = TRUE THEN BEGIN
+              v_prozentsatz := 100 - Kalk_Prozentsatz;
+              normal_discount := 1;
+              marge := 1.25;
+            END;
 
-              IF APSS_OB = TRUE THEN BEGIN
-                v_service_laufzeit := Laufzeit DIV 12;
-                CASE v_service_laufzeit OF
-                  0..1 : normal_discount := 1;
-                  2 : normal_discount := 0.98; // -2%
-                  3 : normal_discount := 0.91; // -9%
-                  4 : normal_discount := 0.88; // -12%
-                  5..100 : normal_discount := 0.85; // -15%
-                END;
-                v_prozentsatz := 100 - Kalk_Prozentsatz;
-              END;
-
-              IF CHAMPS = TRUE THEN BEGIN
-                Opt_proz.RESET;
-                Opt_proz.SETRANGE("Tabellen ID",50024);
-                Opt_proz.SETRANGE("Feld ID",5);
-                Opt_proz.SETRANGE("Nr.","SUP Artikelnr");
-                IF Opt_proz.FINDFIRST THEN BEGIN
-                  v_prozentsatz := Opt_proz.Prozentsatz;
-                  IF Basisger„t = TRUE THEN
-                    basissatz := Opt_proz.Werte
-                  ELSE
-                    basissatz := 0;
-                END ELSE
-                  IF v_prozentsatz = 0 THEN ERROR(Text52004,"SUP Artikelnr","Basis Artikelnr");
-              END;
-
-              IF RE_INSTATEMENT_FEE = TRUE THEN BEGIN
-                v_prozentsatz := 100 - Kalk_Prozentsatz;
-                normal_discount := 1;
-                marge := 1.25;
-              END;
-
-              EXIT(ROUND((((((BesterVkPreis * v_prozentsatz)) * normal_discount / 100) *
-                  (Laufzeit / v_laufzeit)) + ((Laufzeit / v_laufzeit) * (basissatz))) * marge,rundgs_faktor));
-
-            END ELSE
-              ERROR(Text52005,"SUP Artikelnr","Basis Artikelnr");
+            EXIT(ROUND((((((BesterVkPreis * v_prozentsatz)) * normal_discount / 100) *
+                (kalkulations_laufzeit / basis_laufzeit)) + ((kalkulations_laufzeit / basis_laufzeit) * (basissatz))) * marge,rundgs_faktor));
           END ELSE
             IF Item."Kein VK notwendig" = FALSE THEN
-              ERROR(Text52006,"Basis Artikelnr",Item.FIELDCAPTION("Kein VK notwendig"));
+              IF Kalkulation THEN
+                ERROR(Text52006,"Ger„te Artikelnr.",Item.FIELDCAPTION("Kein VK notwendig"));
+        END;
       END;
     END;
 
-    PROCEDURE FindMSRP@1140005(Artikelnr@1140003 : Code[20];Startdatum@1140002 : Date;W„h@1140001 : Code[10];Stkcode@1140000 : Code[10];SUP_Artikelnr@1140009 : Code[20];SalesHeader@1000000002 : Record 36) : Decimal;
+    PROCEDURE FindMSRP@1140005(ServiceKalkulation@1000000003 : Record 50027;Basis_Laufzeit@1000000006 : Decimal;Startdatum@1140002 : Date;W„h@1140001 : Code[10];Stkcode@1140000 : Code[10];SalesHeader@1000000002 : Record 36) : Decimal;
     VAR
       Artikel@1140010 : Record 27;
       FindSalesPrice@1140005 : Record 7002;
       FindMSRPPrice@1140008 : Record 50028;
       ServiceTab@1140019 : Record 50024;
       Item@1000000001 : Record 27;
+      Opt_laufzeit@1000000005 : Record 50001;
       BestPrice@1140004 : Decimal;
       BestDate@1140006 : Date;
+      Service_MSRP@1000000004 : Decimal;
       ACTS@1140007 : Boolean;
       ACTS_AHR@1000000000 : Boolean;
       ACHAT@1140011 : Boolean;
@@ -1532,9 +1555,9 @@ OBJECT Codeunit 50008 TOPAS Service Modul
       //        TOPAS 09.01.14 ST - Fr ACTS und ACHAT den entsprechenden ACTS MSRP
       //***************************************************************************************************
 
-      IF Artikelnr = '' THEN EXIT;
+      IF ServiceKalkulation."Ger„te Artikelnr." = '' THEN EXIT;
 
-      Item.GET(SUP_Artikelnr);
+      Item.GET(ServiceKalkulation."SUP Artikelnr.");
       IF Item.Artikelgruppe = 'ACTS' THEN
         ACTS := TRUE
       ELSE
@@ -1572,11 +1595,11 @@ OBJECT Codeunit 50008 TOPAS Service Modul
 
       IF (CHAMPS = TRUE) OR (SUP = TRUE) THEN BEGIN
         WITH FindSalesPrice DO BEGIN
-          IF (Artikelnr = 'M1KB-CH') THEN BEGIN
-            IF Artikelnr = 'M1KB-CH' THEN
+          IF (ServiceKalkulation."Ger„te Artikelnr." = 'M1KB-CH') THEN BEGIN
+            IF ServiceKalkulation."Ger„te Artikelnr." = 'M1KB-CH' THEN
               SETRANGE("Item No.",'M1KB');  //vorher M1KB-MSBG1
           END ELSE
-            SETRANGE("Item No.",Artikelnr);
+            SETRANGE("Item No.",ServiceKalkulation."Ger„te Artikelnr.");
           SETFILTER("Ending Date",'%1|>=%2',0D,Startdatum);
           SETFILTER("Currency Code",'%1',W„h);
           IF Stkcode <> '' THEN
@@ -1608,32 +1631,43 @@ OBJECT Codeunit 50008 TOPAS Service Modul
 
       IF (ACTS = TRUE) OR (ACTS_AHR = TRUE) OR (ACHAT = TRUE) OR (ACTS_ACHAT = TRUE) OR (ACTS_SCHAEFFLER = TRUE) OR (ACTS_MSS_SCHAEFFLER = TRUE)
       OR (ACTS_MSS = TRUE) OR (CHAMPS_PARTNER = TRUE) OR (APSS_OB = TRUE) OR (RE_INSTATEMENT_FEE = TRUE) THEN BEGIN
-        WITH FindMSRPPrice DO BEGIN
-          SETRANGE("Artikelnr.",Artikelnr);
-          SUP_Artikelnr := ServiceTab.FakeSUPArtikelErmitteln(SUP_Artikelnr);
-          SETRANGE("SUP Artikelnr.",SUP_Artikelnr);
-          SETRANGE(W„hrungscode,W„h);
-          SETRANGE(Art,Art::ACTS);
-          IF (CHAMPS_PARTNER = TRUE) OR (RE_INSTATEMENT_FEE = TRUE) OR (APSS_OB = TRUE) THEN
-            SETRANGE(Art,Art::Champs);
-          SETRANGE("Zuordnung obsolete",FALSE);
-          SETRANGE(Status,SalesHeader."Preislisten Kalkulation");
-          IF FINDFIRST THEN BEGIN
-            //IF "Update letzte Preisliste" = FALSE THEN
-            //  MESSAGE(Text120,FORMAT(Art),Artikelnr);
-            EXIT(FindMSRPPrice.MSRP * FindMSRPPrice."Laufzeit in Jahren")
-          END ELSE
-            ERROR(Text52007,Artikelnr,Item.Artikelgruppe);
+        IF ServiceKalkulation."Quotenr." <> '' THEN BEGIN
+          Service_MSRP := GetServiceQuotePrice(ServiceKalkulation."Quotenr.",TRUE);
+        END;
+        IF Service_MSRP <> 0 THEN
+          EXIT(Service_MSRP)
+        ELSE BEGIN
+          WITH FindMSRPPrice DO BEGIN
+            SETRANGE("Artikelnr.",ServiceKalkulation."Ger„te Artikelnr.");
+            SETRANGE("SUP Artikelnr.",ServiceTab.FakeSUPArtikelErmitteln(ServiceKalkulation."SUP Artikelnr."));
+            SETRANGE(W„hrungscode,W„h);
+            SETRANGE(Art,Art::ACTS);
+            IF (CHAMPS_PARTNER = TRUE) OR (RE_INSTATEMENT_FEE = TRUE) OR (APSS_OB = TRUE) THEN
+              SETRANGE(Art,Art::Champs);
+            SETRANGE("Zuordnung obsolete",FALSE);
+            SETRANGE(Status,SalesHeader."Preislisten Kalkulation");
+            IF FINDFIRST THEN BEGIN
+              //IF "Update letzte Preisliste" = FALSE THEN
+              //  MESSAGE(Text120,FORMAT(Art),Artikelnr);
+              EXIT(FindMSRPPrice.MSRP * FindMSRPPrice."Laufzeit in Jahren")
+            END ELSE
+              ERROR(Text52007,ServiceKalkulation."Ger„te Artikelnr.",Item.Artikelgruppe);
+          END;
         END;
       END;
     END;
 
-    PROCEDURE GetPricelistVersion@1000000002(Basis_Artikelnr@1000000005 : Code[20];SUP_Artikelnr@1000000006 : Code[20];W„hrung@1000000002 : Code[20];SalesHeader@1000000000 : Record 36) : Text;
+    PROCEDURE GetPricelistVersion@1000000002(Basis_Artikelnr@1000000005 : Code[20];SUP_Artikelnr@1000000006 : Code[20];W„hrung@1000000002 : Code[20];Quotenr@1000000007 : Code[10];SalesHeader@1000000000 : Record 36) : Text;
     VAR
       TroubleshootingSetup@1000000003 : Record 5945;
       Servicepreise@1000000001 : Record 50028;
       ServiceTab@1000000004 : Record 50024;
+      Quote@1000000008 : Record 50014;
     BEGIN
+      IF Quotenr <> '' THEN
+        IF (Quote.GET(Quotenr)) AND (Quote."Quotenr. Hersteller" <> '1023679') THEN
+          EXIT(Quote.Preisliste);
+
       SUP_Artikelnr := ServiceTab.FakeSUPArtikelErmitteln(SUP_Artikelnr);
       Servicepreise.RESET;
       TroubleshootingSetup.RESET;
@@ -1654,6 +1688,26 @@ OBJECT Codeunit 50008 TOPAS Service Modul
       Servicepreise.SETRANGE(W„hrungscode,W„hrung);
       IF Servicepreise.FINDFIRST THEN
         EXIT(Servicepreise.Preisliste);
+    END;
+
+    PROCEDURE GetServiceQuotePrice@1000000005(quotenr@1000000001 : Code[10];error_check@1000000002 : Boolean) : Decimal;
+    VAR
+      Quote@1000000000 : Record 50014;
+    BEGIN
+      IF Quote.GET(quotenr) THEN BEGIN
+        IF (Quote.Herstellercode = '57') OR (Quote.Herstellercode = '5710') OR (Quote.Herstellercode = '5720') THEN
+          IF (Quote.Gltigkeitsdatum > WORKDATE) AND (Quote."Gltig ab Datum" < WORKDATE) AND (Quote."Quotenr. Hersteller" <> '1023679') THEN
+            EXIT(Quote.Quotepreis)
+          ELSE
+            IF (error_check) AND (Quote."Quotenr. Hersteller" <> '1023679') THEN
+              ERROR(Text53000,quotenr)
+            ELSE
+              EXIT(0);
+      END ELSE
+        IF error_check THEN
+          ERROR(Text53001,quotenr)
+        ELSE
+          EXIT(0);
     END;
 
     PROCEDURE OpenCalculationToolFromSalesLine@1140006(SalesLine@1000000000 : Record 37);
@@ -1793,9 +1847,9 @@ OBJECT Codeunit 50008 TOPAS Service Modul
                   END;
 
                   EVALUATE(v_laufzeit,COPYSTR(Laufzeit,1,STRPOS(Laufzeit,'M')-1));
-                  single_service_dc_new    := Gen_Service_DC("SUP Artikelnr.","Ger„te Artikelnr.",v_laufzeit,FALSE,SalesLine.Einkaufsw„hrungscode,"Quotenr.",SalesHeader);
-                  single_service_price_new := Gen_Service_VK("SUP Artikelnr.","Ger„te Artikelnr.",v_laufzeit,"Belegnr.","Belegzeilennr.",
-                                              Fremderwerb,Basisger„t,FALSE,"Rabatt/Marge",SalesLine.Einkaufsw„hrungscode,SalesLine.Einkaufsw„hrungsfaktor,SalesLine."Currency Code",SalesHeader);
+                  single_service_dc_new    := GetServiceCost(ServRelaDoc,'DC',FALSE,SalesLine.Einkaufsw„hrungscode,SalesHeader."Preislisten Kalkulation",TRUE);
+                  single_service_price_new := CalcSalesService(ServRelaDoc,FALSE,"Rabatt/Marge",SalesLine.Einkaufsw„hrungscode,
+                                              SalesLine.Einkaufsw„hrungsfaktor,SalesLine."Currency Code",SalesHeader,TRUE);
 
                   // Service Kalkulation wird neu berechnet
                   total_service_dc_new := total_service_dc_new + (single_service_dc_new * "Menge kalk.");
@@ -1805,6 +1859,7 @@ OBJECT Codeunit 50008 TOPAS Service Modul
                   "Service VK-Preis einzeln" := single_service_price_new;
                   "Service VK-Preis Zeilenbetrag" := single_service_price_new * "Menge kalk.";
                   "Service W„hrungsfaktor" := ek_w„h_faktor;
+                  Preisliste := GetPricelistVersion("Ger„te Artikelnr.","SUP Artikelnr.",SalesLine.Einkaufsw„hrungscode,"Quotenr.",SalesHeader);
                   MODIFY;
                 END;
 
