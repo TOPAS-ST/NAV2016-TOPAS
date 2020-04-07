@@ -2,8 +2,8 @@ OBJECT Page 50023 Service Kalkulationsblatt
 {
   OBJECT-PROPERTIES
   {
-    Date=31.01.20;
-    Time=11:00:00;
+    Date=13.03.20;
+    Time=12:00:00;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -15,8 +15,8 @@ OBJECT Page 50023 Service Kalkulationsblatt
     SourceTableView=SORTING(Art,Nr.,Zeilennr.,Gruppierung);
     PageType=Worksheet;
     RefreshOnActivate=Yes;
-    PromotedActionCategoriesML=[DEU=Neu,Vorgang,Bericht,Zusatz Funktionen,Export;
-                                ENU=New,Process,Report,Functions,Export];
+    PromotedActionCategoriesML=[DEU=Neu,Vorgang,Bericht,Zusatz Funktionen,Rabatte,Export;
+                                ENU=New,Process,Report,Functions,Discounts,Export];
     OnOpenPage=BEGIN
                  UpdatePageTemplate;
                END;
@@ -133,6 +133,36 @@ OBJECT Page 50023 Service Kalkulationsblatt
                                  TempSeriennrhinzu;
                                END;
                                 }
+      { 1000000042;1 ;ActionGroup;
+                      CaptionML=DEU=Sonderrabatte }
+      { 1000000041;2 ;Action    ;
+                      Name=create_service_quote;
+                      CaptionML=DEU=Servicequote anlegen;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=CalculateDiscount;
+                      PromotedCategory=Category5;
+                      OnAction=BEGIN
+                                 IF CONFIRM(Text026,TRUE,"Ger„te Artikelnr.") THEN BEGIN
+                                   CreateNewServiceQuote;
+                                 END;
+                               END;
+                                }
+      { 1000000043;2 ;Action    ;
+                      Name=get_acts_mss_quote;
+                      CaptionML=DEU=ACTS MSS Spezialquote;
+                      Promoted=Yes;
+                      Image=Excise;
+                      PromotedCategory=Category5;
+                      OnAction=VAR
+                                 Quote@1000000000 : Record 50014;
+                               BEGIN
+                                 Quote.RESET;
+                                 Quote.SETRANGE("Quotenr. Hersteller",'1023679');
+                                 IF Quote.FINDLAST THEN
+                                   VALIDATE("Quotenr.",Quote."Quotenr.");
+                               END;
+                                }
       { 1140041 ;1   ;ActionGroup;
                       CaptionML=DEU=Extra Funktionen }
       { 1140032 ;2   ;Action    ;
@@ -187,7 +217,7 @@ OBJECT Page 50023 Service Kalkulationsblatt
                       Promoted=Yes;
                       Visible=service_controls_zeigen;
                       Image=Excel;
-                      PromotedCategory=Category5;
+                      PromotedCategory=Category6;
                       OnAction=BEGIN
                                  InfosExcelExport;
                                END;
@@ -434,7 +464,9 @@ OBJECT Page 50023 Service Kalkulationsblatt
     { 1140067;2;Field     ;
                 SourceExpr="Rabatt/Marge";
                 Visible=service_controls_zeigen;
-                Editable=FALSE }
+                Editable=FALSE;
+                Style=Favorable;
+                StyleExpr="Rabatt/Marge" <> 0 }
 
     { 1000000025;2;Field  ;
                 SourceExpr=Preisliste;
@@ -661,6 +693,8 @@ OBJECT Page 50023 Service Kalkulationsblatt
       Text025@1000000016 : TextConst 'DEU=M”chten Sie das Ablaufdatum auf das aktuelle Vertragsende %1 festlegen lassen?';
       hinweis_ablaufdatum_zeigen@1000000019 : Boolean;
       start_ablaufdatum_nachtragen@1000000014 : Boolean;
+      Text026@1000000024 : TextConst 'DEU=M”chten Sie wirklich einen neuen Servicequote fr %1 anlegen?';
+      Text027@1000000025 : TextConst 'DEU=Bitte hinterlegen Sie die Laufzeit fr Artikel %1 in der %2 (Feld %3), damit der Service-Preis fr Artikel %4 richtig ermittelt werden kann.';
       TextExport@1000000017 : TextConst 'DEU=Daten werden analysiert ...\\';
       service_ablaufdatum@1000000022 : Date;
       wartungsvertrag_gefunden@1000000021 : Boolean;
@@ -1302,6 +1336,7 @@ OBJECT Page 50023 Service Kalkulationsblatt
       Belegkopf@1000000002 : Record 36;
       Belegzeile@1140010 : Record 37;
       Ger„teArtikel@1140012 : Record 27;
+      Opt_laufzeit@1000000003 : Record 50001;
       serv_price_au@1140004 : Decimal;
       serv_price_einzeln@1140005 : Decimal;
       serv_dc_au@1140009 : Decimal;
@@ -1310,7 +1345,7 @@ OBJECT Page 50023 Service Kalkulationsblatt
       serv_vk_w„hfaktor@1000000001 : Decimal;
       v_artikelnr@1140013 : Code[20];
       v_belegnr_fremd@1140016 : Code[20];
-      v_laufzeit@1140006 : Integer;
+      basis_laufzeit@1000000004 : Decimal;
       anzahl_basissysteme@1140014 : Integer;
       anzahl_basissysteme_fremd@1140015 : Integer;
       ACTS@1140003 : Boolean;
@@ -1386,6 +1421,15 @@ OBJECT Page 50023 Service Kalkulationsblatt
             ServRelaDoc.TESTFIELD(Laufzeit);
             ServRelaDoc.TESTFIELD("Menge kalk.");
 
+            Opt_laufzeit.RESET;
+            Opt_laufzeit.SETRANGE("Tabellen ID",50024);
+            Opt_laufzeit.SETRANGE("Feld ID",44);
+            Opt_laufzeit.SETRANGE("Nr.","SUP Artikelnr.");
+            IF Opt_laufzeit.FINDFIRST THEN
+              EVALUATE(basis_laufzeit,COPYSTR(Opt_laufzeit.Code,1,STRPOS(Opt_laufzeit.Code,'M')-1))
+            ELSE
+              ERROR(Text027,"SUP Artikelnr.",Opt_laufzeit.TABLECAPTION,Opt_laufzeit.FIELDCAPTION(Code),"Ger„te Artikelnr.");
+
             IF ServRelaDoc.Fremderwerb = FALSE THEN BEGIN
               //Service bezieht sich auf Auftrag
               SalesLine.RESET;
@@ -1394,25 +1438,22 @@ OBJECT Page 50023 Service Kalkulationsblatt
               SalesLine.SETRANGE("Manufacturer Code",'59');
               SalesLine.SETFILTER("Outstanding Quantity",'>%1',0);
               IF SalesLine.FINDFIRST THEN BEGIN
-                EVALUATE(v_laufzeit,COPYSTR(ServRelaDoc.Laufzeit,1,STRPOS(ServRelaDoc.Laufzeit,'M')-1));
-                serv_price_einzeln := TOPASServiceModul.Gen_Service_VK(ServRelaDoc."SUP Artikelnr.",
-                ServRelaDoc."Ger„te Artikelnr.",v_laufzeit,ServRelaDoc."Belegnr.",ServRelaDoc."Belegzeilennr.",
-                ServRelaDoc.Fremderwerb,ServRelaDoc.Basisger„t,FALSE,kalk_prozentsatz,Belegzeile.Einkaufsw„hrungscode,Belegzeile.Einkaufsw„hrungsfaktor,Belegzeile."Currency Code",Belegkopf);
+                serv_price_einzeln := TOPASServiceModul.CalcSalesService(ServRelaDoc,FALSE,kalk_prozentsatz,Belegzeile.Einkaufsw„hrungscode,
+                                      Belegzeile.Einkaufsw„hrungsfaktor,Belegzeile."Currency Code",Belegkopf,TRUE);
                 ServRelaDoc."Service VK-Preis einzeln" := serv_price_einzeln;
                 ServRelaDoc."Service VK-Preis Zeilenbetrag" := serv_price_einzeln * ServRelaDoc."Menge kalk.";
                 serv_price_au := serv_price_au + (ServRelaDoc."Menge kalk." * serv_price_einzeln);
-                serv_dc_einzeln := TOPASServiceModul.Gen_Service_DC(ServRelaDoc."SUP Artikelnr.",ServRelaDoc."Ger„te Artikelnr.",
-                v_laufzeit,FALSE,Belegzeile.Einkaufsw„hrungscode,ServRelaDoc."Quotenr.",Belegkopf);
+                serv_dc_einzeln := TOPASServiceModul.GetServiceCost(ServRelaDoc,'DC',FALSE,Belegzeile.Einkaufsw„hrungscode,Belegkopf."Preislisten Kalkulation",TRUE);
                 serv_dc_au := serv_dc_au + (ServRelaDoc."Menge kalk." * serv_dc_einzeln);
                 ServRelaDoc."Service DC einzeln" := serv_dc_einzeln;
                 ServRelaDoc."Service DC Gesamt" := serv_dc_einzeln * ServRelaDoc."Menge kalk.";
                 ServRelaDoc."Service DC W„hrungscode" := EKW„hrungholen(ServRelaDoc."Nr.",ServRelaDoc."Zeilennr.");
                 ServRelaDoc."Service W„hrungsfaktor" := Belegzeile.Einkaufsw„hrungsfaktor;
-                ServRelaDoc."MSRP Service" := TOPASServiceModul.FindMSRP(ServRelaDoc."Ger„te Artikelnr.",WORKDATE,
-                serv_vk_w„h,SalesLine."Unit of Measure Code",ServRelaDoc."SUP Artikelnr.",Belegkopf);
-                ServRelaDoc."Service Artikelnr." := ServicePos.ServiceArtikelnrErmitteln(ServRelaDoc."Ger„te Artikelnr.",ServRelaDoc."SUP Artikelnr.",ServRelaDoc."Service DC W„hrungscode",Belegkopf."Preislisten Kalkulation");
+                ServRelaDoc."MSRP Service" := TOPASServiceModul.FindMSRP(ServRelaDoc,basis_laufzeit,WORKDATE,serv_vk_w„h,SalesLine."Unit of Measure Code",Belegkopf);
+                ServRelaDoc."Service Artikelnr." := ServicePos.ServiceArtikelnrErmitteln(ServRelaDoc."Ger„te Artikelnr.",ServRelaDoc."SUP Artikelnr.",ServRelaDoc."Service DC W„hrungscode",
+                                                    ServRelaDoc."Quotenr.",Belegkopf."Preislisten Kalkulation");
                 ServRelaDoc."Rabatt/Marge" := kalk_prozentsatz;
-                ServRelaDoc.Preisliste := TOPASServiceModul.GetPricelistVersion(ServRelaDoc."Ger„te Artikelnr.",ServRelaDoc."SUP Artikelnr.",ServRelaDoc."Service DC W„hrungscode",Belegkopf);
+                ServRelaDoc.Preisliste := TOPASServiceModul.GetPricelistVersion(ServRelaDoc."Ger„te Artikelnr.",ServRelaDoc."SUP Artikelnr.",ServRelaDoc."Service DC W„hrungscode",ServRelaDoc."Quotenr.",Belegkopf);
                 ServRelaDoc.MODIFY;
               END ELSE BEGIN
                 //Service bezieht sich auf Lieferschein
@@ -1426,51 +1467,45 @@ OBJECT Page 50023 Service Kalkulationsblatt
                 IF ShipLine.FINDFIRST THEN BEGIN
                   ShipLine.CALCFIELDS("Currency Code");
                 }
-                  EVALUATE(v_laufzeit,COPYSTR(ServRelaDoc.Laufzeit,1,STRPOS(ServRelaDoc.Laufzeit,'M')-1));
                   //Funktion im Lieferschein einbauen???
-                  serv_price_einzeln := TOPASServiceModul.Gen_Service_VK(ServRelaDoc."SUP Artikelnr.",
-                  ServRelaDoc."Ger„te Artikelnr.",v_laufzeit,ServRelaDoc."Belegnr.",ServRelaDoc."Belegzeilennr.",
-                  ServRelaDoc.Fremderwerb,ServRelaDoc.Basisger„t,FALSE,kalk_prozentsatz,Belegzeile.Einkaufsw„hrungscode,Belegzeile.Einkaufsw„hrungsfaktor,Belegzeile."Currency Code",Belegkopf);
+                  serv_price_einzeln := TOPASServiceModul.CalcSalesService(ServRelaDoc,FALSE,kalk_prozentsatz,Belegzeile.Einkaufsw„hrungscode,
+                                        Belegzeile.Einkaufsw„hrungsfaktor,Belegzeile."Currency Code",Belegkopf,TRUE);
                   ServRelaDoc."Service VK-Preis einzeln" := serv_price_einzeln;
                   ServRelaDoc."Service VK-Preis Zeilenbetrag" := serv_price_einzeln * ServRelaDoc."Menge kalk.";
                   serv_price_au := serv_price_au + (ServRelaDoc."Menge kalk." * serv_price_einzeln);
-                  serv_dc_einzeln := TOPASServiceModul.Gen_Service_DC(ServRelaDoc."SUP Artikelnr.",ServRelaDoc."Ger„te Artikelnr.",
-                  v_laufzeit,FALSE,Belegzeile.Einkaufsw„hrungscode,ServRelaDoc."Quotenr.",Belegkopf);
+                  serv_dc_einzeln := TOPASServiceModul.GetServiceCost(ServRelaDoc,'DC',FALSE,Belegzeile.Einkaufsw„hrungscode,Belegkopf."Preislisten Kalkulation",TRUE);
                   serv_dc_au := serv_dc_au + (ServRelaDoc."Menge kalk." * serv_dc_einzeln);
                   ServRelaDoc."Service DC einzeln" := serv_dc_einzeln;
                   ServRelaDoc."Service DC Gesamt" := serv_dc_einzeln * ServRelaDoc."Menge kalk.";
                   ServRelaDoc."Service DC W„hrungscode" := EKW„hrungholen(ServRelaDoc."Nr.",ServRelaDoc."Zeilennr.");
                   ServRelaDoc."Service W„hrungsfaktor" := Belegzeile.Einkaufsw„hrungsfaktor;
                   Artikel.GET(ServRelaDoc."Ger„te Artikelnr.");
-                  ServRelaDoc."MSRP Service" := TOPASServiceModul.FindMSRP(ServRelaDoc."Ger„te Artikelnr.",WORKDATE,
-                  serv_vk_w„h,Artikel."Base Unit of Measure",ServRelaDoc."SUP Artikelnr.",Belegkopf);
-                  ServRelaDoc."Service Artikelnr." := ServicePos.ServiceArtikelnrErmitteln(ServRelaDoc."Ger„te Artikelnr.",ServRelaDoc."SUP Artikelnr.",ServRelaDoc."Service DC W„hrungscode",Belegkopf."Preislisten Kalkulation");
+                  ServRelaDoc."MSRP Service" := TOPASServiceModul.FindMSRP(ServRelaDoc,basis_laufzeit,WORKDATE,serv_vk_w„h,Artikel."Base Unit of Measure",Belegkopf);
+                  ServRelaDoc."Service Artikelnr." := ServicePos.ServiceArtikelnrErmitteln(ServRelaDoc."Ger„te Artikelnr.",ServRelaDoc."SUP Artikelnr.",ServRelaDoc."Service DC W„hrungscode",
+                                                      ServRelaDoc."Quotenr.",Belegkopf."Preislisten Kalkulation");
                   ServRelaDoc."Rabatt/Marge" := kalk_prozentsatz;
-                  ServRelaDoc.Preisliste := TOPASServiceModul.GetPricelistVersion(ServRelaDoc."Ger„te Artikelnr.",ServRelaDoc."SUP Artikelnr.",ServRelaDoc."Service DC W„hrungscode",Belegkopf);
+                  ServRelaDoc.Preisliste := TOPASServiceModul.GetPricelistVersion(ServRelaDoc."Ger„te Artikelnr.",ServRelaDoc."SUP Artikelnr.",ServRelaDoc."Service DC W„hrungscode",ServRelaDoc."Quotenr.",Belegkopf);
                   ServRelaDoc.MODIFY;
                 //END;
               END;
             END ELSE BEGIN
               //Service bezieht sich auf Pseudo Positionen
-              EVALUATE(v_laufzeit,COPYSTR(ServRelaDoc.Laufzeit,1,STRPOS(ServRelaDoc.Laufzeit,'M')-1));
-              serv_price_einzeln := TOPASServiceModul.Gen_Service_VK(ServRelaDoc."SUP Artikelnr.",
-              ServRelaDoc."Ger„te Artikelnr.",v_laufzeit,ServRelaDoc."Nr.",ServRelaDoc."Zeilennr.",
-              ServRelaDoc.Fremderwerb,ServRelaDoc.Basisger„t,FALSE,kalk_prozentsatz,Belegzeile.Einkaufsw„hrungscode,Belegzeile.Einkaufsw„hrungsfaktor,Belegzeile."Currency Code",Belegkopf);
+              serv_price_einzeln := TOPASServiceModul.CalcSalesService(ServRelaDoc,FALSE,kalk_prozentsatz,Belegzeile.Einkaufsw„hrungscode,
+                                    Belegzeile.Einkaufsw„hrungsfaktor,Belegzeile."Currency Code",Belegkopf,TRUE);
               ServRelaDoc."Service VK-Preis einzeln" := serv_price_einzeln;
               ServRelaDoc."Service VK-Preis Zeilenbetrag" := serv_price_einzeln * ServRelaDoc."Menge kalk.";
               serv_price_au := serv_price_au + (ServRelaDoc."Menge kalk." * serv_price_einzeln);
-              serv_dc_einzeln := TOPASServiceModul.Gen_Service_DC(ServRelaDoc."SUP Artikelnr.",ServRelaDoc."Ger„te Artikelnr.",
-              v_laufzeit,FALSE,Belegzeile.Einkaufsw„hrungscode,ServRelaDoc."Quotenr.",Belegkopf);
+              serv_dc_einzeln := TOPASServiceModul.GetServiceCost(ServRelaDoc,'DC',FALSE,Belegzeile.Einkaufsw„hrungscode,Belegkopf."Preislisten Kalkulation",TRUE);
               serv_dc_au := serv_dc_au + (ServRelaDoc."Menge kalk." * serv_dc_einzeln);
               ServRelaDoc."Service DC einzeln" := serv_dc_einzeln;
               ServRelaDoc."Service DC Gesamt" := serv_dc_einzeln * ServRelaDoc."Menge kalk.";
               ServRelaDoc."Service DC W„hrungscode" := EKW„hrungholen(ServRelaDoc."Nr.",ServRelaDoc."Zeilennr.");
               ServRelaDoc."Service W„hrungsfaktor" := Belegzeile.Einkaufsw„hrungsfaktor;
-              ServRelaDoc."MSRP Service" := TOPASServiceModul.FindMSRP(ServRelaDoc."Ger„te Artikelnr.",WORKDATE,
-              serv_vk_w„h,SalesLine."Unit of Measure Code",ServRelaDoc."SUP Artikelnr.",Belegkopf);
-              ServRelaDoc."Service Artikelnr." := ServicePos.ServiceArtikelnrErmitteln(ServRelaDoc."Ger„te Artikelnr.",ServRelaDoc."SUP Artikelnr.",ServRelaDoc."Service DC W„hrungscode",Belegkopf."Preislisten Kalkulation");
+              ServRelaDoc."MSRP Service" := TOPASServiceModul.FindMSRP(ServRelaDoc,basis_laufzeit,WORKDATE,serv_vk_w„h,SalesLine."Unit of Measure Code",Belegkopf);
+              ServRelaDoc."Service Artikelnr." := ServicePos.ServiceArtikelnrErmitteln(ServRelaDoc."Ger„te Artikelnr.",ServRelaDoc."SUP Artikelnr.",ServRelaDoc."Service DC W„hrungscode",
+                                                  ServRelaDoc."Quotenr.",Belegkopf."Preislisten Kalkulation");
               ServRelaDoc."Rabatt/Marge" := kalk_prozentsatz;
-              ServRelaDoc.Preisliste := TOPASServiceModul.GetPricelistVersion(ServRelaDoc."Ger„te Artikelnr.",ServRelaDoc."SUP Artikelnr.",ServRelaDoc."Service DC W„hrungscode",Belegkopf);
+              ServRelaDoc.Preisliste := TOPASServiceModul.GetPricelistVersion(ServRelaDoc."Ger„te Artikelnr.",ServRelaDoc."SUP Artikelnr.",ServRelaDoc."Service DC W„hrungscode",ServRelaDoc."Quotenr.",Belegkopf);
               ServRelaDoc.MODIFY;
             END;
 
@@ -2258,6 +2293,31 @@ OBJECT Page 50023 Service Kalkulationsblatt
         EXIT(FALSE)
       ELSE
         EXIT(TRUE);
+    END;
+
+    LOCAL PROCEDURE CreateNewServiceQuote@1000000003();
+    VAR
+      Quote@1000000000 : Record 50014;
+      Item@1000000001 : Record 27;
+    BEGIN
+      CLEAR(Quote);
+      Item.GET("SUP Artikelnr.");
+      SalesLine.SETRANGE("Document No.","Nr.");
+      SalesLine.SETRANGE("Line No.","Zeilennr.");
+      SalesLine.FINDFIRST;
+      Quote.INIT;
+      Quote.INSERT(TRUE);
+      Quote.VALIDATE(Herstellercode,Item."Manufacturer Code");
+      Quote.VALIDATE("Debitorennr.",SalesLine."Sell-to Customer No.");
+      Quote.VALIDATE("Artikelnr.","SUP Artikelnr.");
+      Quote."Ger„te Artikelnr." := "Ger„te Artikelnr.";
+      Quote.Quotemenge := 1;
+      Quote.W„hrungscode := SalesLine.Einkaufsw„hrungscode;
+      Quote.MODIFY;
+      COMMIT;
+      PAGE.RUNMODAL(50010, Quote,Quote."Service Artikelnr.");
+      Quote.GET(Quote."Quotenr.");
+      "Quotenr." := Quote."Quotenr.";
     END;
 
     LOCAL PROCEDURE AHR_LaufzeitAngleichungPruefen@1000000000(VAR ServiceKalkulation@1000000002 : Record 50027) : Boolean;
