@@ -2,8 +2,8 @@ OBJECT Table 50027 Service Beleg Zuordnung
 {
   OBJECT-PROPERTIES
   {
-    Date=21.03.19;
-    Time=22:00:11;
+    Date=13.03.20;
+    Time=12:00:00;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -118,7 +118,7 @@ OBJECT Table 50027 Service Beleg Zuordnung
     { 18  ;   ;Laufzeit            ;Code20        ;TableRelation=Optionstabelle.Code WHERE (Tabellen ID=FILTER(50024),
                                                                                             Feld ID=FILTER(44));
                                                    OnValidate=BEGIN
-                                                                PrfeServiceQuote("SUP Artikelnr.",Laufzeit,"Quotenr.");
+                                                                PrfeServiceQuote("SUP Artikelnr.",Laufzeit,"Quotenr.","Nr.","Zeilennr.");
 
                                                                 IF STRPOS(Laufzeit,'M') = 0 THEN
                                                                   ERROR('Im Feld %1 muss auch immer die Angabe M (Monate) enthalten sein.',FIELDCAPTION(Laufzeit));
@@ -211,11 +211,26 @@ OBJECT Table 50027 Service Beleg Zuordnung
                                                    Description=05.04.13 ST }
     { 34  ;   ;Rabatt/Marge        ;Decimal       ;Description=10.01.14 ST }
     { 35  ;   ;Laufzeit ab Buchungsdatum;Boolean  ;Description=04.12.15 ST - Um Angleichung des Startdatums zu verhindern, insbesondere bei Re-Instatment-Fee }
-    { 36  ;   ;Quotenr.            ;Code10        ;TableRelation=Quotedaten WHERE (Herstellercode=FILTER(57|5710|5720),
-                                                                                   Erledigtstatus=FILTER(' '));
+    { 36  ;   ;Quotenr.            ;Code10        ;TableRelation=Quotedaten WHERE (Herstellercode=FILTER(57|5710|5720));
                                                    OnValidate=BEGIN
-                                                                PrfeServiceQuote("SUP Artikelnr.",Laufzeit,"Quotenr.");
+                                                                PrfeServiceQuote("SUP Artikelnr.",Laufzeit,"Quotenr.","Nr.","Zeilennr.");
                                                               END;
+
+                                                   OnLookup=BEGIN
+                                                              Quote.SETRANGE("Ger„te Artikelnr.","Ger„te Artikelnr.");
+                                                              Quote.SETRANGE("Artikelnr.","SUP Artikelnr.");
+                                                              Quote.SETRANGE(W„hrungscode,"Service DC W„hrungscode");
+                                                              IF "Quotenr." <> '' THEN BEGIN
+                                                                Quote.GET("Quotenr.");
+                                                                IF Quote."Quotenr. Hersteller" = '1023679' THEN BEGIN
+                                                                  CLEAR(Quote);
+                                                                  Quote.SETRANGE("Quotenr.","Quotenr.");
+                                                                END;
+                                                              END;
+                                                              IF PAGE.RUNMODAL(PAGE::"Quotedaten šbersicht",Quote) = ACTION::LookupOK THEN BEGIN
+                                                                VALIDATE("Quotenr.",Quote."Quotenr.");
+                                                              END;
+                                                            END;
 
                                                    Description=17.12.15 ST - Bessere Konditionen fr ACTS in Verbindung Managed Spare Service }
     { 37  ;   ;Beachte Startdatum  ;Boolean       ;Description=10.01.17 ST - Setzt die autom. Anpassung der Laufzeit ausser Kraft }
@@ -247,6 +262,7 @@ OBJECT Table 50027 Service Beleg Zuordnung
       ServicePos@1000000000 : Record 50024;
       Opt@1140009 : Record 50001;
       Auftrag@1140010 : Record 36;
+      Quote@1000000003 : Record 50014;
       TOPAS_API@1140008 : Codeunit 50001;
       Text006@1140011 : TextConst 'DEU=Sie sind dabei Ger„te aus dem Auftrag bernehmen.\RE INSTATEMENT FEE ist nicht fr Ger„te vorgesehen, die erst noch geliefert werden sollen!';
       Text007@1140012 : TextConst 'DEU=Fr Re Instatement Fee Artikel ist das Feld %1 nicht sinnvoll. Bitte benutzen Sie das Feld %2.';
@@ -293,20 +309,34 @@ OBJECT Table 50027 Service Beleg Zuordnung
       END;
     END;
 
-    PROCEDURE PrfeServiceQuote@1140000(Service@1140003 : Code[20];kalk_laufzeit@1140001 : Code[20];kalk_quotenr@1140002 : Code[10]);
+    PROCEDURE PrfeServiceQuote@1140000(Service@1140003 : Code[20];kalk_laufzeit@1140001 : Code[20];kalk_quotenr@1140002 : Code[10];belegnr@1000000001 : Code[20];belegzeilennr@1000000002 : Integer);
     VAR
+      SalesLine@1000000003 : Record 37;
+      Quote@1000000000 : Record 50014;
       v_laufzeit@1140000 : Integer;
     BEGIN
       //Zun„chst fr AudioCodes Quotes gedacht, gelten grunds„tzlich nur fr Service-Laufzeiten von max. 1 Jahr
       IF (kalk_quotenr = '') OR (kalk_laufzeit = '') THEN EXIT;
 
-      IF Artikel.GET(Service) THEN
-        IF (Artikel.Artikelgruppe <> 'APSS_OB') AND (Artikel.Artikelgruppe <> 'ACTS') AND (Artikel.Artikelgruppe <> 'ACTS_MSS') THEN
-          ERROR(Text009,FIELDCAPTION("Quotenr."));
-
-      EVALUATE(v_laufzeit,COPYSTR(kalk_laufzeit,1,STRPOS(kalk_laufzeit,'M')-1));
-      IF (kalk_quotenr <> '') AND (v_laufzeit > 12) THEN
-        ERROR(Text008);
+      Artikel.GET(Service);
+      IF (Quote.GET(kalk_quotenr)) THEN BEGIN
+        IF (Quote."Quotenr. Hersteller" = '1023679') THEN BEGIN
+          EVALUATE(v_laufzeit,COPYSTR(kalk_laufzeit,1,STRPOS(kalk_laufzeit,'M')-1));
+          IF (kalk_quotenr <> '') AND (v_laufzeit > 12) THEN
+            ERROR(Text008);
+          IF (Artikel.Artikelgruppe <> 'APSS_OB') AND (Artikel.Artikelgruppe <> 'ACTS') AND (Artikel.Artikelgruppe <> 'ACTS_MSS') THEN
+            ERROR(Text009,FIELDCAPTION("Quotenr."));
+        END ELSE BEGIN
+          Quote.TESTFIELD("Artikelnr.","SUP Artikelnr.");
+          Quote.TESTFIELD("Ger„te Artikelnr.","Ger„te Artikelnr.");
+        END;
+        Quote.TESTFIELD(Erledigtstatus,Quote.Erledigtstatus::" ");
+        SalesLine.RESET;
+        SalesLine.SETRANGE("Document No.",belegnr);
+        SalesLine.SETRANGE("Line No.",belegzeilennr);
+        SalesLine.FINDFIRST;
+        Quote.TESTFIELD(W„hrungscode,SalesLine.Einkaufsw„hrungscode);
+      END;
     END;
 
     PROCEDURE Gruppieren@1140007(Belegnr@1140000 : Code[20];Belegzeile@1140002 : Integer;Basisger„t@1140001 : Boolean) : Text[50];
