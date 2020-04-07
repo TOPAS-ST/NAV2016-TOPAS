@@ -2,8 +2,8 @@ OBJECT Page 50102 Navision Administrations Tools
 {
   OBJECT-PROPERTIES
   {
-    Date=27.11.19;
-    Time=11:55:24;
+    Date=01.04.20;
+    Time=10:06:14;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -577,6 +577,7 @@ OBJECT Page 50102 Navision Administrations Tools
       Statistiken@1000000010 : Codeunit 50002;
       TOPAS_API@1000000000 : Codeunit 50001;
       TOPASLagerManagement@1000000014 : Codeunit 50010;
+      TOPASServiceModul@1000000040 : Codeunit 50008;
       Excel@1140012 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00024500-0000-0000-C000-000000000046}:Unknown Automation Server.Application";
       Book@1140011 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";
       Range@1140010 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";
@@ -657,29 +658,60 @@ OBJECT Page 50102 Navision Administrations Tools
 
     PROCEDURE Service_neu_kalkulieren@1140007(start_lfdnr@1140003 : Code[20];end_lfdnr@1140004 : Code[20]);
     VAR
-      Servicepositionen@1140000 : Record 50024;
+      ServicePos@1140000 : Record 50024;
+      KalkulationHolen@1000000000 : Record 50027;
+      Kreditor@1000000002 : Record 23;
+      SalesHeader@1000000003 : Record 36;
+      SalesHeaderArchive@1000000004 : Record 5107;
       neuer_ek@1140001 : Decimal;
       neuer_msrp@1140002 : Decimal;
+      ek_w„hrung@1000000001 : Code[10];
+      preislisten_kalkulation@1000000005 : 'neu,alt';
     BEGIN
       //Umstellung Servicepositionen auf neueste Service Preise
 
-      Servicepositionen.RESET;
-      Servicepositionen.SETFILTER(Art,'%1',Servicepositionen.Art::Service);
-      Servicepositionen.SETFILTER("Lfd. Nr.",'%1..%2',start_lfdnr,end_lfdnr);
-      IF Servicepositionen.FIND('-') THEN
+      ServicePos.RESET;
+      ServicePos.SETFILTER(Art,'%1',ServicePos.Art::Service);
+      ServicePos.SETFILTER("Lfd. Nr.",'%1..%2',start_lfdnr,end_lfdnr);
+      IF ServicePos.FIND('-') THEN
         REPEAT
-          neuer_ek := Servicepositionen.ServicePreiseNeuKalkulieren(Servicepositionen."Artikelnr.",Servicepositionen."SUP Artikelnr.",
-          Servicepositionen."Dauer Serviceleistung",'DC',FALSE,Servicepositionen."Service W„hrungscode",Servicepositionen."Quotenr.",0);
-          neuer_msrp := Servicepositionen.ServicePreiseNeuKalkulieren(Servicepositionen."Artikelnr.",Servicepositionen."SUP Artikelnr.",
-          Servicepositionen."Dauer Serviceleistung",'MSRP',FALSE,Servicepositionen."Service W„hrungscode",Servicepositionen."Quotenr.",0);
-          MESSAGE('Pos %1 Neuer EK fr %2 (SN: %3): %4 (Alt: %5)',
-          Servicepositionen."Lfd. Nr.",Servicepositionen."Artikelnr.",Servicepositionen."Seriennr.",neuer_ek,
-          Servicepositionen."Service DC");
-          Servicepositionen."Service DC" := neuer_ek;
-          Servicepositionen."Service MSRP" := neuer_msrp;
-          Servicepositionen."Service Artikelnr." := Servicepositionen.ServiceArtikelnrErmitteln(Servicepositionen."Artikelnr.",Servicepositionen."SUP Artikelnr.",Servicepositionen."Service W„hrungscode",0);
-          Servicepositionen.MODIFY(TRUE);
-        UNTIL Servicepositionen.NEXT = 0;
+
+          KalkulationHolen.RESET;
+          KalkulationHolen.SETCURRENTKEY(Art,"Nr.","Zeilennr.",Gruppierung);
+          KalkulationHolen.SETFILTER(Art,'%1',KalkulationHolen.Art::"SUP-AU");
+          KalkulationHolen.SETFILTER("Nr.",'%1',ServicePos."Auftragsnr.");
+          KalkulationHolen.SETFILTER("Zeilennr.",'%1',ServicePos."Auftragszeilennr.");
+          IF KalkulationHolen.FINDFIRST THEN BEGIN
+
+            //Bestimmt mit welcher W„hrung Service eingekauft werden soll, fr Euro gleich leer setzen
+            //In den Lieferscheinen gibt es nur Currency Code als FlowField Lookup auf den Vekaufslieferkopf
+            Artikel.GET(ServicePos."SUP Artikelnr.");
+            IF Kreditor.GET(Artikel."Vendor No.") THEN
+              ek_w„hrung := Kreditor."Currency Code"
+            ELSE
+              ek_w„hrung := 'USD';
+
+            //Bestimmung, welche Preisliste als Grundlage dient
+            IF SalesHeader.GET(SalesHeader."Document Type"::Order,ServicePos."Auftragsnr.") THEN
+              preislisten_kalkulation := SalesHeader."Preislisten Kalkulation"
+            ELSE BEGIN
+              CLEAR(SalesHeaderArchive);
+              SalesHeaderArchive.SETRANGE("Document Type",SalesHeaderArchive."Document Type"::Order);
+              SalesHeaderArchive.SETRANGE("No.",ServicePos."Auftragsnr.");
+              IF SalesHeaderArchive.FINDLAST THEN
+                preislisten_kalkulation := SalesHeaderArchive."Preislisten Kalkulation";
+            END;
+
+            neuer_ek := TOPASServiceModul.GetServiceCost(KalkulationHolen,'DC',FALSE,ek_w„hrung,preislisten_kalkulation,FALSE);
+            neuer_msrp := TOPASServiceModul.GetServiceCost(KalkulationHolen,'MSRP',FALSE,ek_w„hrung,preislisten_kalkulation,FALSE);
+            MESSAGE('Pos %1 Neuer EK fr %2 (SN: %3): %4 (Alt: %5)',ServicePos."Lfd. Nr.",ServicePos."Artikelnr.",ServicePos."Seriennr.",neuer_ek,ServicePos."Service DC");
+            ServicePos."Service DC" := neuer_ek;
+            ServicePos."Service MSRP" := neuer_msrp;
+            ServicePos."Service Artikelnr." :=
+            ServicePos.ServiceArtikelnrErmitteln(ServicePos."Artikelnr.",ServicePos."SUP Artikelnr.",ServicePos."Service W„hrungscode",ServicePos."Quotenr.",preislisten_kalkulation);
+            ServicePos.MODIFY(TRUE);
+          END;
+        UNTIL ServicePos.NEXT = 0;
     END;
 
     PROCEDURE Korrigiere_EinheitenStck@1140005();
