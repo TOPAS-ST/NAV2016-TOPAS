@@ -2,8 +2,8 @@ OBJECT Page 50037 Dokumentenversand šbersicht
 {
   OBJECT-PROPERTIES
   {
-    Date=31.08.17;
-    Time=14:06:07;
+    Date=03.07.20;
+    Time=14:22:27;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -114,7 +114,7 @@ OBJECT Page 50037 Dokumentenversand šbersicht
                                    "TOPAS-Bemerkungen".RESET;
                                    "TOPAS-Bemerkungen".SETFILTER("Nr.",'%1',Linie);
                                    "TOPAS-Bemerkungen".SETFILTER(Art,'%1',"TOPAS-Bemerkungen".Art::Anleitung);
-                                   PAGE.RUNMODAL(PAGE::"TOPAS Bemerkungen","TOPAS-Bemerkungen");
+                                   PAGE.RUN(PAGE::"TOPAS Bemerkungen","TOPAS-Bemerkungen");
                                  END;
                                END;
                                 }
@@ -131,7 +131,7 @@ OBJECT Page 50037 Dokumentenversand šbersicht
                       Image=ExportFile;
                       PromotedCategory=Category4;
                       OnAction=BEGIN
-                                 Speicherort := TOPAS_API.Save_FileDialog;
+                                 Speicherort := TOPAS_API.Save_FileDialog(Speicherort);
                                END;
                                 }
       { 1140066 ;2   ;Action    ;
@@ -192,6 +192,19 @@ OBJECT Page 50037 Dokumentenversand šbersicht
                                    hinweis_text := 'Achtung Filter Status'
                                  ELSE
                                    hinweis_text := '';
+                               END;
+                                }
+      { 1000000011;1 ;ActionGroup;
+                      Name=ADV }
+      { 1000000010;2 ;Action    ;
+                      Name=ADV berprfen;
+                      CaptionML=DEU=ADV mit Debitor berprfen;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=GetSourceDoc;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 ADV_šberprfung;
                                END;
                                 }
     }
@@ -327,7 +340,7 @@ OBJECT Page 50037 Dokumentenversand šbersicht
                          END;
 
                 OnAssistEdit=BEGIN
-                               Speicherort := TOPAS_API.Save_FileDialog;
+                               Speicherort := TOPAS_API.Save_FileDialog(Speicherort);
                              END;
                               }
 
@@ -362,7 +375,7 @@ OBJECT Page 50037 Dokumentenversand šbersicht
                          END;
 
                 OnAssistEdit=BEGIN
-                               "Datei 1" := TOPAS_API.Save_FileDialog;
+                               "Datei 1" := TOPAS_API.Save_FileDialog("Datei 1");
                              END;
                               }
 
@@ -375,7 +388,7 @@ OBJECT Page 50037 Dokumentenversand šbersicht
                          END;
 
                 OnAssistEdit=BEGIN
-                               "Datei 2" := TOPAS_API.Save_FileDialog;
+                               "Datei 2" := TOPAS_API.Save_FileDialog("Datei 2");
                              END;
                               }
 
@@ -388,7 +401,7 @@ OBJECT Page 50037 Dokumentenversand šbersicht
                          END;
 
                 OnAssistEdit=BEGIN
-                               "Datei 3" := TOPAS_API.Save_FileDialog;
+                               "Datei 3" := TOPAS_API.Save_FileDialog("Datei 3");
                              END;
                               }
 
@@ -438,8 +451,7 @@ OBJECT Page 50037 Dokumentenversand šbersicht
     VAR
       Doku@1140007 : Record 50032;
       Kontakt@1140014 : Record 5050;
-      Opt_tab@1140000 : Record 50001;
-      "TOPAS-Bemerkungen"@1140006 : Record 50023;
+      "TOPAS-Bemerkungen"@1000000006 : Record 50023;
       Verteiler@1000000005 : Record 5056;
       TOPAS_API@1000000000 : Codeunit 50001;
       hinweis_text@1140010 : Text[250];
@@ -450,11 +462,448 @@ OBJECT Page 50037 Dokumentenversand šbersicht
       Text002@1140003 : TextConst 'DEU=Bitte geben Sie zuerst eine %1 an.';
       Text003@1140011 : TextConst 'DEU=Es wurden abgeschlossene Eintr„ge ausgeblendet. Klicken Sie oben auf die Funktion "Erledigte ein-/ausblenden" um diese wieder sichtbar zu machen.';
       betreuer_innen@1140013 : Code[20];
-      counter@1000000002 : ARRAY [2] OF Integer;
       Kontakt_EMail@1000000003 : Text;
       email_style@1000000004 : Boolean;
+      RowNo@1000000013 : Integer;
+      ColumnNo@1000000012 : Integer;
+      TempExcelBuffer@1000000018 : TEMPORARY Record 370;
+      FileMgt@1000000017 : Codeunit 419;
+      ServerFileName@1000000016 : Text;
+      SheetName@1000000015 : Text[250];
+      DoUpdateExistingWorksheet@1000000014 : Boolean;
+      ExcelFileExtensionTok@1000000019 : TextConst '@@@={Locked};DEU=.xlsx;ENU=.xlsx';
+      Window@1000000020 : Dialog;
+      Testmode@1000000021 : Boolean;
+      deb@1000000022 : Record 18;
+      dok@1000000023 : Record 50032;
+      beziehung@1000000024 : Record 5054;
+      beziehung1@1000000026 : Record 5054;
+      kred@1000000025 : Record 23;
+      debkred@1000000027 : Boolean;
+      service@1000000028 : Record 50024;
+      keinEintrag@1000000029 : Boolean;
+      Text111@1000000030 : TextConst 'DEU=Es wird ein Excel-File erstellt. Bitte etwas Geduld.';
+
+    LOCAL PROCEDURE ADV_šberprfung@1000000000();
+    BEGIN
+      //MESSAGE('Es funktioniert!');
+      CreateExcel;
+      RowNo := 1;
+      EnterCell(RowNo,1,'Teil 1','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,3,'Liste der Debitoren mit ADV-Eintrag','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      EnterCell(RowNo,6,'Stand:','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,7,FORMAT(WORKDATE),'',TRUE,FALSE,FALSE,'dd.mm.yyyy',TempExcelBuffer."Cell Type"::Date);
+      RowNo := 2;
+      EnterCell(RowNo,1,'Deb/Kred','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,2,'Debitor Nr.','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,3,'Debitor Name','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,4,'Verk„ufer','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,5,'Betreuer','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,6,'Gebiet','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,7,'Eintrag Doku-Versand','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,8,'Datum Doku-Versand','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,9,'Doku Kontakt Nr.','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,10,'Doku Mandant Nr.','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,11,'Doku lfd.Nr.','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      deb.RESET;
+      deb.SETFILTER(deb.ADV,'%1',TRUE);
+      IF deb.FINDFIRST THEN BEGIN
+        REPEAT
+      //*    RowNo := RowNo +1;
+      //*    EnterCell(RowNo,1,'Deb','',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*    EnterCell(RowNo,2,deb."No.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*    EnterCell(RowNo,3,deb.Name,'',FALSE,FALSE,FALSE,'######',TempExcelBuffer."Cell Type"::Number);
+      //*    EnterCell(RowNo,4,deb."Salesperson Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*    EnterCell(RowNo,5,deb."Betreuer Innendienst",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*    EnterCell(RowNo,6,deb."Territory Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          beziehung.RESET;
+          beziehung.SETFILTER(beziehung."Business Relation Code",'%1','DEB');
+          beziehung.SETFILTER(beziehung."No.",'%1',deb."No.");
+          IF beziehung.FINDFIRST THEN BEGIN
+            dok.RESET;
+            dok.SETFILTER(dok.Aktion,'%1',dok.Aktion::ADV);
+            dok.SETFILTER(dok."Mandantennr.",'%1',beziehung."Contact No.");
+            IF dok.FINDFIRST THEN BEGIN
+      //*          EnterCell(RowNo,7,FORMAT(dok.Aktion),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*          EnterCell(RowNo,8,FORMAT(dok.Belegdatum),'',FALSE,FALSE,FALSE,'dd.mm.yyyy',TempExcelBuffer."Cell Type"::Date);
+      //*          EnterCell(RowNo,9,dok."Kontaktnr.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*          EnterCell(RowNo,10,dok."Mandantennr.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*          EnterCell(RowNo,11,dok."Lfd. Nr.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            END ELSE BEGIN
+              RowNo := RowNo +1;
+              EnterCell(RowNo,1,'Deb','',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,2,deb."No.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,3,deb.Name,'',FALSE,FALSE,FALSE,'######',TempExcelBuffer."Cell Type"::Number);
+              EnterCell(RowNo,4,deb."Salesperson Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,5,deb."Betreuer Innendienst",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,6,deb."Territory Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            END;
+
+          END; // beziehung.FINDFIRST
+
+        UNTIL deb.NEXT = 0;
+      END;
+      ////////   Die Zeilen mit //* wrden alle Eintr„ge zeigen. Damit doppelte vermieden werden k”nnen, mssen im letzten Abschnitt die Zeilen 1-6 auskommentiert werden.
+
+
+      RowNo := RowNo +3;
+      EnterCell(RowNo,3,'Liste der Kreditoren mit ADV-Eintrag','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      RowNo := RowNo +1;
+      EnterCell(RowNo,1,'Deb/Kred','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,2,'Kreditor Nr.','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,3,'Kreditor Name','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,4,'Verk„ufer','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,5,'Betreuer','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,6,'Gebiet','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,7,'Eintrag Doku-Versand','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,8,'Datum Doku-Versand','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,9,'Doku Kontakt Nr.','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,10,'Doku Mandant Nr.','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,11,'Doku lfd.Nr.','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      kred.RESET;
+      kred.SETFILTER(kred.ADV,'%1',TRUE);
+      IF kred.FINDFIRST THEN BEGIN
+        REPEAT
+      //*    RowNo := RowNo +1;
+      //*    EnterCell(RowNo,1,'Kred','',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*    EnterCell(RowNo,2,kred."No.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*    EnterCell(RowNo,3,kred.Name,'',FALSE,FALSE,FALSE,'######',TempExcelBuffer."Cell Type"::Number);
+      //*    EnterCell(RowNo,4,kred."Purchaser Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      ////    EnterCell(RowNo,5,kred."Betreuer Innendienst",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*    EnterCell(RowNo,6,kred."Territory Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          beziehung.RESET;
+          beziehung.SETFILTER(beziehung."Business Relation Code",'%1','KRED');
+          beziehung.SETFILTER(beziehung."No.",'%1',kred."No.");
+          IF beziehung.FINDFIRST THEN BEGIN
+            dok.RESET;
+            dok.SETFILTER(dok.Aktion,'%1',dok.Aktion::ADV);
+            dok.SETFILTER(dok."Mandantennr.",'%1',beziehung."Contact No.");
+            IF dok.FINDFIRST THEN BEGIN
+      //*          EnterCell(RowNo,7,FORMAT(dok.Aktion),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*          EnterCell(RowNo,8,FORMAT(dok.Belegdatum),'',FALSE,FALSE,FALSE,'dd.mm.yyyy',TempExcelBuffer."Cell Type"::Date);
+      //*          EnterCell(RowNo,9,dok."Kontaktnr.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*          EnterCell(RowNo,10,dok."Mandantennr.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*          EnterCell(RowNo,11,dok."Lfd. Nr.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+            END ELSE BEGIN
+              RowNo := RowNo +1;
+              EnterCell(RowNo,1,'Kred','',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,2,kred."No.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,3,kred.Name,'',FALSE,FALSE,FALSE,'######',TempExcelBuffer."Cell Type"::Number);
+              EnterCell(RowNo,4,kred."Purchaser Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //        EnterCell(RowNo,5,kred."Betreuer Innendienst",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,6,kred."Territory Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            END;
+
+          END; // beziehung.FINDFIRST
+
+        UNTIL kred.NEXT = 0;
+      END;
+      ////////   Die Zeilen mit //* wrden alle Eintr„ge zeigen. Damit doppelte vermieden werden k”nnen, mssen im letzten Abschnitt die Zeilen 1-6 auskommentiert werden.
+
+
+      {
+      // 2. Anfang der Listung aller ADV-Eintr„ge
+
+      debkred:=FALSE;
+
+      RowNo := RowNo +3;
+      EnterCell(RowNo,1,'Teil 2','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,3,'Liste der ADV-Eintr„ge mit dazugeh”rigen Debitroen/Kreditoren','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      RowNo := RowNo +1;
+      EnterCell(RowNo,1,'Deb/Kred','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,2,'Debitor Nr.','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,3,'Debitor Name','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,4,'Verk„ufer','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,5,'Betreuer','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,6,'Gebiet','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,7,'Eintrag Doku-Versand','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,8,'Datum Doku-Versand','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,9,'Doku Kontakt Nr','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,10,'Doku Mandant Nr','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      dok.RESET;
+      dok.SETFILTER(dok.Aktion,'%1',dok.Aktion::ADV);
+      //dok.SETFILTER(dok."Mandantennr.",'%1',beziehung."Contact No.");
+      IF dok.FINDFIRST THEN BEGIN
+        REPEAT
+          RowNo := RowNo +1;
+          EnterCell(RowNo,7,FORMAT(dok.Aktion),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,8,FORMAT(dok.Belegdatum),'',FALSE,FALSE,FALSE,'dd.mm.yyyy',TempExcelBuffer."Cell Type"::Date);
+          EnterCell(RowNo,9,dok."Kontaktnr.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,10,dok."Mandantennr.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,11,dok."Lfd. Nr.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          beziehung.RESET;
+          beziehung.SETFILTER(beziehung."Business Relation Code",'%1','KRED');
+          beziehung.SETFILTER(beziehung."Contact No.",'%1',dok."Mandantennr.");
+          IF beziehung.FINDFIRST THEN BEGIN
+            kred.RESET;
+            kred.SETFILTER(kred."No.",'%1',beziehung."No.");
+            kred.SETFILTER(kred.ADV,'%1',TRUE);
+            IF kred.FINDFIRST THEN BEGIN
+              EnterCell(RowNo,1,'Kred','',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,2,kred."No.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,3,kred.Name,'',FALSE,FALSE,FALSE,'######',TempExcelBuffer."Cell Type"::Number);
+              EnterCell(RowNo,4,kred."Purchaser Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //          EnterCell(RowNo,5,kred."Betreuer Innendienst",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,6,kred."Territory Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              debkred:=TRUE;
+            END;
+          END;
+          IF debkred=FALSE THEN BEGIN
+            beziehung1.RESET;
+            beziehung1.SETFILTER(beziehung1."Business Relation Code",'%1','DEB');
+            beziehung1.SETFILTER(beziehung1."Contact No.",'%1',dok."Mandantennr.");
+            IF beziehung1.FINDFIRST THEN BEGIN
+              deb.RESET;
+              deb.SETFILTER(deb."No.",'%1',beziehung1."No.");
+              deb.SETFILTER(deb.ADV,'%1',TRUE);
+              IF deb.FINDFIRST THEN BEGIN
+                EnterCell(RowNo,1,'Deb','',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                EnterCell(RowNo,2,deb."No.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                EnterCell(RowNo,3,deb.Name,'',FALSE,FALSE,FALSE,'######',TempExcelBuffer."Cell Type"::Number);
+                EnterCell(RowNo,4,deb."Salesperson Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                EnterCell(RowNo,5,deb."Betreuer Innendienst",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                EnterCell(RowNo,6,deb."Territory Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              END;
+            END;
+          END;
+          debkred:=FALSE;
+        UNTIL dok.NEXT=0;
+      END;
+      }
+      // 2. Ende der Listung aller ADV-Eintr„ge  Testneu ADV
+
+
+      debkred:=FALSE;
+
+      RowNo := RowNo +3;
+      EnterCell(RowNo,1,'Teil 2','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,3,'Liste der ADV-Eintr„ge mit dazugeh”rigen Debitroen/Kreditoren','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      RowNo := RowNo +1;
+      EnterCell(RowNo,1,'Deb/Kred','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,2,'Debitor Nr.','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,3,'Debitor Name','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,4,'Verk„ufer','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,5,'Betreuer','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,6,'Gebiet','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,7,'Eintrag Doku-Versand','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,8,'Datum Doku-Versand','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,9,'Doku Kontakt Nr','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,10,'Doku Mandant Nr','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,11,'Doku lfd.Nr.','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,12,'ADV-Eintrag beim Deb/Kred vorhanden','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      dok.RESET;
+      dok.SETFILTER(dok.Aktion,'%1',dok.Aktion::ADV);
+      //dok.SETFILTER(dok."Mandantennr.",'%1',beziehung."Contact No.");
+      IF dok.FINDFIRST THEN BEGIN
+        REPEAT
+      //*    RowNo := RowNo +1;
+      //*    EnterCell(RowNo,7,FORMAT(dok.Aktion),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*    EnterCell(RowNo,8,FORMAT(dok.Belegdatum),'',FALSE,FALSE,FALSE,'dd.mm.yyyy',TempExcelBuffer."Cell Type"::Date);
+      //*    EnterCell(RowNo,9,dok."Kontaktnr.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*    EnterCell(RowNo,10,dok."Mandantennr.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*    EnterCell(RowNo,11,dok."Lfd. Nr.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      ////////   Die Zeilen mit //* wrden alle Eintr„ge zeigen. Damit doppelte vermieden werden k”nnen, mssen in den unteren Abschnitten die Zeilen 7-11 auskommentiert werden.
+
+          beziehung.RESET;
+      //    beziehung.SETFILTER(beziehung."Business Relation Code",'%1','KRED');
+          beziehung.SETFILTER(beziehung."Contact No.",'%1',dok."Mandantennr.");
+          IF beziehung.FINDFIRST THEN BEGIN
+            IF beziehung."Business Relation Code"='KRED' THEN BEGIN
+              kred.RESET;
+              kred.SETFILTER(kred."No.",'%1',beziehung."No.");
+      //        kred.SETFILTER(kred.ADV,'%1',TRUE);
+              IF kred.FINDFIRST THEN BEGIN
+      //*          EnterCell(RowNo,1,'Kred','',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*          EnterCell(RowNo,2,kred."No.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*          EnterCell(RowNo,3,kred.Name,'',FALSE,FALSE,FALSE,'######',TempExcelBuffer."Cell Type"::Number);
+      //*          EnterCell(RowNo,4,kred."Purchaser Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //////          EnterCell(RowNo,5,kred."Betreuer Innendienst",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*          EnterCell(RowNo,6,kred."Territory Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*          EnterCell(RowNo,12,FORMAT(kred.ADV),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
+                debkred:=TRUE;
+              END ELSE BEGIN
+                RowNo := RowNo +1;
+                EnterCell(RowNo,7,FORMAT(dok.Aktion),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                EnterCell(RowNo,8,FORMAT(dok.Belegdatum),'',FALSE,FALSE,FALSE,'dd.mm.yyyy',TempExcelBuffer."Cell Type"::Date);
+                EnterCell(RowNo,9,dok."Kontaktnr.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                EnterCell(RowNo,10,dok."Mandantennr.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                EnterCell(RowNo,11,dok."Lfd. Nr.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              END;
+
+            END ELSE BEGIN
+            IF beziehung."Business Relation Code"='DEB' THEN BEGIN
+              IF debkred=TRUE THEN RowNo := RowNo +1;
+              deb.RESET;
+              deb.SETFILTER(deb."No.",'%1',beziehung."No.");
+      //        deb.SETFILTER(deb.ADV,'%1',TRUE);
+              IF deb.FINDFIRST THEN BEGIN
+      //*          EnterCell(RowNo,1,'Deb','',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*          EnterCell(RowNo,2,deb."No.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*          EnterCell(RowNo,3,deb.Name,'',FALSE,FALSE,FALSE,'######',TempExcelBuffer."Cell Type"::Number);
+      //*          EnterCell(RowNo,4,deb."Salesperson Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*          EnterCell(RowNo,5,deb."Betreuer Innendienst",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*          EnterCell(RowNo,6,deb."Territory Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //*          EnterCell(RowNo,12,FORMAT(deb.ADV),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
+              END ELSE BEGIN
+                RowNo := RowNo +1;
+                EnterCell(RowNo,7,FORMAT(dok.Aktion),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                EnterCell(RowNo,8,FORMAT(dok.Belegdatum),'',FALSE,FALSE,FALSE,'dd.mm.yyyy',TempExcelBuffer."Cell Type"::Date);
+                EnterCell(RowNo,9,dok."Kontaktnr.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                EnterCell(RowNo,10,dok."Mandantennr.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                EnterCell(RowNo,11,dok."Lfd. Nr.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              END;
+            END;
+
+          END;
+
+        END;
+        debkred:=FALSE;
+        UNTIL dok.NEXT=0;
+      END;
+
+
+      // Teil 3
+      RowNo := RowNo +3;
+      EnterCell(RowNo,1,'Teil 3','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,3,'Liste der Debitoren ohne ADV-Eintrag aber mit Servicevertrag','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,6,'Stand:','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,7,FORMAT(WORKDATE),'',TRUE,FALSE,FALSE,'dd.mm.yyyy',TempExcelBuffer."Cell Type"::Date);
+      RowNo := RowNo +1;
+      EnterCell(RowNo,1,'Deb/Kred','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,2,'Debitor Nr.','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,3,'Debitor Name','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,4,'Verk„ufer','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,5,'Betreuer','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,6,'Gebiet','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,7,'Service Nr','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,8,'Service Datum','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,9,'Artikel','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,10,'Ablaufdatum','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,11,'KontaktNr','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      deb.RESET;
+      deb.SETFILTER(deb.ADV,'%1',FALSE);
+      IF deb.FINDFIRST THEN BEGIN
+        REPEAT
+          service.RESET;
+          service.SETFILTER(service.Art,'%1',service.Art::Service);
+          service.SETFILTER(service."Debitornr.",'%1',deb."No.");
+          service.SETFILTER(service."Ablaufdatum Serviceleistung",'>%1',WORKDATE);
+          service.SETFILTER(service."SUP Artikelnr.",'CHAMPS-SUPP*');
+          service.SETFILTER(service.Inaktiv,'%1',FALSE);
+          IF service.FINDFIRST THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,'Deb','',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            EnterCell(RowNo,2,deb."No.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            EnterCell(RowNo,3,deb.Name,'',FALSE,FALSE,FALSE,'######',TempExcelBuffer."Cell Type"::Number);
+            EnterCell(RowNo,4,deb."Salesperson Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            EnterCell(RowNo,5,deb."Betreuer Innendienst",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            EnterCell(RowNo,6,deb."Territory Code",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            EnterCell(RowNo,7,FORMAT(service."Wartungsvertragsnr."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            EnterCell(RowNo,8,FORMAT(service.Belegdatum),'',FALSE,FALSE,FALSE,'dd.mm.yyyy',TempExcelBuffer."Cell Type"::Date);
+            EnterCell(RowNo,9,service."Artikelnr.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            EnterCell(RowNo,10,FORMAT(service."Ablaufdatum Serviceleistung"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Date);
+            beziehung.RESET;
+            beziehung.SETFILTER(beziehung."No.",'%1',deb."No.");
+            IF beziehung.FINDFIRST THEN BEGIN
+              EnterCell(RowNo,11,beziehung."Contact No.",'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text)
+            END;
+          END ELSE BEGIN
+           keinEintrag:=TRUE;
+          END; // service.FINDFIRST
+
+        UNTIL deb.NEXT = 0;
+
+      END;
+
+      RowNo := RowNo +1;
+      IF keinEintrag=TRUE THEN EnterCell(RowNo,1,'kein weiterer Eintrag gefunden','',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      CloseExcel('ADV šberwachung','ADV šberwachung','');
+    END;
+
+    LOCAL PROCEDURE CreateExcel@1000000010();
+    BEGIN
+      IF DoUpdateExistingWorksheet THEN BEGIN
+        IF ServerFileName = '' THEN
+          ServerFileName := FileMgt.UploadFile(Text002,ExcelFileExtensionTok);
+        IF ServerFileName = '' THEN
+          EXIT;
+        SheetName := TempExcelBuffer.SelectSheetsName(ServerFileName);
+        IF SheetName = '' THEN
+          EXIT;
+      END;
+
+      Window.OPEN(
+        Text111 +
+        '@1@@@@@@@@@@@@@@@@@@@@@\');
+
+      TempExcelBuffer.DELETEALL;
+      CLEAR(TempExcelBuffer);
+    END;
+
+    LOCAL PROCEDURE CloseExcel@1000000011(Sheetname@1000000000 : Text;FileName@1000000001 : Text;FilePath@1000000002 : Text);
+    BEGIN
+      Window.CLOSE;
+
+      IF DoUpdateExistingWorksheet THEN BEGIN
+        TempExcelBuffer.UpdateBook(ServerFileName,Sheetname);
+        TempExcelBuffer.WriteSheet('',COMPANYNAME,USERID);
+        TempExcelBuffer.CloseBook;
+        IF NOT Testmode THEN TempExcelBuffer.DownloadAndOpenExcel;
+      END ELSE BEGIN
+        TempExcelBuffer.CreateBook(ServerFileName,Sheetname);
+        TempExcelBuffer.WriteSheet(Sheetname,COMPANYNAME,USERID);
+        TempExcelBuffer.CloseBook;
+        IF NOT Testmode THEN BEGIN
+          IF (FileName = '') OR (FilePath = '') THEN
+            TempExcelBuffer.OpenExcel //hat Autofit drin der die Spaltenbreite wieder berschreibt, deshalb neue Fkt. nachfolgend
+        ELSE
+            TempExcelBuffer.OpenExcelWithoutAutoFit(Sheetname,FileName + ExcelFileExtensionTok,FilePath,TRUE);
+        END;
+      END;
+      IF NOT Testmode THEN
+        TempExcelBuffer.GiveUserControl;
+
+    END;
+
+    LOCAL PROCEDURE EnterCell@1000000012(RowNo@1000000000 : Integer;ColumnNo@1000000001 : Integer;CellValue@1000000002 : Text[250];Formular@1000000008 : Text[250];Bold@1000000003 : Boolean;Italic@1000000004 : Boolean;UnderLine@1000000005 : Boolean;NumberFormat@1000000006 : Text[30];CellType@1000000007 : Option);
+    BEGIN
+      TempExcelBuffer.INIT;
+      TempExcelBuffer.VALIDATE("Row No.",RowNo);
+      TempExcelBuffer.VALIDATE("Column No.",ColumnNo);
+      TempExcelBuffer."Cell Value as Text" := CellValue;
+      TempExcelBuffer.Formula := Formular;
+      TempExcelBuffer.Bold := Bold;
+      TempExcelBuffer.Italic := Italic;
+      TempExcelBuffer.Underline := UnderLine;
+      TempExcelBuffer.NumberFormat := NumberFormat;
+      TempExcelBuffer."Cell Type" := CellType;
+      TempExcelBuffer.INSERT;
+    END;
+
+    LOCAL PROCEDURE UpdateCell@1000000013(RowNo@1000000000 : Integer;ColumnNo@1000000001 : Integer;CellValue@1000000002 : Text[250]);
+    BEGIN
+      IF TempExcelBuffer.GET(RowNo,ColumnNo)  THEN BEGIN
+        TempExcelBuffer."Cell Value as Text" := CellValue;
+        TempExcelBuffer.MODIFY;
+      END;
+    END;
 
     BEGIN
+    {
+      Lfd.Nr. Version   Datum         User  Beschreibung
+      =================================================================
+      1       TOP1.00   04.05.2020    UB    LOCAL ADV_šberprfung() Vergleicht Deb/Kred ADV eintrag mit Dokumentenversnd
+      2       TOP1.01   03.07.2020    ST    Dateilinks setzen mit Paramter šbergabe und Abbruch bewirkt kein šberschreiben mehr
+    }
     END.
   }
 }
