@@ -1,0 +1,182 @@
+OBJECT Table 50013 Support Kontingente
+{
+  OBJECT-PROPERTIES
+  {
+    Date=21.02.17;
+    Time=13:36:19;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    OnInsert=BEGIN
+               Add_LinienZuordnung;
+
+               "Angelegt am" := WORKDATE;
+               "Angelegt von" := USERID;
+             END;
+
+    OnModify=BEGIN
+               Support.GET("Gruppen-Nr.");
+               Support.MODIFY(TRUE);
+
+               "Korrigiert am" := WORKDATE;
+               "Korrigiert von" := USERID;
+             END;
+
+  }
+  FIELDS
+  {
+    { 1   ;   ;Gruppen-Nr.         ;Code20        ;TableRelation=Support }
+    { 2   ;   ;Art                 ;Option        ;OptionString=Support,,,Externe Leistungen }
+    { 3   ;   ;Zeilennr.           ;Integer        }
+    { 4   ;   ;Datum               ;Date           }
+    { 5   ;   ;Auftrag von         ;Text50         }
+    { 6   ;   ;Menge               ;Decimal        }
+    { 7   ;   ;Aktion              ;Text250        }
+    { 8   ;   ;Durchgefhrt von    ;Text50         }
+    { 9   ;   ;Zeitraum            ;Text50         }
+    { 10  ;   ;Endkunde/AP         ;Text50         }
+    { 11  ;   ;Linien Zuordnung    ;Code20        ;TableRelation=Manufacturer }
+    { 12  ;   ;Belegstatus         ;Option        ;OptionString=offen,,,archiviert }
+    { 13  ;   ;Auftragsnr.         ;Code20        ;TableRelation=IF (Belegstatus=CONST(offen)) "Sales Header".No. WHERE (Document Type=FILTER(Order))
+                                                                 ELSE IF (Belegstatus=CONST(archiviert)) "Sales Header Archive".No. WHERE (Document Type=FILTER(Order));
+                                                   OnValidate=BEGIN
+                                                                Add_Ansprech;
+                                                              END;
+                                                               }
+    { 14  ;   ;Angebotsnr.         ;Code20        ;TableRelation=IF (Belegstatus=CONST(offen)) "Sales Header" WHERE (Document Type=FILTER(Quote))
+                                                                 ELSE IF (Belegstatus=CONST(archiviert)) "Sales Header Archive" WHERE (Document Type=FILTER(Quote)) }
+    { 20  ;   ;Rechnungsdatum      ;Date           }
+    { 25  ;   ;Rechnungsnr.        ;Code20         }
+    { 27  ;   ;Rech.Debitor        ;Code20         }
+    { 30  ;   ;Stundensatz         ;Decimal        }
+    { 97  ;   ;Angelegt am         ;Date           }
+    { 98  ;   ;Angelegt von        ;Code50         }
+    { 99  ;   ;Korrigiert am       ;Date           }
+    { 100 ;   ;Korrigiert von      ;Code50         }
+    { 200 ;   ;Erledigt            ;Boolean        }
+  }
+  KEYS
+  {
+    {    ;Gruppen-Nr.,Art,Zeilennr.               ;Clustered=Yes }
+    {    ;Gruppen-Nr.,Art,Menge                   ;SumIndexFields=Menge }
+  }
+  FIELDGROUPS
+  {
+  }
+  CODE
+  {
+    VAR
+      Support@1140000 : Record 50012;
+      Kontingente@1140001 : Record 50013;
+      Text000@1000000000 : TextConst 'DEU=Der Kunde %1 %2 wurde noch nicht als Beteiligter hinterlegt. Soll dieser jetzt angelegt werden?';
+
+    PROCEDURE Add_Ansprech@1140003();
+    VAR
+      Vkkopf@1140002 : Record 36;
+      ArchVkkopf@1140003 : Record 5107;
+      DebKontaktBez@1140000 : Record 5054;
+      Ansprech@1140001 : Record 50005;
+    BEGIN
+      Vkkopf.RESET;
+      Vkkopf.SETFILTER("No.",'%1',"Auftragsnr.");
+      IF Vkkopf.FINDFIRST THEN BEGIN
+        DebKontaktBez.RESET;
+        DebKontaktBez.SETFILTER("Business Relation Code",'%1','DEB');
+        DebKontaktBez.SETFILTER("No.",'%1',Vkkopf."Sell-to Customer No.");
+        IF DebKontaktBez.FINDFIRST THEN BEGIN
+          Ansprech.RESET;
+          Ansprech.SETFILTER("Kampagnennr.",'%1',"Gruppen-Nr.");
+          Ansprech.SETFILTER("Kontaktnr.",'%1',DebKontaktBez."Contact No.");
+          IF NOT Ansprech.FINDFIRST THEN BEGIN
+            IF CONFIRM(Text000,TRUE,Vkkopf."No.",Vkkopf."Sell-to Customer Name") THEN BEGIN
+              Ansprech.INIT;
+              Ansprech.VALIDATE("Kontaktnr.",DebKontaktBez."Contact No.");
+              Ansprech."Kampagnennr." := "Gruppen-Nr.";
+              //Ansprech.Fhrungsrolle := TRUE;
+              Ansprech.INSERT;
+            END;
+          END;
+        END;
+      END ELSE BEGIN
+        ArchVkkopf.RESET;
+        ArchVkkopf.SETFILTER("No.",'%1',"Auftragsnr.");
+        IF ArchVkkopf.FINDFIRST THEN BEGIN
+          DebKontaktBez.RESET;
+          DebKontaktBez.SETFILTER("Business Relation Code",'%1','DEB');
+          DebKontaktBez.SETFILTER("No.",'%1',ArchVkkopf."Sell-to Customer No.");
+          IF DebKontaktBez.FINDFIRST THEN BEGIN
+            Ansprech.RESET;
+            Ansprech.SETFILTER("Kampagnennr.",'%1',"Gruppen-Nr.");
+            Ansprech.SETFILTER("Kontaktnr.",'%1',DebKontaktBez."Contact No.");
+            IF NOT Ansprech.FINDFIRST THEN BEGIN
+              IF CONFIRM(Text000,TRUE,ArchVkkopf."No.",ArchVkkopf."Sell-to Customer Name") THEN BEGIN
+                Ansprech.INIT;
+                Ansprech.VALIDATE("Kontaktnr.",DebKontaktBez."Contact No.");
+                Ansprech."Kampagnennr." := "Gruppen-Nr.";
+                //Ansprech.Fhrungsrolle := TRUE;
+                Ansprech.INSERT;
+              END;
+            END;
+          END;
+        END;
+      END
+    END;
+
+    PROCEDURE Add_LinienZuordnung@1140001();
+    BEGIN
+      IF Support.GET("Gruppen-Nr.") THEN
+        "Linien Zuordnung" := Support."Standard Zuordnung";
+    END;
+
+    PROCEDURE Kontingente_berechnen@1140000();
+    VAR
+      TempKontingente@1140002 : TEMPORARY Record 50013;
+      gesamte_kontingente@1140001 : Decimal;
+      offene_kontingente@1140000 : Decimal;
+    BEGIN
+      //Alpha, wird jetzt durch Flow Fields erledigt
+      CASE Art OF
+        Art::Support: BEGIN
+          //Zurcksetzen auf Null
+          COMMIT;
+          //TempKontingente.DELETEALL;
+          //IF Rec.FINDFIRST THEN
+          //  REPEAT
+          //    TempKontingente.COPY(Rec);
+          //    TempKontingente.INSERT;
+          //  UNTIL Rec.NEXT = 0;
+
+          gesamte_kontingente := 0;
+          offene_kontingente := 0;
+
+          Kontingente.RESET;
+          Kontingente.SETFILTER("Gruppen-Nr.",'%1',"Gruppen-Nr.");
+          Kontingente.SETFILTER(Art,'%1',Kontingente.Art :: Support);
+          //IF TempKontingente.FINDFIRST THEN
+          IF Kontingente.FINDFIRST THEN
+            REPEAT
+              IF Kontingente.Menge > 0 THEN BEGIN
+                gesamte_kontingente := gesamte_kontingente + Kontingente.Menge;
+                offene_kontingente := offene_kontingente + Kontingente.Menge;
+              END;
+              IF Kontingente.Menge < 0 THEN BEGIN
+                offene_kontingente := offene_kontingente + Kontingente.Menge;
+              END;
+            UNTIL Kontingente.NEXT = 0;
+            //UNTIL TempKontingente.NEXT = 0;
+
+          Support.GET("Gruppen-Nr.");
+          Support."Gesamt Kontingent" := gesamte_kontingente;
+          Support."Offenes Kontingent" :=  offene_kontingente;
+          Support.MODIFY(TRUE);
+        END;
+      END;
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
