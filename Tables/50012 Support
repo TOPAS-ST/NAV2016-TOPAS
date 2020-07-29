@@ -1,0 +1,90 @@
+OBJECT Table 50012 Support
+{
+  OBJECT-PROPERTIES
+  {
+    Date=21.02.17;
+    Time=13:33:01;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    OnInsert=VAR
+               NoSeriesMgt@1140002 : Codeunit 396;
+               laufende_nummer@1140001 : Code[20];
+               eingabe@1140000 : Code[10];
+             BEGIN
+               IF GETFILTER("Nr.") <> '' THEN
+                 ERROR(Text001,FIELDCAPTION("Nr."));
+
+               IF "Nr." = '' THEN BEGIN
+                 laufende_nummer:='';
+                 eingabe := 'TOPAS-SUPP';
+                 NoSeriesMgt.InitSeries(eingabe,eingabe,TODAY,laufende_nummer,eingabe);
+                 "Nr." := laufende_nummer;
+                 "Angelegt von" := USERID;
+                 "Angelegt am" := WORKDATE;
+               END;
+             END;
+
+    OnModify=BEGIN
+               "Korrigiert von" := USERID;
+               "Korrigiert am" := WORKDATE;
+             END;
+
+    OnDelete=BEGIN
+               Kontingente.SETRANGE("Gruppen-Nr.","Nr.");
+               Kontingente.DELETEALL;
+
+               TOPASBemerkung.SETRANGE(Art,TOPASBemerkung.Art :: Kontingente);
+               TOPASBemerkung.SETRANGE("Nr.","Nr.");
+               TOPASBemerkung.DELETEALL;
+             END;
+
+    OnRename=BEGIN
+               IF "Nr." <> xRec."Nr." THEN
+                 ERROR(Text000,TABLECAPTION);
+             END;
+
+  }
+  FIELDS
+  {
+    { 1   ;   ;Nr.                 ;Code20         }
+    { 2   ;   ;Kunde               ;Text50         }
+    { 10  ;   ;Standard Zuordnung  ;Code20        ;TableRelation=Manufacturer }
+    { 11  ;   ;Herstellerkurzname  ;Code4         ;FieldClass=FlowField;
+                                                   CalcFormula=Lookup(Manufacturer.Herstellerkurzname WHERE (Code=FIELD(Standard Zuordnung)));
+                                                   Editable=No }
+    { 20  ;   ;Gesamt Kontingent   ;Decimal       ;FieldClass=FlowField;
+                                                   CalcFormula=Sum("Support Kontingente".Menge WHERE (Menge=FILTER(>0),
+                                                                                                      Gruppen-Nr.=FIELD(Nr.),
+                                                                                                      Art=FILTER(Support))) }
+    { 21  ;   ;Offenes Kontingent  ;Decimal       ;FieldClass=FlowField;
+                                                   CalcFormula=Sum("Support Kontingente".Menge WHERE (Gruppen-Nr.=FIELD(Nr.),
+                                                                                                      Art=FILTER(Support))) }
+    { 97  ;   ;Angelegt am         ;Date           }
+    { 98  ;   ;Angelegt von        ;Code50         }
+    { 99  ;   ;Korrigiert am       ;Date           }
+    { 100 ;   ;Korrigiert von      ;Code50         }
+  }
+  KEYS
+  {
+    {    ;Nr.                                     ;Clustered=Yes }
+    {    ;Kunde,Standard Zuordnung,Nr.             }
+  }
+  FIELDGROUPS
+  {
+  }
+  CODE
+  {
+    VAR
+      TOPASBemerkung@1140000 : Record 50023;
+      Kontingente@1140001 : Record 50013;
+      Text000@1140002 : TextConst 'DEU=Sie k”nnen %1 nicht umbenennen.';
+      Text001@1140003 : TextConst 'DEU=Sie k”nnen keinen neuen Datensatz anlegen, wenn der Filter auf dem Feld %1 gesetzt ist.';
+
+    BEGIN
+    END.
+  }
+}
+
