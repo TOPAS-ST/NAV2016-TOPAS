@@ -2,8 +2,8 @@ OBJECT Page 50104 Belegausgabe per Batch
 {
   OBJECT-PROPERTIES
   {
-    Date=04.03.20;
-    Time=08:21:24;
+    Date=17.08.20;
+    Time=15:00:00;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -235,6 +235,7 @@ OBJECT Page 50104 Belegausgabe per Batch
       attach_files@1000000016 : Text;
       Program_SearchAndForward@1000000020 : Text;
       Account@1000000019 : Text;
+      Acc_Password@1000000031 : Text;
       cached_processes@1000000018 : Text;
       Service_Infotext_deu@1000000023 : TextConst 'DEU=Nach erfolgreicher Anmeldung unter https://www.topas-systems.de/my-topas k”nnen Sie unsere Service Vertragsbedingungen einsehen.';
       Service_Infotext_enu@1000000024 : TextConst 'DEU=After successful registration under https://www.topas-systems.de/my-topas you can see our service contract conditions.';
@@ -336,7 +337,7 @@ OBJECT Page 50104 Belegausgabe per Batch
         END;
 
         //Alle Auftragsbest„tigungen als PDF an DocuWare Scan Ordner senden
-        IF DocuwareServiceEnable THEN DocuWare.ExportDocsToFolder(2);
+        IF DocuwareServiceEnable THEN DocuWare.ExportDocsToFolder(2,Tagesdatum);
       END;
 
 
@@ -394,7 +395,7 @@ OBJECT Page 50104 Belegausgabe per Batch
         END;
 
         //Alle Auftrags„nderungsbest„tigungen als PDF an DocuWare Scan Ordner senden
-        IF DocuwareServiceEnable THEN DocuWare.ExportDocsToFolder(3);
+        IF DocuwareServiceEnable THEN DocuWare.ExportDocsToFolder(3,Tagesdatum);
       END;
 
 
@@ -414,12 +415,14 @@ OBJECT Page 50104 Belegausgabe per Batch
             ship_header.SETRANGE("Order No.",inv_header."Order No.");
             ship_header.SETRANGE("Posting Date",inv_header."Posting Date");
             IF ship_header.FINDFIRST THEN BEGIN
-              ship_line.RESET;
-              ship_line.SETRANGE("Document No.",ship_header."No.");
-              ship_line.SETFILTER("Manufacturer Code",'59|85');
-              ship_line.SETFILTER(Quantity,'>%1',0);
-              IF ship_line.FINDFIRST THEN
-                Bullzip_PDF.BullzipPDF_Shipment(ship_header,AttachmentPath,50078);
+              REPEAT
+                ship_line.RESET;
+                ship_line.SETRANGE("Document No.",ship_header."No.");
+                ship_line.SETFILTER("Manufacturer Code",'59|85');
+                ship_line.SETFILTER(Quantity,'>%1',0);
+                IF ship_line.FINDFIRST THEN
+                  Bullzip_PDF.BullzipPDF_Shipment(ship_header,AttachmentPath,50078);
+              UNTIL ship_header.NEXT = 0;
             END;
           UNTIL inv_header.NEXT = 0;
         END;
@@ -836,8 +839,8 @@ OBJECT Page 50104 Belegausgabe per Batch
       //Mail-Job fr Support Services Certificates von AudioCodes
       IF Certificates_PDF THEN BEGIN
         CREATE(WshShell,FALSE,TRUE);
-        Program_SearchAndForward := '\\WIN-FILESRV\Software\software\TOPAS eigen\GWMailForward\GWMailForwardWithAttachment.exe';
-        Account := 'Systeme';
+        //Program_SearchAndForward := 'D:\GWMailForwardWithAttachment.exe';
+        Program_SearchAndForward := '"\\WIN-FILESRV\Software\software\TOPAS eigen\GWMailForward\GWMailForwardWithAttachment.exe"';
         AttachmentPath := '\\WIN-FILESRV\Daten\Daten NEU\Gemeinsame Ordner\Customer Service\AudioCodes\';
         IF TOPAS_API.ChangeProxy(Account) <> '' THEN ERROR(Proxy_Error,Account);
 
@@ -882,7 +885,7 @@ OBJECT Page 50104 Belegausgabe per Batch
               chr := 13;
               body:= STRSUBSTNO(Body_Text,FORMAT(chr));
               subject := STRSUBSTNO(Subject_Text,Servicepositionen."System Projektinfos",ship_header."External Document No.") ;
-              WshShell.Exec(Program_SearchAndForward + ' "' + Account + '"' + ' ""' + ' "' + Servicepositionen."ACO Nr." + '"' + ' "' + ship_header."Service EMail-Adresse" + '"' + ' "' + subject + '"' +
+              WshShell.Exec(Program_SearchAndForward + ' "' + Servicepositionen."ACO Nr." + '"' + ' "' + ship_header."Service EMail-Adresse" + '"' + ' "' + subject + '"' +
               ' "' + body + '"' + ' "' + attach_files + '"');
               IF STRPOS(cached_processes,Servicepositionen."ACO Nr.") = 0 THEN cached_processes += Servicepositionen."ACO Nr." + '|';
               SLEEP(500);
