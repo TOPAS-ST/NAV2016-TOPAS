@@ -1,0 +1,260 @@
+OBJECT Codeunit 50016 DocuWare
+{
+  OBJECT-PROPERTIES
+  {
+    Date=20.05.20;
+    Time=10:03:41;
+    Modified=Yes;
+    Version List=TOPAS DocuWare Print;
+  }
+  PROPERTIES
+  {
+    OnRun=BEGIN
+          END;
+
+  }
+  CODE
+  {
+
+    PROCEDURE PrintToDWCloud@1000000001(DocType@1000000000 : 'Quote,Order,Blanket Order,Credit Memo';DocNo@1000000001 : Code[20];ReportName@1000000004 : Text);
+    VAR
+      XMLParameters@1000000002 : Text;
+      ReportID@1000000003 : Integer;
+    BEGIN
+      CASE DocType OF
+        DocType::Order : BEGIN
+
+          // Auftragsbest„tigung
+          IF ReportName = 'Auftragsbest„tigung' THEN BEGIN
+            ReportID := 50075;
+            XMLParameters := '<?xml version="1.0" standalone="yes"?><ReportParameters name="TOPAS-Auftragsbest„tigung" id="50075">' +
+                            '<Options><Field name="AnzKopien">0</Field><Field name="ReportForNavOpenDesigner">false</Field></Options>' +
+                            '<DataItems><DataItem name="Sales Header">VERSION(1) SORTING(Field1,Field3) WHERE(Field3=1(%1))</DataItem>' +
+                            '<DataItem name="Debitor">VERSION(1) SORTING(Field1)</DataItem><DataItem name="Salesperson/Purchaser">VERSION(1) SORTING(Field1)</DataItem>' +
+                            '<DataItem name="Shipping Agent">VERSION(1) SORTING(Field1)</DataItem><DataItem name="KopieSchleife">VERSION(1) SORTING(Field1)</DataItem>' +
+                            '<DataItem name="SeiteSchleife">VERSION(1) SORTING(Field1)</DataItem><DataItem name="Sales Line">VERSION(1) SORTING(Field1,Field3,Field4)</DataItem>' +
+                            '<DataItem name="RundungsRahmen">VERSION(1) SORTING(Field1)</DataItem><DataItem name="Item">VERSION(1) SORTING(Field1)</DataItem>' +
+                            '<DataItem name="Sales Comment Line">VERSION(1) SORTING(Field1,Field2,Field3)</DataItem><DataItem name="MWStZ„hler">VERSION(1) SORTING(Field1)</DataItem>' +
+                            '<DataItem name="Total">VERSION(1) SORTING(Field1)</DataItem><DataItem name="Total2">VERSION(1) SORTING(Field1)</DataItem></DataItems></ReportParameters>';
+          END;
+
+          // Auftrags Deckblatt
+          IF ReportName = 'Deckblatt' THEN BEGIN
+            ReportID := 50159;
+            XMLParameters := '<?xml version="1.0" standalone="yes"?><ReportParameters name="TOPAS Auftrags Deckblatt" id="50159">' +
+                             '<Options><Field name="ReportForNavOpenDesigner">false</Field></Options>' +
+                             '<DataItems><DataItem name="Sales Header">VERSION(1) SORTING(Field1,Field3) WHERE(Field3=1(%1))</DataItem>' +
+                             '<DataItem name="Sales Comment Line">VERSION(1) SORTING(Field1,Field2,Field3)</DataItem><DataItem name="Sales Line">VERSION(1) SORTING(Field1,Field3,Field4)</DataItem>' +
+                             '<DataItem name="Quotedaten">VERSION(1) SORTING(Field1)</DataItem></DataItems></ReportParameters>';
+          END;
+
+          // Angebote
+          IF ReportName = 'Angebot' THEN BEGIN
+            ReportID := 50052;
+            XMLParameters := '<?xml version="1.0" standalone="yes"?><ReportParameters name="TOPAS Verkauf - Angebot" id="50052">' +
+                             '<Options><Field name="AnzKopien">0</Field><Field name="Unterzeichner2" /><Field name="v_total_drucken">false</Field><Field name="ReportForNavOpenDesigner">false</Field></Options>' +
+                             '<DataItems><DataItem name="Sales Header">VERSION(1) SORTING(Field1,Field3) WHERE(Field3=1(%1))</DataItem>' +
+                             '<DataItem name="Customer">VERSION(1) SORTING(Field1)</DataItem><DataItem name="Contact">VERSION(1) SORTING(Field1)</DataItem>' +
+                             '<DataItem name="Salesperson/Purchaser">VERSION(1) SORTING(Field1)</DataItem><DataItem name="KopieSchleife">VERSION(1) SORTING(Field1)</DataItem>' +
+                             '<DataItem name="SeiteSchleife">VERSION(1) SORTING(Field1)</DataItem><DataItem name="Sales Line">VERSION(1) SORTING(Field1,Field3,Field4)</DataItem>' +
+                             '<DataItem name="RundungsRahmen">VERSION(1) SORTING(Field1)</DataItem><DataItem name="Sales Comment Line">VERSION(1) SORTING(Field1,Field2,Field3)</DataItem>' +
+                             '<DataItem name="Unterschrift2">VERSION(1) SORTING(Field1)</DataItem></DataItems></ReportParameters>';
+          END;
+
+        END;
+      END;
+
+      IF (ReportID <> 0) AND (DocNo <> '') THEN
+        REPORT.PRINT(ReportID, STRSUBSTNO(XMLParameters,DocNo), 'DocuWare Printer');
+    END;
+
+    PROCEDURE ExportDocsToFolder@1000000000(Modus@1000000000 : Integer;DocDate@1000000007 : Date);
+    VAR
+      SalesHeader@1000000031 : Record 36;
+      SalesHeader2@1000000030 : Record 36;
+      Shipments@1000000029 : Record 110;
+      Shipments2@1000000028 : Record 110;
+      Invoices@1000000027 : Record 112;
+      Invoices2@1000000026 : Record 112;
+      CreditMemo@1000000025 : Record 114;
+      CreditMemo2@1000000024 : Record 114;
+      Wartungsvertrag@1000000023 : Record 50011;
+      Wartungsvertrag2@1000000022 : Record 50011;
+      SalesCommentLine@1000000001 : Record 44;
+      SalesCommentLine2@1000000002 : Record 44;
+      FileOustream@1000000004 : OutStream;
+      ReportNo@1000000021 : Integer;
+      AttachmentPath@1000000020 : Text;
+      DocExport@1000000018 : Boolean;
+      cache@1000000017 : Text;
+      TxtFile@1000000003 : File;
+      FileName@1000000006 : Text;
+      comments_exported@1000000005 : Text;
+      chr@1000000016 : Char;
+    BEGIN
+      //*** Job Parameter ***
+      //AttachmentPath := '\\WIN-FILESRV\Daten\Daten NEU\Gemeinsame Ordner\DocuWare\Daten\';
+      AttachmentPath := '\\WIN-FILESRV\scanner\Archivieren\';
+
+      chr := 10;
+      //*** End ***
+
+      CASE Modus OF
+
+        0,1 :
+          BEGIN
+            //Alle Belege bis auf Auftr„ge
+            SalesHeader.RESET;
+            SalesHeader.SETFILTER("Sell-to Customer No.",'<>%1','');
+            SalesHeader.SETFILTER("Document Date",'%1',DocDate);
+            IF SalesHeader.FINDFIRST THEN BEGIN
+              REPEAT
+                DocExport := TRUE;
+                SalesHeader2.COPY(SalesHeader);
+                SalesHeader2.SETRECFILTER;
+                IF SalesHeader2."Document Type" = SalesHeader2."Document Type"::Quote THEN BEGIN
+                  ReportNo := 50052;
+                  IF SalesHeader2.Status <> SalesHeader2.Status::Released THEN
+                    DocExport := FALSE;
+                END;
+                IF SalesHeader2."Document Type" = SalesHeader2."Document Type"::"Blanket Order" THEN
+                  ReportNo := 50115;
+                IF (ReportNo <> 0) AND (DocExport) THEN
+                  REPORT.SAVEASPDF(ReportNo, AttachmentPath + SalesHeader2."No." + '.pdf', SalesHeader2);
+              UNTIL SalesHeader.NEXT = 0;
+            END;
+
+            // Auftrags Bemerkungen als Textdatei exportiert
+            chr := 10;
+            comments_exported := '';
+            SalesCommentLine.RESET;
+            SalesCommentLine.SETRANGE("Document Type",SalesCommentLine."Document Type"::Order);
+            SalesCommentLine.SETRANGE(Date,DocDate);
+            IF SalesCommentLine.FINDFIRST THEN BEGIN
+              REPEAT
+                IF STRPOS(comments_exported,SalesCommentLine."No.") = 0 THEN BEGIN
+                  SalesCommentLine2.SETRANGE("No.",SalesCommentLine."No.");
+                  SalesCommentLine2.SETRANGE("Document Type",SalesCommentLine2."Document Type"::Order);
+                  IF SalesCommentLine2.FINDFIRST THEN BEGIN
+                    FileName := AttachmentPath + SalesCommentLine2."No." + '_Bemerkungen.txt';
+                    TxtFile.WRITEMODE(TRUE);
+                    TxtFile.CREATE(FileName,TEXTENCODING::UTF8);
+                    TxtFile.CREATEOUTSTREAM(FileOustream);
+                    REPEAT
+                      IF SalesCommentLine2.Date <> 0D THEN
+                        FileOustream.WRITETEXT(FORMAT(SalesCommentLine2.Date) + ' ' + SalesCommentLine2.Comment + FORMAT(chr))
+                      ELSE
+                        FileOustream.WRITETEXT('         ' + SalesCommentLine2.Comment + FORMAT(chr));
+                    UNTIL SalesCommentLine2.NEXT = 0;
+                    TxtFile.CLOSE;
+                  END;
+                END;
+                comments_exported += SalesCommentLine."No." + '|';
+              UNTIL SalesCommentLine.NEXT = 0;
+            END;
+
+            Shipments.RESET;
+            Shipments.SETFILTER("Sell-to Customer No.",'<>%1','');
+            Shipments.SETFILTER("Posting Date",'%1',DocDate);
+            IF Shipments.FINDFIRST THEN BEGIN
+              REPEAT
+                Shipments2.COPY(Shipments);
+                Shipments2.SETRECFILTER;
+                ReportNo := 50078;
+                IF ReportNo <> 0 THEN
+                  REPORT.SAVEASPDF(ReportNo, AttachmentPath + Shipments2."No." + '.pdf', Shipments2);
+              UNTIL Shipments.NEXT = 0;
+            END;
+
+            {
+            Invoices.RESET;
+            Invoices.SETFILTER("Sell-to Customer No.",'<>%1','');
+            Invoices.SETFILTER("Posting Date",'%1',DocDate);
+            IF Invoices.FINDFIRST THEN BEGIN
+              REPEAT
+                Invoices2.COPY(Invoices);
+                Invoices2.SETRECFILTER;
+                ReportNo := 50131; // RE w„re eigentlich 50076 - dieser verhindert aber RE Drucks mit Einstellung "Original RE nicht drucken" im Debitor
+                IF ReportNo <> 0 THEN
+                  REPORT.SAVEASPDF(ReportNo, AttachmentPath + Invoices2."No." + '.pdf', Invoices2);
+                //cache += Invoices."No."+'.pdf' + FORMAT(chr);
+              UNTIL Invoices.NEXT = 0;
+            END;
+            }
+
+            CreditMemo.RESET;
+            CreditMemo.SETFILTER("Sell-to Customer No.",'<>%1','');
+            CreditMemo.SETFILTER("Posting Date",'%1',DocDate);
+            IF CreditMemo.FINDFIRST THEN BEGIN
+              REPEAT
+                CreditMemo2.COPY(CreditMemo);
+                CreditMemo2.SETRECFILTER;
+                ReportNo := 50077;
+                IF ReportNo <> 0 THEN
+                  REPORT.SAVEASPDF(ReportNo, AttachmentPath + CreditMemo2."No." + '.pdf', CreditMemo2);
+              UNTIL CreditMemo.NEXT = 0;
+            END;
+
+            Wartungsvertrag.RESET;
+            Wartungsvertrag.SETFILTER(Belegdatum,'%1',DocDate);
+            IF Wartungsvertrag.FINDFIRST THEN BEGIN
+              REPEAT
+                Wartungsvertrag2.COPY(Wartungsvertrag);
+                Wartungsvertrag2.SETRECFILTER;
+                ReportNo := 50178;
+                IF ReportNo <> 0 THEN
+                  REPORT.SAVEASPDF(ReportNo, AttachmentPath + Wartungsvertrag2."Wartungsvertragsnr." + '.pdf', Wartungsvertrag2);
+              UNTIL Wartungsvertrag.NEXT = 0;
+            END;
+
+            //MESSAGE('%1',SalesHeader.COUNT+Shipments.COUNT+Invoices.COUNT+CreditMemo.COUNT+Wartungsvertrag.COUNT);
+            //MESSAGE('%1\%2',Invoices.COUNT,cache);
+          END;
+
+        2 :
+          BEGIN
+            //Nur Auftragsbest„tigungen
+            SalesHeader.RESET;
+            SalesHeader.SETFILTER("Document Type",'%1',SalesHeader."Document Type"::Order);
+            SalesHeader.SETFILTER("Sell-to Customer No.",'<>%1','');
+            SalesHeader.SETFILTER("Order Date",'%1',DocDate);
+            IF SalesHeader.FINDFIRST THEN BEGIN
+              REPEAT
+                DocExport := TRUE;
+                SalesHeader2.COPY(SalesHeader);
+                SalesHeader2.SETRECFILTER;
+                ReportNo := 50075;
+                IF (ReportNo <> 0) AND (DocExport) THEN
+                  REPORT.SAVEASPDF(ReportNo, AttachmentPath + SalesHeader2."No." + '.pdf', SalesHeader2);
+              UNTIL SalesHeader.NEXT = 0;
+            END;
+          END;
+
+        3 :
+          BEGIN
+            //Nur Auftrags„nderungsbest„tigungen
+            SalesHeader.RESET;
+            SalesHeader.SETFILTER("Document Type",'%1',SalesHeader."Document Type"::Order);
+            SalesHeader.SETFILTER("Sell-to Customer No.",'<>%1','');
+            SalesHeader.SETFILTER("Document Date",'%1',DocDate);
+            SalesHeader.SETFILTER("Posting Date",'<>%1',DocDate);
+            IF SalesHeader.FINDFIRST THEN BEGIN
+              REPEAT
+                DocExport := TRUE;
+                SalesHeader2.COPY(SalesHeader);
+                SalesHeader2.SETRECFILTER;
+                ReportNo := 50098;
+                IF (ReportNo <> 0) AND (DocExport) THEN
+                  REPORT.SAVEASPDF(ReportNo, AttachmentPath + SalesHeader2."No." + '.pdf', SalesHeader2);
+              UNTIL SalesHeader.NEXT = 0;
+            END;
+          END;
+
+      END;
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
