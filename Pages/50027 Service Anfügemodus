@@ -2,8 +2,8 @@ OBJECT Page 50027 Service Anfgemodus
 {
   OBJECT-PROPERTIES
   {
-    Date=04.03.20;
-    Time=15:45:00;
+    Date=23.09.20;
+    Time=16:40:53;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -32,16 +32,25 @@ OBJECT Page 50027 Service Anfgemodus
                          TempLizenzTab.SETRANGE("Auftragsnr.","Auftragsnr.");
                          TempLizenzTab.SETRANGE("Auftragszeilennr.","Auftragszeilennr.");
                          TempLizenzTab.SETRANGE(Fremderwerb,TRUE);
-                         IF TempLizenzTab.FINDFIRST THEN
+                         IF TempLizenzTab.FIND('-') THEN
                            REPEAT
                              Artikel.GET(TempLizenzTab."Artikelnr.");
                              IF Artikel."Item Tracking Code" <> 'KEINE' THEN BEGIN
                                IF ((TempLizenzTab."Artikelnr." = '') OR (TempLizenzTab."Seriennr." = '') AND ((Artikel."Item Tracking Code" = 'SERIENNR') OR (Artikel."Item Tracking Code" = 'SERIENNR+P')))
-                               OR (((Artikel."Item Tracking Code" = 'PRODUCTKEY') OR (Artikel."Item Tracking Code" = 'SERIENNR+P')) AND (TempLizenzTab."Product Key" = '')) THEN
-                                 IF CONFIRM(Text001,FALSE,FALSE) THEN
-                                   TempLizenzTab.DELETEALL
-                                 ELSE
-                                   ERROR('');
+                               OR (((Artikel."Item Tracking Code" = 'PRODUCTKEY') OR (Artikel."Item Tracking Code" = 'SERIENNR+P')) AND (TempLizenzTab."Product Key" = '')) THEN BEGIN
+                                 //Damit alte Pos. ohne Seriennr. ohne Meldung durchgehen
+                                 PruefeSystemPos.RESET;
+                                 PruefeSystemPos.SETRANGE(Art,PruefeSystemPos.Art::System);
+                                 PruefeSystemPos.SETRANGE("Auftragsnr.",TempLizenzTab."Urspr. Auftragsnr.");
+                                 PruefeSystemPos.SETRANGE("Auftragszeilennr.",TempLizenzTab."Urspr. Auftragszeilennr.");
+                                 PruefeSystemPos.SETRANGE("Nr.",TempLizenzTab."Nr.");
+                                 PruefeSystemPos.SETRANGE("Belegzeilennr.",TempLizenzTab."Belegzeilennr.");
+                                 IF NOT PruefeSystemPos.FINDFIRST THEN
+                                   IF CONFIRM(Text001,FALSE,FALSE) THEN
+                                     TempLizenzTab.DELETEALL
+                                   ELSE
+                                     ERROR('');
+                               END;
                              END;
                            UNTIL TempLizenzTab.NEXT = 0;
                        END;
@@ -118,7 +127,7 @@ OBJECT Page 50027 Service Anfgemodus
                              IF Fremderwerb = FALSE THEN BEGIN
                                IF Reklamiert AND Ersatzverfahren THEN BEGIN
                                  TempLizenzTab.RESET;
-                                 TempLizenzTab.SETFILTER("Lfd. Nr.",'%1',"Ersatz fr Lfd. Nr.");
+                                 TempLizenzTab.SETRANGE("Lfd. Nr.","Ersatz fr Lfd. Nr.");
                                  IF (TempLizenzTab.FINDFIRST) AND ("Seriennr." = TempLizenzTab."Seriennr.") THEN BEGIN END
                                    ELSE
                                      ERROR(Text000,FIELDCAPTION("Seriennr."));
@@ -254,6 +263,7 @@ OBJECT Page 50027 Service Anfgemodus
       Artikel@1140001 : Record 27;
       Text000@1140003 : TextConst 'DEU=Sie k”nnen %1 nicht mehr „ndern.';
       Text001@1140004 : TextConst 'DEU=Sie haben noch nicht alle Felder ausgefllt. Wenn Sie mit Ja best„tigen, werden vorhandene Datens„tze gel”scht.\M”chten Sie das Fenster wirklich schlieáen?';
+      TOPASServiceModul@1000000013 : Codeunit 50008;
       wartungsnr@1140007 : Code[120];
       Text002@1000000002 : TextConst 'DEU=Es konnte im Beleg eine zu der %1 passende Re-Instatement-Fee Kalkulation gefunden werden. Soll der Vertrag ab einem bestimmten Datum loslaufen?\Dann setzen Sie bitte das H„kchen im Feld %2.';
       Text003@1000000000 : TextConst 'DEU=In diesem Beleg konnte eine weitere Kalkulation in Zeile %1 mit šbereinstimmung der %2 und Serviceleistung gefunden werden. Sie wrden damit eine Service Doppelbuchung fr %2 %3 ausl”sen.\M”chten Sie den Vorgang dennoch fortsetzen?';
@@ -306,7 +316,7 @@ OBJECT Page 50027 Service Anfgemodus
     BEGIN
       IF (FromTempService.HASFILTER) THEN BEGIN
         CheckTempService.COPY(FromTempService);
-        CheckTempService.FINDFIRST;
+        CheckTempService.FINDSET;
         IF CheckTempService.COUNT >= 100 THEN
           EXIT;
         REPEAT
@@ -330,9 +340,10 @@ OBJECT Page 50027 Service Anfgemodus
               WITH ServiceZuordnung DO BEGIN
                 Item.GET(ServiceZuordnung."SUP Artikelnr.");
                 IF STRPOS(Item.Artikelgruppe,'FEE') <> 0 THEN EXIT;
-                laufzeit_start := GetNewServiceDates(ServiceZuordnung,"Belegnr.","Belegzeilennr.",CheckTempService."Seriennr.",CheckTempService."Product Key",Laufzeit,0,"Wartungsvertragsnr.",Buchungsdatum,0D);
-                laufzeit_ende := GetNewServiceDates(ServiceZuordnung,"Belegnr.","Belegzeilennr.",CheckTempService."Seriennr.",CheckTempService."Product Key",Laufzeit,1,"Wartungsvertragsnr.",Buchungsdatum,laufzeit_start);
-                laufzeit_start := LizenzdatumAngleichen(laufzeit_start,laufzeit_ende,Laufzeit);
+                laufzeit_start := TOPASServiceModul.GetNewServiceDates(ServiceZuordnung,"Belegnr.","Belegzeilennr.",CheckTempService."Seriennr.",CheckTempService."Product Key",Laufzeit,0,"Wartungsvertragsnr.",Buchungsdatum,0D);
+                laufzeit_ende := TOPASServiceModul.GetNewServiceDates(ServiceZuordnung,"Belegnr.","Belegzeilennr.",CheckTempService."Seriennr.",CheckTempService."Product Key",Laufzeit,1,"Wartungsvertragsnr.",Buchungsdatum,laufzeit_start);
+                IF laufzeit_start <> 0D THEN
+                  laufzeit_start := LizenzdatumAngleichen(laufzeit_start,laufzeit_ende,Laufzeit);
                 CheckTempService.Lizenzdatum := laufzeit_start;
                 CheckTempService."Ablaufdatum Serviceleistung" := laufzeit_ende;
                 CheckTempService.MODIFY;
@@ -353,178 +364,6 @@ OBJECT Page 50027 Service Anfgemodus
       END;
     END;
 
-    PROCEDURE GetNewServiceDates@1140006(ServiceKalkulation@1000000000 : Record 50027;Lieferscheinnr@1140002 : Code[20];Lieferscheinzeilennr@1140001 : Integer;Seriennr@1140000 : Code[20];ProductKey@1000000006 : Code[40];Laufzeit@1140011 : Code[20];Ausgabedatum@1140013 : 'Lizenzdatum,Ablaufdatum';Wartungsnr_Zuordnen@1140014 : Code[20];Buchungsdatum@1000000002 : Date;Neues_Startdatum@1000000003 : Date) : Date;
-    VAR
-      PruefeService@1140003 : Record 50024;
-      KopieServiceKalkulation@1000000004 : Record 50027;
-      Ermittle_Servicegruppe@1140008 : Record 50001;
-      Verbundene_Servicegruppe@1140009 : Record 50001;
-      Artikel_Servicegruppe@1140010 : Record 50001;
-      Artikel@1140006 : Record 27;
-      vertragsnr_basis@1000000005 : Code[20];
-      newdate@1000000001 : Date;
-    BEGIN
-      //Sonderfall: betrachet nun alle m”glichen Konstellationen bei nachtr„glichen Zubuchungen und gibt ggf. auch
-      //das Ablaufdatum anstatt des Lizenzdatums aus
-
-      WITH ServiceKalkulation DO BEGIN
-        IF ("SUP Artikelnr." = 'CHAMPS-RE_INSTATE#01') OR ("SUP Artikelnr." = 'RE_INSTATEMENT_FEE') THEN EXIT(0D);
-
-        IF (Wartungsnr_Zuordnen <> '') AND (Ausgabedatum = 0) THEN BEGIN
-        PruefeService.RESET;
-        PruefeService.SETFILTER(Art,'%1',PruefeService.Art::Service);
-        PruefeService.SETFILTER(Inaktiv,'%1',FALSE);
-        PruefeService.SETFILTER("Ablaufdatum Serviceleistung",'>=%1',Buchungsdatum);
-        PruefeService.SETFILTER("Wartungsvertragsnr.",'%1',Wartungsnr_Zuordnen);
-        IF PruefeService.FINDFIRST THEN
-          REPEAT
-            Artikel_Servicegruppe.RESET;
-            Artikel_Servicegruppe.SETRANGE("Tabellen ID",50024);
-            Artikel_Servicegruppe.SETRANGE("Feld ID",44);
-            Artikel_Servicegruppe.SETRANGE("Nr.","SUP Artikelnr.");
-            IF Artikel_Servicegruppe.FINDFIRST THEN BEGIN
-              Ermittle_Servicegruppe.RESET;
-              Ermittle_Servicegruppe.SETRANGE("Tabellen ID",50024);
-              Ermittle_Servicegruppe.SETRANGE("Feld ID",44);
-              Ermittle_Servicegruppe.SETRANGE("Nr.",PruefeService."SUP Artikelnr.");
-              IF Ermittle_Servicegruppe.FINDFIRST THEN BEGIN
-                IF Artikel_Servicegruppe."Einordnung Servicegruppe" =
-                  Ermittle_Servicegruppe."Einordnung Servicegruppe" THEN
-                    IF PruefeService.Lizenzdatum > Buchungsdatum THEN
-                      newdate := PruefeService.Lizenzdatum
-                    ELSE
-                      newdate := Buchungsdatum;
-              END;
-            END;
-          UNTIL (PruefeService.NEXT = 0) OR (newdate <> 0D)
-        ELSE
-          newdate := Buchungsdatum;
-        END;
-
-        Ermittle_Servicegruppe.RESET;
-        Ermittle_Servicegruppe.SETFILTER("Tabellen ID",'%1',50024);
-        Ermittle_Servicegruppe.SETFILTER("Feld ID",'%1',44);
-        Ermittle_Servicegruppe.SETFILTER("Nr.",'%1',"SUP Artikelnr.");
-        IF (Ermittle_Servicegruppe.FINDFIRST) AND (Ermittle_Servicegruppe."Einordnung Servicegruppe" <> 0) THEN BEGIN
-          //Prft, ob die gleiche oder sich gegenseitig verl„ngerbare Service Artikel gebucht wurden
-          Verbundene_Servicegruppe.RESET;
-          Verbundene_Servicegruppe.SETFILTER("Tabellen ID",'%1',50024);
-          Verbundene_Servicegruppe.SETFILTER("Feld ID",'%1',44);
-          Verbundene_Servicegruppe.SETFILTER("Einordnung Servicegruppe",'%1',Ermittle_Servicegruppe."Einordnung Servicegruppe");
-          Verbundene_Servicegruppe.FINDFIRST;
-            REPEAT
-              PruefeService.RESET;
-              PruefeService.SETCURRENTKEY("Ablaufdatum Serviceleistung","SUP Artikelnr.",Gruppierung);
-              PruefeService.SETFILTER(Art,'%1',PruefeService.Art::Service);
-              PruefeService.SETFILTER("Ablaufdatum Serviceleistung",'<>%1',0D);
-              //PruefeService.SETFILTER("Ablaufdatum Serviceleistung",'>%1',WORKDATE);
-              PruefeService.SETFILTER("Urspr. Lieferscheinnr.",'%1',Lieferscheinnr);
-              PruefeService.SETFILTER("Urspr. Lieferscheinzeilennr.",'%1',Lieferscheinzeilennr);
-              PruefeService.SETFILTER("Seriennr.",'%1',Seriennr);
-              PruefeService.SETFILTER("Product Key",'%1',ProductKey);
-              PruefeService.SETFILTER(Inaktiv,'%1',FALSE);
-              PruefeService.ASCENDING(FALSE);
-              IF PruefeService.FINDFIRST THEN
-                REPEAT
-                  Artikel_Servicegruppe.RESET;
-                  Artikel_Servicegruppe.SETFILTER("Tabellen ID",'%1',50024);
-                  Artikel_Servicegruppe.SETFILTER("Feld ID",'%1',44);
-                  Artikel_Servicegruppe.SETFILTER("Nr.",'%1',PruefeService."SUP Artikelnr.");
-                  IF (Artikel_Servicegruppe.FINDFIRST) AND (Artikel_Servicegruppe."Einordnung Servicegruppe" =
-                  Ermittle_Servicegruppe."Einordnung Servicegruppe") THEN
-                    IF Ausgabedatum = Ausgabedatum::Lizenzdatum THEN
-                      newdate := PruefeService."Ablaufdatum Serviceleistung";
-                UNTIL (PruefeService.NEXT = 0) OR (newdate <> 0D);
-            UNTIL (Verbundene_Servicegruppe.NEXT = 0) OR (newdate <> 0D);
-
-            //Nachtr„gliches Modul hinzu, das bisher noch nicht in Wartung steht, umweg ber Systemposition
-            IF newdate = 0D THEN BEGIN
-              //Holt die Wartungsvertragsnr. des Basissystems in der Kalkulation, wenn noch keine Systemposition existiert z.B. bei Fremderwerb
-              vertragsnr_basis := Wartungsnr_Zuordnen;
-              IF ("Vertragsnr. bernommen" = '') AND (vertragsnr_basis = '') THEN BEGIN
-                CLEAR(KopieServiceKalkulation);
-                KopieServiceKalkulation.SETRANGE("Nr.","Nr.");
-                KopieServiceKalkulation.SETRANGE("Zeilennr.","Zeilennr.");
-                KopieServiceKalkulation.SETRANGE(Basisger„t,TRUE);
-                IF KopieServiceKalkulation.FINDFIRST THEN BEGIN
-                  vertragsnr_basis := KopieServiceKalkulation."Vertragsnr. bernommen";
-                END;
-              END;
-              PruefeService.RESET;
-              PruefeService.SETCURRENTKEY("Ablaufdatum Serviceleistung","SUP Artikelnr.",Gruppierung);
-              PruefeService.SETFILTER(Art,'%1',PruefeService.Art::Service);
-              PruefeService.SETFILTER("Ablaufdatum Serviceleistung",'>%1',WORKDATE);
-              PruefeService.SETFILTER("Wartungsvertragsnr.",'%1',vertragsnr_basis);
-              //PruefeService.SETFILTER("Zu exportieren",'%1',TRUE);
-              PruefeService.SETFILTER(Basisger„t,'%1',TRUE);
-              PruefeService.SETFILTER(Inaktiv,'%1',FALSE);
-              PruefeService.ASCENDING(FALSE);
-              IF PruefeService.FINDFIRST THEN
-                REPEAT
-                  Artikel_Servicegruppe.RESET;
-                  Artikel_Servicegruppe.SETFILTER("Tabellen ID",'%1',50024);
-                  Artikel_Servicegruppe.SETFILTER("Feld ID",'%1',44);
-                  Artikel_Servicegruppe.SETFILTER("Nr.",'%1',PruefeService."SUP Artikelnr.");
-                  IF (Artikel_Servicegruppe.FINDFIRST) AND (Artikel_Servicegruppe."Einordnung Servicegruppe" =
-                    Ermittle_Servicegruppe."Einordnung Servicegruppe") THEN BEGIN
-                    IF (Laufzeit <> '') AND (STRPOS(Laufzeit,'M') <> 0) THEN
-                      //Muss hier runtergerechnet werden, da anschlieáend wieder drauf gerechnet wird
-                      IF Ausgabedatum = Ausgabedatum::Lizenzdatum THEN
-                        newdate := CALCDATE('-1T',CALCDATE('-' + PruefeService."Dauer Serviceleistung",PruefeService."Ablaufdatum Serviceleistung"))
-                      ELSE
-                        newdate := PruefeService."Ablaufdatum Serviceleistung";
-                  END;
-                UNTIL (PruefeService.NEXT = 0) OR (newdate <> 0D);
-            END;
-        END ELSE BEGIN
-          //Nur die gleiche Service Artikelnr kann verl„ngert werden Bsp. EXT-HW
-          PruefeService.RESET;
-          PruefeService.SETCURRENTKEY("Ablaufdatum Serviceleistung","SUP Artikelnr.",Gruppierung);
-          PruefeService.SETFILTER(Art,'%1',PruefeService.Art::Service);
-          PruefeService.SETFILTER("SUP Artikelnr.",'%1',"SUP Artikelnr.");
-          PruefeService.SETFILTER("Ablaufdatum Serviceleistung",'<>%1',0D);
-          PruefeService.SETFILTER("Urspr. Lieferscheinnr.",'%1',Lieferscheinnr);
-          PruefeService.SETFILTER("Urspr. Lieferscheinzeilennr.",'%1',Lieferscheinzeilennr);
-          PruefeService.SETFILTER("Seriennr.",'%1',Seriennr);
-          PruefeService.SETFILTER("Product Key",'%1',ProductKey);
-          PruefeService.SETFILTER(Inaktiv,'%1',FALSE);
-          IF PruefeService.FINDLAST THEN BEGIN
-            newdate := PruefeService."Ablaufdatum Serviceleistung"
-          END ELSE
-            newdate := 0D;
-        END;
-
-        IF Ausgabedatum = 0 THEN BEGIN
-
-          IF ("Laufzeit ab Buchungsdatum") AND (newdate < Buchungsdatum) THEN
-            newdate := Buchungsdatum;
-
-          IF ("Beachte Startdatum") AND (newdate < Startdatum ) THEN
-            newdate := Startdatum;
-
-          IF newdate = 0D THEN newdate := Buchungsdatum;
-
-          IF (PrfeServiceVerl„ngerung("SUP Artikelnr.",Lieferscheinnr,Lieferscheinzeilennr,Seriennr,ProductKey)) AND
-             ((Startdatum = 0D) OR ("Beachte Startdatum" = FALSE )) THEN
-           newdate := CALCDATE('+1T',newdate);
-
-        END;
-
-        IF (Ausgabedatum = 1) THEN BEGIN
-
-          IF (newdate = 0D) AND (Neues_Startdatum <> 0D) THEN
-            newdate := CALCDATE(Laufzeit,Neues_Startdatum) - 1;
-
-          IF Ablaufdatum <> 0D THEN
-            newdate := Ablaufdatum;
-
-        END;
-
-      END;
-
-      EXIT(newdate);
-    END;
-
     LOCAL PROCEDURE CheckCrossCalculationsValid@1000000000();
     VAR
       coexistent@1000000000 : Integer;
@@ -541,13 +380,13 @@ OBJECT Page 50027 Service Anfgemodus
         TempLizenzTab.RESET;
         TempLizenzTab.SETRANGE(Art,TempLizenzTab.Art::Tempor„r);
         TempLizenzTab.SETRANGE("Auftragsnr.","Auftragsnr.");
-        TempLizenzTab.SETFILTER("Auftragszeilennr.",'<>%1',"Auftragszeilennr.");
         TempLizenzTab.SETRANGE("Nr.","Nr.");
         TempLizenzTab.SETRANGE("Belegzeilennr.","Belegzeilennr.");
         TempLizenzTab.SETRANGE("Artikelnr.","Artikelnr.");
         TempLizenzTab.SETRANGE("Seriennr.","Seriennr.");
         TempLizenzTab.SETRANGE(Vormerkung,TRUE);
-        IF TempLizenzTab.FINDFIRST THEN BEGIN
+        TempLizenzTab.SETFILTER("Auftragszeilennr.",'<>%1',"Auftragszeilennr.");
+        IF TempLizenzTab.FINDSET THEN BEGIN
           REPEAT
             ServiceZuordnung.RESET;
             ServiceZuordnung.SETRANGE("Nr.",TempLizenzTab."Auftragsnr.");
@@ -587,7 +426,7 @@ OBJECT Page 50027 Service Anfgemodus
         laufzeit_ende_cache := '';
         CheckTempService.COPY(FromTempService);
         CheckTempService.SETRANGE(Vormerkung,TRUE);
-        IF CheckTempService.FINDFIRST THEN
+        IF CheckTempService.FINDSET THEN
           REPEAT
             IF (laufzeit_start_cache <> '') AND (STRPOS(laufzeit_start_cache,FORMAT(CheckTempService.Lizenzdatum))= 0) THEN
               laufzeit_abweichungen := TRUE;
