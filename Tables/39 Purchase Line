@@ -2,10 +2,10 @@ OBJECT Table 39 Purchase Line
 {
   OBJECT-PROPERTIES
   {
-    Date=04.04.18;
-    Time=16:56:09;
+    Date=15.11.18;
+    Time=17:00:00;
     Modified=Yes;
-    Version List=NAVW19.00.00.47042,NAVDACH9.00.00.47042,TOP1.00;
+    Version List=NAVW19.00.00.50458,NAVDACH9.00.00.50458,TOP1.03;
   }
   PROPERTIES
   {
@@ -38,10 +38,10 @@ OBJECT Table 39 Purchase Line
                IF ((Quantity <> 0) OR (xRec.Quantity <> 0)) AND ItemExists(xRec."No.") THEN
                  ReservePurchLine.VerifyChange(Rec,xRec);
 
-               //TOPAS 31.03.17 ST - šbersteuerung des Geplanten Wareneingangsdatums
+               //TOPAS 31.03.17 ST - šbersteuerung des Geplanten Wareneingangsdatums +
                IF "Promised Receipt Date" <> xRec."Promised Receipt Date" THEN
                  VALIDATE("Planned Receipt Date","Promised Receipt Date");
-               //TOPAS Ende
+               //TOPAS -
              END;
 
     OnDelete=VAR
@@ -77,21 +77,16 @@ OBJECT Table 39 Purchase Line
                  SalesOrderLine.MODIFY;
                END;
 
-               IF "Special Order Sales Line No." <> 0 THEN BEGIN
+               IF ("Special Order Sales Line No." <> 0) AND ("Quantity Invoiced" = 0) THEN BEGIN
                  LOCKTABLE;
                  SalesOrderLine.LOCKTABLE;
-                 IF "Document Type" = "Document Type"::Order THEN BEGIN
-                   SalesOrderLine.GET(SalesOrderLine."Document Type"::Order,"Special Order Sales No.","Special Order Sales Line No.");
+                 IF SalesOrderLine.GET(
+                      SalesOrderLine."Document Type"::Order,"Special Order Sales No.","Special Order Sales Line No.")
+                 THEN BEGIN
                    SalesOrderLine."Special Order Purchase No." := '';
                    SalesOrderLine."Special Order Purch. Line No." := 0;
                    SalesOrderLine.MODIFY;
-                 END ELSE
-                   IF SalesOrderLine.GET(SalesOrderLine."Document Type"::Order,"Special Order Sales No.","Special Order Sales Line No.") THEN
-                     BEGIN
-                     SalesOrderLine."Special Order Purchase No." := '';
-                     SalesOrderLine."Special Order Purch. Line No." := 0;
-                     SalesOrderLine.MODIFY;
-                   END;
+                 END;
                END;
 
                NonstockItemMgt.DelNonStockPurch(Rec);
@@ -358,12 +353,12 @@ OBJECT Table 39 Purchase Line
                                                                       Item.TESTFIELD(Blocked,FALSE);
                                                                       Item.TESTFIELD("Gen. Prod. Posting Group");
 
-                                                                      //TOPAS 15.04.08 ST Beginn
+                                                                      //TOPAS 15.04.08 ST +
                                                                       "Artikelnr. 2" := Item."No. 2";
                                                                       "Manufacturer Code" := Item."Manufacturer Code";
                                                                       IF Item."Item Tracking Code" = '' THEN
                                                                         ERROR('Fr Artikel %1 wurde noch kein Artikelverfolgungscode ausgew„hlt!',Item."No.");
-                                                                      //TOPAS Ende
+                                                                      //TOPAS -
 
                                                                       IF Item.Type = Item.Type::Inventory THEN BEGIN
                                                                         Item.TESTFIELD("Inventory Posting Group");
@@ -554,8 +549,6 @@ OBJECT Table 39 Purchase Line
                                                                 IF NOT TrackingBlocked THEN
                                                                   CheckDateConflict.PurchLineCheck(Rec,CurrFieldNo <> 0);
 
-                                                                CheckReservationDateConflict(FIELDNO("Expected Receipt Date"));
-
                                                                 IF "Expected Receipt Date" <> 0D THEN
                                                                   VALIDATE(
                                                                     "Planned Receipt Date",
@@ -628,9 +621,9 @@ OBJECT Table 39 Purchase Line
                                                                 IF (Quantity * xRec.Quantity < 0) OR (Quantity = 0) THEN
                                                                   InitItemAppl;
 
-                                                                IF Type = Type::Item THEN BEGIN
-                                                                    UpdateDirectUnitCost(FIELDNO(Quantity))
-                                                                END ELSE
+                                                                IF Type = Type::Item THEN
+                                                                  UpdateDirectUnitCost(FIELDNO(Quantity))
+                                                                ELSE
                                                                   VALIDATE("Line Discount %");
 
                                                                 UpdateWithWarehouseReceive;
@@ -829,14 +822,7 @@ OBJECT Table 39 Purchase Line
                                                                 TestStatusOpen;
                                                                 TESTFIELD(Quantity);
                                                                 IF xRec."Line Discount Amount" <> "Line Discount Amount" THEN
-                                                                  IF ROUND(Quantity * "Direct Unit Cost",Currency."Amount Rounding Precision") <> 0 THEN
-                                                                    "Line Discount %" :=
-                                                                      ROUND(
-                                                                        "Line Discount Amount" /
-                                                                        ROUND(Quantity * "Direct Unit Cost",Currency."Amount Rounding Precision") * 100,
-                                                                        0.00001)
-                                                                  ELSE
-                                                                    "Line Discount %" := 0;
+                                                                  UpdateLineDiscPct;
                                                                 "Inv. Discount Amount" := 0;
                                                                 "Inv. Disc. Amount to Invoice" := 0;
                                                                 UpdateAmounts;
@@ -991,7 +977,8 @@ OBJECT Table 39 Purchase Line
                                                    AccessByPermission=TableData 27=R;
                                                    CaptionML=[DEU=Ausgleich mit Artikelposten;
                                                               ENU=Appl.-to Item Entry] }
-    { 40  ;   ;Shortcut Dimension 1 Code;Code20   ;TableRelation="Dimension Value".Code WHERE (Global Dimension No.=CONST(1));
+    { 40  ;   ;Shortcut Dimension 1 Code;Code20   ;TableRelation="Dimension Value".Code WHERE (Global Dimension No.=CONST(1),
+                                                                                               Blocked=CONST(No));
                                                    OnValidate=BEGIN
                                                                 ValidateShortcutDimCode(1,"Shortcut Dimension 1 Code");
                                                               END;
@@ -999,7 +986,8 @@ OBJECT Table 39 Purchase Line
                                                    CaptionML=[DEU=Shortcutdimensionscode 1;
                                                               ENU=Shortcut Dimension 1 Code];
                                                    CaptionClass='1,2,1' }
-    { 41  ;   ;Shortcut Dimension 2 Code;Code20   ;TableRelation="Dimension Value".Code WHERE (Global Dimension No.=CONST(2));
+    { 41  ;   ;Shortcut Dimension 2 Code;Code20   ;TableRelation="Dimension Value".Code WHERE (Global Dimension No.=CONST(2),
+                                                                                               Blocked=CONST(No));
                                                    OnValidate=BEGIN
                                                                 ValidateShortcutDimCode(2,"Shortcut Dimension 2 Code");
                                                               END;
@@ -2283,7 +2271,7 @@ OBJECT Table 39 Purchase Line
 
                                                                 ReturnedCrossRef.INIT;
                                                                 IF "Cross-Reference No." <> '' THEN BEGIN
-                                                                  DistIntegration.ICRLookupPurchaseItem(Rec,ReturnedCrossRef);
+                                                                  DistIntegration.ICRLookupPurchaseItem(Rec,ReturnedCrossRef,CurrFieldNo <> 0);
                                                                   VALIDATE("No.",ReturnedCrossRef."Item No.");
                                                                   SetVendorItemNo;
                                                                   IF ReturnedCrossRef."Variant Code" <> '' THEN
@@ -2339,7 +2327,8 @@ OBJECT Table 39 Purchase Line
                                                               END;
 
                                                    CaptionML=[DEU=Einkaufscode;
-                                                              ENU=Purchasing Code] }
+                                                              ENU=Purchasing Code];
+                                                   Editable=No }
     { 5712;   ;Product Group Code  ;Code10        ;TableRelation="Product Group".Code WHERE (Item Category Code=FIELD(Item Category Code));
                                                    CaptionML=[DEU=Produktgruppencode;
                                                               ENU=Product Group Code] }
@@ -2387,7 +2376,7 @@ OBJECT Table 39 Purchase Line
                                                    Editable=No }
     { 5790;   ;Requested Receipt Date;Date        ;OnValidate=BEGIN
                                                                 TestStatusOpen;
-                                                                //TOPAS 31.03.17 ST - auskommentiert
+                                                                //TOPAS 31.03.17 ST - auskommentiert +
                                                                 {
                                                                 IF (CurrFieldNo <> 0) AND
                                                                    ("Promised Receipt Date" <> 0D)
@@ -2397,7 +2386,7 @@ OBJECT Table 39 Purchase Line
                                                                     FIELDCAPTION("Requested Receipt Date"),
                                                                     FIELDCAPTION("Promised Receipt Date"));
                                                                 }
-                                                                //TOPAS Ende
+                                                                //TOPAS -
 
                                                                 IF "Requested Receipt Date" <> 0D THEN
                                                                   VALIDATE("Order Date",
@@ -2408,10 +2397,10 @@ OBJECT Table 39 Purchase Line
                                                                   IF "Requested Receipt Date" <> xRec."Requested Receipt Date" THEN
                                                                     GetUpdateBasicDates;
 
-                                                                //TOPAS 12.02.09 ST
+                                                                //TOPAS 12.02.09 ST +
                                                                 IF "Promised Receipt Date" <> 0D THEN
                                                                   VALIDATE("Expected Receipt Date","Promised Receipt Date");
-                                                                //TOPAS Ende
+                                                                //TOPAS -
                                                               END;
 
                                                    AccessByPermission=TableData 99000880=R;
@@ -2432,6 +2421,8 @@ OBJECT Table 39 Purchase Line
                                                               ENU=Promised Receipt Date] }
     { 5792;   ;Lead Time Calculation;DateFormula  ;OnValidate=BEGIN
                                                                 TestStatusOpen;
+                                                                LeadTimeMgt.CheckLeadTimeIsNotNegative("Lead Time Calculation");
+
                                                                 IF "Requested Receipt Date" <> 0D THEN BEGIN
                                                                   VALIDATE("Planned Receipt Date");
                                                                 END ELSE
@@ -2459,10 +2450,15 @@ OBJECT Table 39 Purchase Line
                                                                 TestStatusOpen;
                                                                 IF "Promised Receipt Date" <> 0D THEN BEGIN
                                                                   IF "Planned Receipt Date" <> 0D THEN
+                                                                    //TOPAS 15.11.18 ST - blockiert das erneute šberschreiben des Erwarteten Wareneingangsdatums +
+                                                                    BEGIN END
+                                                                    {
                                                                     "Expected Receipt Date" :=
                                                                       CalendarMgmt.CalcDateBOC(InternalLeadTimeDays("Planned Receipt Date"),"Planned Receipt Date",
                                                                         CalChange."Source Type"::Location,"Location Code",'',
                                                                         CalChange."Source Type"::Location,"Location Code",'',FALSE)
+                                                                            }
+                                                                    //TOPAS -
                                                                   ELSE
                                                                     "Expected Receipt Date" := "Planned Receipt Date";
                                                                 END ELSE
@@ -2480,7 +2476,6 @@ OBJECT Table 39 Purchase Line
 
                                                                 IF NOT TrackingBlocked THEN
                                                                   CheckDateConflict.PurchLineCheck(Rec,CurrFieldNo <> 0);
-                                                                CheckReservationDateConflict(FIELDNO("Planned Receipt Date"));
                                                               END;
 
                                                    AccessByPermission=TableData 99000880=R;
@@ -2513,7 +2508,6 @@ OBJECT Table 39 Purchase Line
 
                                                                 IF NOT TrackingBlocked THEN
                                                                   CheckDateConflict.PurchLineCheck(Rec,CurrFieldNo <> 0);
-                                                                CheckReservationDateConflict(FIELDNO("Order Date"));
                                                               END;
 
                                                    AccessByPermission=TableData 120=R;
@@ -2893,8 +2887,8 @@ OBJECT Table 39 Purchase Line
       Text052@1053 : TextConst 'DEU=Die Menge, die Sie fakturieren m”chten, ist gr”áer als die Menge der Lieferung %1.;ENU=The quantity that you are trying to invoice is greater than the quantity in receipt %1.';
       Text053@1054 : TextConst 'DEU=muss dasselbe Vorzeichen haben wie die Rcklieferung;ENU=must have the same sign as the return shipment';
       Text054@1055 : TextConst 'DEU=Die Menge, die Sie fakturieren m”chten, ist gr”áer als die Menge der Rcklieferung %1.;ENU=The quantity that you are trying to invoice is greater than the quantity in return shipment %1.';
-      DataConflictQst@1094 : TextConst 'DEU=Die Žnderung fhrt zu einem Datumskonflikt bei vorhandenen Reservierungen. M”chten Sie fortfahren?;ENU=The change creates a date conflict with existing reservations. Do you want to continue?';
       PurchSetupRead@1096 : Boolean;
+      LineDiscountPctErr@1200 : TextConst 'DEU=Der Wert im "Zeilenrabatt %" muss zwischen 0 und 100 liegen.;ENU=The value in the Line Discount % field must be between 0 and 100.';
 
     PROCEDURE InitOutstanding@16();
     BEGIN
@@ -3102,7 +3096,7 @@ OBJECT Table 39 Purchase Line
         EXIT;
 
       IF Type = Type::Item THEN BEGIN
-        //TOPAS + 19.02.09 ST - Neuholen des Einstandspreises verhindern, ausser beim Wert 0
+        //TOPAS 19.02.09 ST - Neuholen des Einstandspreises verhindern, ausser beim Wert 0 +
         IF "Direct Unit Cost" = 0 THEN BEGIN
         //TOPAS -
           GetPurchHeader;
@@ -3182,8 +3176,8 @@ OBJECT Table 39 Purchase Line
       VATBaseAmount@1003 : Decimal;
       LineAmountChanged@1002 : Boolean;
     BEGIN
-      IF CurrFieldNo <> FIELDNO("Allow Invoice Disc.") THEN
-        TESTFIELD(Type);
+      IF Type = Type::" " THEN
+        EXIT;
       GetPurchHeader;
 
       VATBaseAmount := "VAT Base Amount";
@@ -3705,6 +3699,9 @@ OBJECT Table 39 Purchase Line
       TotalQtyToAssign@1001 : Decimal;
       TotalAmtToAssign@1002 : Decimal;
     BEGIN
+      IF "Document Type" = "Document Type"::"Blanket Order" THEN
+        EXIT;
+
       CALCFIELDS("Qty. Assigned","Qty. to Assign");
       IF ABS("Quantity Invoiced") > ABS(("Qty. Assigned" + "Qty. to Assign")) THEN
         ERROR(Text032,FIELDCAPTION("Quantity Invoiced"),FIELDCAPTION("Qty. Assigned"),FIELDCAPTION("Qty. to Assign"));
@@ -3772,10 +3769,11 @@ OBJECT Table 39 Purchase Line
 
     LOCAL PROCEDURE DeleteChargeChargeAssgnt@5804(DocType@1000 : Option;DocNo@1001 : Code[20];DocLineNo@1002 : Integer);
     BEGIN
-      IF "Quantity Invoiced" <> 0 THEN BEGIN
-        CALCFIELDS("Qty. Assigned");
-        TESTFIELD("Qty. Assigned","Quantity Invoiced");
-      END;
+      IF DocType <> "Document Type"::"Blanket Order" THEN
+        IF "Quantity Invoiced" <> 0 THEN BEGIN
+          CALCFIELDS("Qty. Assigned");
+          TESTFIELD("Qty. Assigned","Quantity Invoiced");
+        END;
       ItemChargeAssgntPurch.RESET;
       ItemChargeAssgntPurch.SETRANGE("Document Type",DocType);
       ItemChargeAssgntPurch.SETRANGE("Document No.",DocNo);
@@ -4024,11 +4022,8 @@ OBJECT Table 39 Purchase Line
                     "VAT Difference" := ROUND(VATDifference,Currency."Amount Rounding Precision");
                 END;
 
-                IF QtyType = QtyType::General THEN BEGIN
-                  Amount := NewAmount;
-                  "Amount Including VAT" := ROUND(NewAmountIncludingVAT,Currency."Amount Rounding Precision");
-                  "VAT Base Amount" := NewVATBaseAmount;
-                END;
+                IF QtyType = QtyType::General THEN
+                  UpdateBaseAmounts(NewAmount,ROUND(NewAmountIncludingVAT,Currency."Amount Rounding Precision"),NewVATBaseAmount);
                 InitOutstanding;
                 IF NOT ((Type = Type::"Charge (Item)") AND ("Quantity Invoiced" <> "Qty. Assigned")) THEN BEGIN
                   SetUpdateFromVAT(TRUE);
@@ -4675,8 +4670,19 @@ OBJECT Table 39 Purchase Line
         EXIT(0);
 
       GetPurchHeader;
-      LineAmount := ROUND(QtyToHandle * "Direct Unit Cost",Currency."Amount Rounding Precision");
-      LineDiscAmount := ROUND("Line Discount Amount" * QtyToHandle / Quantity,Currency."Amount Rounding Precision");
+
+      IF "Prepmt Amt to Deduct" = 0 THEN
+        LineAmount := ROUND(QtyToHandle * "Direct Unit Cost",Currency."Amount Rounding Precision")
+      ELSE BEGIN
+        LineAmount := ROUND(Quantity * "Direct Unit Cost",Currency."Amount Rounding Precision");
+        LineAmount := ROUND(QtyToHandle * LineAmount / Quantity,Currency."Amount Rounding Precision");
+      END;
+
+      IF QtyToHandle <> Quantity THEN
+        LineDiscAmount := ROUND(LineAmount * "Line Discount %" / 100,Currency."Amount Rounding Precision")
+      ELSE
+        LineDiscAmount := "Line Discount Amount";
+
       EXIT(LineAmount - LineDiscAmount);
     END;
 
@@ -5037,20 +5043,6 @@ OBJECT Table 39 Purchase Line
       EXIT(Item.Type = Item.Type::Service);
     END;
 
-    LOCAL PROCEDURE CheckReservationDateConflict@1502(DateFieldNo@1000 : Integer);
-    VAR
-      ReservEntry@1002 : Record 337;
-      PurchLineReserve@1001 : Codeunit 99000834;
-    BEGIN
-      IF CurrFieldNo = DateFieldNo THEN
-        IF PurchLineReserve.FindReservEntry(Rec,ReservEntry) THEN BEGIN
-          ReservEntry.SETFILTER("Shipment Date",'<%1',"Expected Receipt Date");
-          IF NOT ReservEntry.ISEMPTY THEN
-            IF NOT CONFIRM(DataConflictQst) THEN
-              ERROR('');
-        END;
-    END;
-
     LOCAL PROCEDURE ReservEntryExist@78() : Boolean;
     VAR
       NewReservEntry@1000 : Record 337;
@@ -5260,6 +5252,32 @@ OBJECT Table 39 Purchase Line
       TESTFIELD("Return Shipment No.",'');
     END;
 
+    LOCAL PROCEDURE UpdateLineDiscPct@132();
+    VAR
+      LineDiscountPct@1000 : Decimal;
+    BEGIN
+      IF ROUND(Quantity * "Direct Unit Cost",Currency."Amount Rounding Precision") <> 0 THEN BEGIN
+        LineDiscountPct := ROUND(
+            "Line Discount Amount" / ROUND(Quantity * "Direct Unit Cost",Currency."Amount Rounding Precision") * 100,
+            0.00001);
+        IF NOT (LineDiscountPct IN [0..100]) THEN
+          ERROR(LineDiscountPctErr);
+        "Line Discount %" := LineDiscountPct;
+      END ELSE
+        "Line Discount %" := 0;
+    END;
+
+    LOCAL PROCEDURE UpdateBaseAmounts@173(NewAmount@1000 : Decimal;NewAmountIncludingVAT@1001 : Decimal;NewVATBaseAmount@1002 : Decimal);
+    BEGIN
+      Amount := NewAmount;
+      "Amount Including VAT" := NewAmountIncludingVAT;
+      "VAT Base Amount" := NewVATBaseAmount;
+      IF NOT PurchHeader."Prices Including VAT" AND (Amount > 0) AND (Amount < "Prepmt. Line Amount") THEN
+        "Prepmt. Line Amount" := Amount;
+      IF PurchHeader."Prices Including VAT" AND ("Amount Including VAT" > 0) AND ("Amount Including VAT" < "Prepmt. Line Amount") THEN
+        "Prepmt. Line Amount" := "Amount Including VAT";
+    END;
+
     BEGIN
     {
       Lfd.Nr. Version   Datum       User  Beschreibung
@@ -5270,7 +5288,8 @@ OBJECT Table 39 Purchase Line
       4       TOP1.00   31.03.17    ST    Logiken unter OnModify, No., Quantity, Requested Receipt Date angepasst
       5       TOP1.00   11.05.17    ST    Feld "Cross-Reference No." von Code 20 auf 40 erh”ht
       6       TOP1.01   16.01.18    ST    Fehler (durch TOPAS) behoben, der "Line Amount" Neu Errechnung verhindert
-      7       TOp1.02   04.04.18    ST    Fkt. ServiceDCkalkulieren nach CU 50008 bertragen
+      7       TOP1.02   04.04.18    ST    Fkt. ServiceDCkalkulieren nach CU 50008 bertragen
+      8       TOP1.03   15.11.18    ST    Feld "Expected Receipt Date" wird nicht mehr durch "Promised Receipt Date" berschrieben
     }
     END.
   }
