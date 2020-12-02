@@ -2,8 +2,8 @@ OBJECT Page 50027 Service Anfgemodus
 {
   OBJECT-PROPERTIES
   {
-    Date=23.09.20;
-    Time=16:40:53;
+    Date=26.11.20;
+    Time=12:30:25;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -98,6 +98,17 @@ OBJECT Page 50027 Service Anfgemodus
                                  END;
 
                                  CurrPage.UPDATE;
+                               END;
+                                }
+      { 1000000003;2 ;Action    ;
+                      Name=AutoFillTracking;
+                      CaptionML=DEU=Automatisch Auffllen;
+                      Promoted=Yes;
+                      Image=AutofillQtyToHandle;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 CurrPage.SAVERECORD;
+                                 IF AutoFillTempSystemPos(Rec) = FALSE THEN MESSAGE(Text014,FIELDCAPTION("Seriennr."),FIELDCAPTION("Product Key"));
                                END;
                                 }
     }
@@ -277,6 +288,11 @@ OBJECT Page 50027 Service Anfgemodus
       laufzeit_abweichungen@1000000011 : Boolean;
       Text005@1000000012 : TextConst 'DEU=Es wurden verschiedene Laufzeiten festgestellt, bitte korrigieren Sie ggf. die Kalkulation.';
       laufzeit_abweichungen_anzeigen@1000000014 : Boolean;
+      Text010@1000000019 : TextConst 'DEU=Der Artikel ist so eingestellt, dass Sie eine Auswahl des Feldes treffen mssen, dass ausgefllt werden soll. Das andere Feld ist dann zur Eingabe gesperrt und wird automatisch mit einem Pseudowert belegt.\\Welches Feld m”chten Sie nun bearbeiten?';
+      Text011@1000000018 : TextConst 'DEU=%1,%2';
+      Text012@1000000017 : TextConst 'DEU=Sie haben die Auswahl abgebrochen, der Standardwert wird auf %1 festgelegt.';
+      Text013@1000000016 : TextConst 'DEU=M”chten Sie die Restmenge von %1 Stck auffllen lassen?';
+      Text014@1000000015 : TextConst 'DEU=Der Vorgang konnte nicht durchgefhrt werden. Es muss mindestens eine Zeile mit einer gltige(n) %1 bzw. %2  mit _LIC vorbelegt und die Restmenge darf nicht 0 sein.';
 
     PROCEDURE AktualisiereWartungsvertragsnr@1140000();
     VAR
@@ -437,6 +453,110 @@ OBJECT Page 50027 Service Anfgemodus
           UNTIL CheckTempService.NEXT = 0;
       END;
       EXIT(laufzeit_abweichungen);
+    END;
+
+    LOCAL PROCEDURE AutoFillTempSystemPos@1000000004(TempSystemPos@1000000000 : Record 50024) : Boolean;
+    VAR
+      CopyTempSystemPos@1000000001 : Record 50024;
+      CheckTempSystemPos@1000000010 : Record 50024;
+      Item@1000000002 : Record 27;
+      ProductKeyOnly@1000000004 : Boolean;
+      SerialNoOnly@1000000007 : Boolean;
+      selection@1000000008 : Integer;
+      UndefinedQtyArray@1000000009 : Integer;
+      start_serialno@1000000006 : Code[20];
+      start_pk@1000000012 : Code[40];
+      highest_index@1000000005 : Integer;
+      actual_index@1000000011 : Integer;
+      i@1000000003 : Integer;
+    BEGIN
+      TempSystemPos.TESTFIELD("Artikelnr.");
+      TempSystemPos.TESTFIELD(Fremderwerb);
+      Item.GET(TempSystemPos."Artikelnr.");
+      SerialNoOnly := FALSE;
+      ProductKeyOnly := FALSE;
+      UndefinedQtyArray := 0;
+      highest_index := 0;
+      IF Item."Item Tracking Code" = 'SN-ODER-PK' THEN BEGIN
+        selection := STRMENU(STRSUBSTNO(Text011,FIELDCAPTION("Seriennr."),FIELDCAPTION("Product Key")),3,Text010);
+        IF selection = 0 THEN BEGIN
+          MESSAGE(Text012,FIELDCAPTION("Seriennr."));
+          SerialNoOnly := TRUE;
+        END;
+        IF selection = 1 THEN
+          SerialNoOnly := TRUE;
+        IF selection = 2 THEN
+          ProductKeyOnly := TRUE;
+      END;
+
+      IF Item."Item Tracking Code" = 'SERIENNR' THEN
+        SerialNoOnly := TRUE;
+
+      IF Item."Item Tracking Code" = 'PRODUCTKEY' THEN
+        ProductKeyOnly := TRUE;
+
+      CheckTempSystemPos.RESET;
+      CheckTempSystemPos.SETRANGE(Art,CheckTempSystemPos.Art::Tempor„r);
+      CheckTempSystemPos.SETRANGE("Auftragsnr.",TempSystemPos."Auftragsnr.");
+      CheckTempSystemPos.SETRANGE("Auftragszeilennr.",TempSystemPos."Auftragszeilennr.");
+      CheckTempSystemPos.SETRANGE("Nr.",TempSystemPos."Nr.");
+      CheckTempSystemPos.SETRANGE("Belegzeilennr.",TempSystemPos."Belegzeilennr.");
+      CheckTempSystemPos.SETRANGE("Artikelnr.",TempSystemPos."Artikelnr.");
+      IF SerialNoOnly THEN
+        CheckTempSystemPos.SETRANGE("Seriennr.",'');
+      IF ProductKeyOnly THEN
+        CheckTempSystemPos.SETRANGE("Product Key",'');
+      IF CheckTempSystemPos.FINDFIRST THEN BEGIN
+        UndefinedQtyArray := CheckTempSystemPos.COUNT;
+        IF (Item.Serviceklassifizierung = 'SOFTWARE') AND ((SerialNoOnly) OR (ProductKeyOnly)) THEN BEGIN
+          IF (TempSystemPos.COUNT > 0) AND (UndefinedQtyArray > 0)
+          AND (((TempSystemPos."Product Key" <> '') AND (ProductKeyOnly) AND (STRPOS((TempSystemPos."Product Key"),'LIC') <> 0))
+          OR ((TempSystemPos."Seriennr." <> '') AND (SerialNoOnly) AND (STRPOS((TempSystemPos."Seriennr."),'LIC') <> 0))) THEN BEGIN
+            IF CONFIRM(Text013,TRUE,UndefinedQtyArray) = TRUE THEN BEGIN
+              REPEAT
+                IF ProductKeyOnly THEN BEGIN
+                  IF highest_index = 0 THEN BEGIN
+                    CopyTempSystemPos.COPYFILTERS(CheckTempSystemPos);
+                    CopyTempSystemPos.SETFILTER("Product Key",'<>%1','');
+                    CopyTempSystemPos.FINDFIRST;
+                    start_pk :=  COPYSTR(CopyTempSystemPos."Product Key",1,STRPOS(CopyTempSystemPos."Product Key",'_LIC') +3);
+                    REPEAT
+                      IF STRLEN(COPYSTR(CopyTempSystemPos."Product Key",STRPOS(CopyTempSystemPos."Product Key", '_LIC') +4)) > 0 THEN
+                        EVALUATE(actual_index , COPYSTR(CopyTempSystemPos."Product Key",STRPOS(CopyTempSystemPos."Product Key", '_LIC') +4));
+                      IF actual_index >= highest_index THEN
+                        highest_index := actual_index;
+                    UNTIL CopyTempSystemPos.NEXT = 0;
+                    highest_index += 1;
+                  END;
+                  CheckTempSystemPos.VALIDATE("Product Key",start_pk + FORMAT(highest_index));
+                  CheckTempSystemPos.MODIFY;
+                  highest_index += 1;
+                END;
+                IF SerialNoOnly THEN BEGIN
+                  IF highest_index = 0 THEN BEGIN
+                    CopyTempSystemPos.COPYFILTERS(CheckTempSystemPos);
+                    CopyTempSystemPos.SETFILTER("Seriennr.",'<>%1','');
+                    CopyTempSystemPos.FINDFIRST;
+                    start_serialno :=  COPYSTR(CopyTempSystemPos."Seriennr.",1,STRPOS(CopyTempSystemPos."Seriennr.",'_LIC') +3);
+                    REPEAT
+                      IF STRLEN(COPYSTR(CopyTempSystemPos."Seriennr.",STRPOS(CopyTempSystemPos."Seriennr.", '_LIC') +4)) > 0 THEN
+                        EVALUATE(actual_index , COPYSTR(CopyTempSystemPos."Seriennr.",STRPOS(CopyTempSystemPos."Seriennr.", '_LIC') +4));
+                      IF actual_index >= highest_index THEN
+                        highest_index := actual_index;
+                    UNTIL CopyTempSystemPos.NEXT = 0;
+                    highest_index += 1;
+                  END;
+                  CheckTempSystemPos.VALIDATE("Seriennr.",start_serialno + FORMAT(highest_index));
+                  CheckTempSystemPos.MODIFY;
+                  highest_index += 1;
+                END;
+              UNTIL CheckTempSystemPos.NEXT = 0;
+              CurrPage.UPDATE;
+              EXIT(TRUE);
+            END;
+          END;
+        END;
+      END;
     END;
 
     BEGIN
