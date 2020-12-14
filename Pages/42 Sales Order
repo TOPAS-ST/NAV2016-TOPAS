@@ -2,10 +2,10 @@ OBJECT Page 42 Sales Order
 {
   OBJECT-PROPERTIES
   {
-    Date=01.07.20;
-    Time=15:32:28;
+    Date=11.12.20;
+    Time=08:45:03;
     Modified=Yes;
-    Version List=NAVW19.00.00.50682,TOP1.14;
+    Version List=NAVW19.00.00.50682,TOP1.16;
   }
   PROPERTIES
   {
@@ -180,6 +180,11 @@ OBJECT Page 42 Sales Order
                              preislisten_kalk_edit := TRUE;
                            END ELSE
                              preislisten_kalk_edit := FALSE;
+
+                           //09.12.20 ST - Status Docuware Deckblatt
+                           IF (ControlReady) THEN BEGIN
+                             CheckDocuWareStatus;
+                           END;
 
                            //TOPAS Ende
                          END;
@@ -1038,6 +1043,9 @@ OBJECT Page 42 Sales Order
                                  TOPASBeleg_Pruefungen.CheckSalesOrderCalculationsBeforePost("No.");
                                  COMMIT;
                                  DocuWare.PrintToDWCloud("Document Type","No.",'Deckblatt');
+                                 //TOPAS + 09.12.20 ST - DocuWare Status Update
+                                 "Docuware Gesendet" := TRUE;
+                                 CurrPage.UPDATE;
                                  //TOPAS -
                                END;
                                 }
@@ -1051,6 +1059,15 @@ OBJECT Page 42 Sales Order
     { 1   ;1   ;Group     ;
                 CaptionML=[DEU=Allgemein;
                            ENU=General] }
+
+    { 1000000079;2;Group  ;
+                Visible=DocuwareControlEnable;
+                GroupType=Group }
+
+    { 1000000080;3;Field  ;
+                Name=DocuwareControl;
+                SourceExpr=DocuwareControlText;
+                ControlAddIn=[CreateDocuWareStatusTextbox;PublicKeyToken=700a341bbc28e440] }
 
     { 2   ;2   ;Field     ;
                 SourceExpr="No.";
@@ -1668,6 +1685,10 @@ OBJECT Page 42 Sales Order
                            ENU=Gen. Bus. Posting Group];
                 SourceExpr="Gen. Bus. Posting Group" }
 
+    { 1000000078;3;Field  ;
+                CaptionML=DEU=Dieser Auftrag soll den AE reduzieren;
+                SourceExpr="AE reduzieren" }
+
     { 1000000043;2;Group  ;
                 CaptionML=DEU=Kreditlimit Status;
                 GroupType=Group }
@@ -1873,6 +1894,9 @@ OBJECT Page 42 Sales Order
       var_AU_Nr@1000000015 : Code[20];
       AU_Nr@1000000020 : Code[20];
       AU_Nr_Kontroll@1000000028 : Record 36;
+      DocuwareControlText@1000000037 : Text;
+      DocuwareControlEnable@1000000036 : Boolean;
+      ControlReady@1000000035 : Boolean;
 
     LOCAL PROCEDURE Post@4(PostingCodeunitID@1000 : Integer);
     BEGIN
@@ -2011,6 +2035,36 @@ OBJECT Page 42 Sales Order
         MESSAGE(Text50010,varLength);
     END;
 
+    LOCAL PROCEDURE CheckDocuWareStatus@1000000003();
+    BEGIN
+      DocuwareControlEnable := FALSE;
+      IF ("Location Code" <> 'ZENT') AND ("Location Code" <> 'KONSI') THEN
+        EXIT;
+      IF ("Docuware Status" = "Docuware Status"::Neu) AND ("Docuware Gesendet" = FALSE) THEN BEGIN
+        DocuwareControlText := 'Deckblatt noch nicht an DocuWare gedruckt!';
+        DocuwareControlEnable := TRUE;
+        CurrPage.DocuwareControl.SendDatatoJavaScript(DocuwareControlText, 460, 17, '#ff3333', '#fff'); //rot
+
+      END ELSE BEGIN
+        IF ("Docuware Status" = "Docuware Status"::Žnderung) AND ("Docuware Gesendet" = FALSE) THEN BEGIN
+          DocuwareControlText := 'Deckblatt nach Žnderungen nocht nicht an DocuWare gedruckt';
+          DocuwareControlEnable := TRUE;
+          CurrPage.DocuwareControl.SendDatatoJavaScript(DocuwareControlText, 460, 17, '#ffff66', ''); //gelb
+        END ELSE BEGIN
+          IF ("Docuware Gesendet") THEN BEGIN
+            DocuwareControlText := 'OK';
+            CurrPage.DocuwareControl.SendDatatoJavaScript(DocuwareControlText, 460, 17, '#33cc33', ''); //grn
+          END;
+        END;
+      END;
+    END;
+
+    EVENT DocuwareControl@-1000000080::ControlAddInReady@1();
+    BEGIN
+      ControlReady := TRUE;
+      CheckDocuWareStatus;
+    END;
+
     BEGIN
     {
       Nr. Version   Datum       User  Beschreibung
@@ -2036,6 +2090,8 @@ OBJECT Page 42 Sales Order
       18      TOP1.12   11.03.20    UB    Feld 'Gesch„ftsbuchungsgruppe' unter Sonstige anzeigen w/Andruck auf RE von '*** Intra-Community supply of goods'
       19      TOP1.13   24.03.20    ST    Feld "Posting Date" wird rot gef„rbt, wenn das Datum 31.12.2055 ist
       20      TOP1.14   01.07.20    ST    ShipAmount Berechnung, damit ist der Kreditlimit Status nun Mehrwertsteuer unabh„ngig gel”st
+      21      TOP1.15   25.09.20    UB    Neues Feld "AE reduzieren" eingebaut
+      22      TOP1.16   09.12.20    ST    DocuWare Status wird nun angezeigt und Deckblatt an DocuWare Druck setzt Status auf "gesendet"
     }
     END.
   }
