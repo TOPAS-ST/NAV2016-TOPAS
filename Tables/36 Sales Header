@@ -2,10 +2,10 @@ OBJECT Table 36 Sales Header
 {
   OBJECT-PROPERTIES
   {
-    Date=07.12.20;
-    Time=18:00:00;
+    Date=03.02.21;
+    Time=13:00:00;
     Modified=Yes;
-    Version List=NAVW19.00.00.50682,NAVDACH9.00.00.50682,TOP1.07;
+    Version List=NAVW19.00.00.50682,NAVDACH9.00.00.50682,TOP1.08;
   }
   PROPERTIES
   {
@@ -3432,6 +3432,9 @@ OBJECT Table 36 Sales Header
          ("Bill-to Customer No." = '')
       THEN
         VALIDATE("Bill-to Contact No.","Sell-to Contact No.");
+
+      //TOPAS 03.02.21 ST - Verk. an Kontakt soll nicht mehr gefllt werden, sondern das Feld Kontaktperson
+      UpdateKontaktperson(ContactNo);
     END;
 
     LOCAL PROCEDURE UpdateBillToCust@26(ContactNo@1000 : Code[20]);
@@ -4518,7 +4521,7 @@ OBJECT Table 36 Sales Header
       ToDo@1000000000 : Record 5080;
     BEGIN
       //TOPAS 29.07.09 ST - Abfrage, ob Status der offenen Aufgaben auf erl. gesetzt werden soll
-      IF ("Document Type"="Document Type"::Quote) THEN BEGIN
+      IF ("Document Type" = "Document Type"::Quote) THEN BEGIN
         ToDo.RESET;
         ToDo.SETRANGE("Arch. Belegnr.","No.");
         ToDo.SETRANGE("System To-do Type",ToDo."System To-do Type"::Organizer);
@@ -4539,11 +4542,11 @@ OBJECT Table 36 Sales Header
       Doku@1140003 : Record 50032;
     BEGIN
       Belegzeile.RESET;
-      Belegzeile.SETFILTER("Document No.",'%1',Belegnr);
-      Belegzeile.SETFILTER("Document Type",'%1',Belegart);
-      Belegzeile.SETFILTER("No.",'%1',Artikelnr);
-      Belegzeile.SETFILTER(Type,'%1',Belegzeile.Type :: Item);
-      Belegzeile.SETFILTER("Manufacturer Code",'%1','43');
+      Belegzeile.SETRANGE("Document No.",Belegnr);
+      Belegzeile.SETRANGE("Document Type",Belegart);
+      Belegzeile.SETRANGE("No.",Artikelnr);
+      Belegzeile.SETRANGE(Type,Belegzeile.Type::Item);
+      Belegzeile.SETRANGE("Manufacturer Code",'43');
       IF Belegzeile.FINDFIRST THEN BEGIN
         Doku.RESET;
         Doku.SETFILTER(Linie,'%1','43');
@@ -4562,16 +4565,16 @@ OBJECT Table 36 Sales Header
     BEGIN
       //Bei Beleg Freigabe wird das Vorhandensein einer Service Kalkulation berprft
       Belegzeile.RESET;
-      Belegzeile.SETFILTER("Document No.",'%1',Belegnr);
-      Belegzeile.SETFILTER("Document Type",'%1',Belegart);
-      Belegzeile.SETFILTER(Type,'%1',Belegzeile.Type :: Item);
+      Belegzeile.SETRANGE("Document No.",Belegnr);
+      Belegzeile.SETRANGE("Document Type",Belegart);
+      Belegzeile.SETRANGE(Type,Belegzeile.Type::Item);
       Belegzeile.SETFILTER(Quantity,'>%1',0);
-      IF Belegzeile.FINDFIRST THEN
+      IF Belegzeile.FIND('-') THEN
         REPEAT
           Artikel.GET(Belegzeile."No.");
           IF Artikel."Software Upgrade Protection" = TRUE THEN BEGIN
             ServiceKalk.RESET;
-            ServiceKalk.SETRANGE(Art,ServiceKalk.Art :: "SUP-AU");
+            ServiceKalk.SETRANGE(Art,ServiceKalk.Art::"SUP-AU");
             ServiceKalk.SETRANGE("Nr.",Belegzeile."Document No.");
             ServiceKalk.SETRANGE("Zeilennr.",Belegzeile."Line No.");
             IF NOT ServiceKalk.FINDFIRST THEN
@@ -4766,6 +4769,35 @@ OBJECT Table 36 Sales Header
         MESSAGE('Alles OK.');
     END;
 
+    LOCAL PROCEDURE UpdateKontaktperson@1000000001(ContactNo@1000000000 : Code[20]);
+    VAR
+      Cust@1000000001 : Record 18;
+      ContBusRel@1000000002 : Record 5054;
+      Contact@1000000003 : Record 5050;
+    BEGIN
+      //Damit die Funktion "Neues Verkaufsangebot" aus Kontakt heraus auch das Feld Kontaktperson fllt und nicht Sell-to Contact
+      IF Contact.GET(ContactNo) THEN BEGIN
+        "Kontaktnr." := Contact."No.";
+        IF Anrede.GET(Contact."Salutation Code") THEN BEGIN
+          IF (Contact."Salutation Code" = 'HERR') OR (STRPOS(LOWERCASE(Anrede.Description),'m„nnlich') <> 0) THEN BEGIN
+            IF (("Language Code" = 'DEU') OR ("Language Code" = 'DEA')
+            OR ("Language Code" = 'DES') OR ("Language Code" = '')) THEN
+              Kontaktperson := 'Herr' + ' ' + Contact.Surname
+            ELSE
+              Kontaktperson := 'Mr.' + ' ' + Contact.Surname;
+          END;
+          IF (Contact."Salutation Code" = 'FRAU') OR (STRPOS(LOWERCASE(Anrede.Description),'weiblich') <> 0) THEN BEGIN
+            IF (("Language Code" = 'DEU') OR ("Language Code" = 'DEA')
+            OR ("Language Code" = 'DES') OR ("Language Code"='')) THEN
+              Kontaktperson := 'Frau' + ' ' + Contact.Surname
+            ELSE
+              Kontaktperson := 'Ms.' + ' ' + Contact.Surname;
+          END;
+          "Sell-to Contact" := '';
+        END;
+      END;
+    END;
+
     BEGIN
     {
       Lfd.Nr. Version   Datum       User  Beschreibung
@@ -4779,7 +4811,8 @@ OBJECT Table 36 Sales Header
       7       TOP1.04   10.04.19    ST    Neues Feld 50351 Preisliste, Version wird aus Optionstabelle geholt
       8       TOP1.05   08.07.19    ST    Service EMail-Adresse u. Lizenz EMail-Adresse 80 => 120 Zeichen
       9       TOP1.06   21.09.20    ST    Tempor„re SN Belegung wird nun entfernt, wenn der Auftrag gel”scht wird, neues Feld "AE reduzieren"
-      10      TOP1.07   07.12.20    ST    Neue Felder 50310 "Docuware Status" und 50311 "Docuware gesendet"
+      10      TOP1.07   07.12.20    ST    Neues Felder "Docuware Status" und "Docuware gesendet" angelegt
+      10      TOP1.08   03.02.21    ST    Funktion "Neues Verkaufsangebot" aus Kontakt bzw. "Verk. an Kontaktnr." fllt nun das Feld Kontaktperson
     }
     END.
   }
