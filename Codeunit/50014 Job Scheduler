@@ -2,8 +2,8 @@ OBJECT Codeunit 50014 Job Scheduler
 {
   OBJECT-PROPERTIES
   {
-    Date=10.09.20;
-    Time=16:59:31;
+    Date=09.03.21;
+    Time=14:22:07;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -26,6 +26,8 @@ OBJECT Codeunit 50014 Job Scheduler
                 AdjustServicePricesNewPricelist;
               'DocuWareExportDocs' :
                 DocuwareExportDocs;
+              'Cleanup' :
+                CleanupJob;
             END;
           END;
 
@@ -434,6 +436,102 @@ OBJECT Codeunit 50014 Job Scheduler
       DocuWare.ExportDocsToFolder(1,WORKDATE-1);
     END;
 
+    LOCAL PROCEDURE CleanupJob@1000000008();
+    VAR
+      TempRecRef@1000000015 : RecordRef;
+      FieldRecRef@1000000016 : FieldRef;
+      myCharVar@1000000005 : Char;
+      chr@1000000006 : Char;
+      SMPTMail@1000000002 : Codeunit 400;
+      mail_subject@1000000001 : Text;
+      mail_body@1000000000 : Text;
+      uncorrected_info@1000000011 : Text;
+      corrected_info@1000000012 : Text;
+      item_no@1000000013 : Code[40];
+      array1@1000000014 : ARRAY [3] OF Integer;
+      count1@1000000007 : Integer;
+      count2@1000000008 : Integer;
+      varDB@1000000009 : Integer;
+      i@1000000010 : Integer;
+      k@1000000017 : Integer;
+    BEGIN
+      //Unicode Sonderzeichen Viertelgeviertstrich (E2 80 90) in Bindestrich „ndern bzw. bei Artikelnr. warnen per E-Mail
+      count1 := 0;
+      count2 := 0;
+      myCharVar := 8208;
+      varDB := DATABASE::Item;
+      TempRecRef.OPEN(varDB);
+      TempRecRef.FIND('-');
+      uncorrected_info := '';
+      corrected_info := '';
+      item_no := '';
+      chr := 10;
+      REPEAT
+        FOR i := 1 TO TempRecRef.FIELDCOUNT DO BEGIN
+          FieldRecRef := TempRecRef.FIELDINDEX(i);
+          IF i = 1 THEN item_no := FieldRecRef.VALUE;
+          IF STRPOS(FORMAT(FieldRecRef.VALUE),FORMAT(myCharVar)) <> 0 THEN BEGIN
+            count1 += 1;
+            IF (FieldRecRef.NAME = 'No.') OR (FieldRecRef.NAME = 'No. 2') THEN BEGIN
+              uncorrected_info += FieldRecRef.NAME + ': ' + FORMAT(FieldRecRef.VALUE) + FORMAT(chr);
+            END ELSE BEGIN
+              corrected_info += 'No.: ' + item_no + ' - ' + FieldRecRef.NAME + ': ' + FORMAT(FieldRecRef.VALUE) + FORMAT(chr);
+              FieldRecRef.VALUE(TOPAS_API.replace_text(FORMAT(FieldRecRef.VALUE),FORMAT(myCharVar),'-'));
+              TempRecRef.MODIFY;
+              count2 += 1;
+            END;
+          END;
+        END;
+      UNTIL TempRecRef.NEXT = 0;
+      TempRecRef.CLOSE;
+
+      IF uncorrected_info <> '' THEN BEGIN
+        chr := 10;
+        mail_subject := 'Achtung: Unerwnschte Sonderzeichen im Artikelstamm vorhanden';
+        mail_body :=    'Bitte ersetzen Sie in den folgenden Artikeln den Unicode Bindestrich gegen einen normalen Bindestrich:' + FORMAT(chr) + FORMAT(chr) +
+                        uncorrected_info + FORMAT(chr) +
+                        'weitere Žnderungen (hier wurden die Korrekturen bereits angewandt - nur Info), Anzahl: (' + FORMAT(count2) + ')' + FORMAT(chr) + FORMAT(chr) + corrected_info;
+        SMPTMail.CreateMessage('','nav2016@topas.de','administrativ@topas.de',mail_subject,mail_body,FALSE);
+        SMPTMail.Send;
+      END;
+
+      //Unicode Zeichen Nullbreite (E2 80 8B) l”schen
+      array1[1] := 5050; // Contact
+      array1[2] := 18; // Customer
+      array1[3] := 36; // Sales Header
+      myCharVar := 8203;
+      corrected_info := '';
+      FOR k := 1 TO ARRAYLEN(array1) DO BEGIN
+        IF array1[k] = 0 THEN EXIT;
+        count1 := 0;
+        count2 := 0;
+        TempRecRef.OPEN(array1[k]);
+        TempRecRef.FIND('-');
+        count1 := TempRecRef.COUNT;
+        REPEAT
+          FOR i := 1 TO TempRecRef.FIELDCOUNT DO BEGIN
+            FieldRecRef := TempRecRef.FIELDINDEX(i);
+            IF STRPOS(FORMAT(FieldRecRef.VALUE),FORMAT(myCharVar)) <> 0 THEN BEGIN
+              count2 += 1;
+              FieldRecRef.VALUE := DELCHR(FORMAT(FieldRecRef.VALUE),'=',FORMAT(myCharVar));
+              TempRecRef.MODIFY;
+              corrected_info += 'Tabelle: ' + TempRecRef.NAME + ' - Feld: ' + FieldRecRef.NAME + ' (' + FORMAT(FieldRecRef.NUMBER) + ') ' + DELCHR(FORMAT(FieldRecRef.VALUE),'=',FORMAT(myCharVar)) + FORMAT(chr);
+            END;
+          END;
+
+        UNTIL TempRecRef.NEXT = 0;
+        TempRecRef.CLOSE;
+      END;
+
+      IF corrected_info <> '' THEN BEGIN
+        chr := 10;
+        mail_subject := 'Info: Unerwnschte Sonderzeichen Unicode Zeichen Nullbreite korrigiert ';
+        mail_body :=    'Folgende Tabellen wurden automatisch korrigiert::' + FORMAT(chr) + FORMAT(chr) + corrected_info;
+        SMPTMail.CreateMessage('','nav2016@topas.de','administrativ@topas.de',mail_subject,mail_body,FALSE);
+        SMPTMail.Send;
+      END;
+    END;
+
     PROCEDURE RestartNAS@1000000007(Option@1000000001 : Text);
     VAR
       JobQueue@1000000000 : Record 470;
@@ -442,8 +540,8 @@ OBJECT Codeunit 50014 Job Scheduler
         IF JobQueue.FINDFIRST THEN
           REPEAT
             JobQueue.StopQueue;
+            SLEEP(2000);
           UNTIL JobQueue.NEXT = 0;
-        SLEEP(1000);
       END;
 
       IF Option = '1' THEN BEGIN
