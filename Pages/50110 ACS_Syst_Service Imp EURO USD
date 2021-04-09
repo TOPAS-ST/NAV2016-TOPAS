@@ -2,8 +2,8 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
 {
   OBJECT-PROPERTIES
   {
-    Date=30.03.21;
-    Time=09:21:00;
+    Date=09.04.21;
+    Time=13:59:53;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -176,7 +176,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
       leere_zeilen@1000000041 : Integer;
       ServerUploadFile@1000000005 : Text;
       DownloadFileName@1000000006 : Text;
-      auswahl@1000000012 : 'Champs,ACTS,Systeme,Systeme Schaeffler,Champs alt,ACTS alt';
+      auswahl@1000000012 : 'Champs,ACTS,Systeme,Systeme Schaeffler,Champs alt,ACTS alt,CHAMPS EURO Korrektur,ACTS EURO Korrektur';
       Spalte_Part@1000000027 : TextConst 'DEU=A';
       Spalte_Serviceartikelnr@1000000026 : TextConst 'DEU=B';
       Spalte_MSRP@1000000025 : TextConst 'DEU=C';
@@ -206,7 +206,8 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
       Text027@1000000114 : TextConst 'DEU=Sheet';
       Text028@1000000115 : TextConst 'DEU=Service Artikelnr. alt';
       Text029@1000000116 : TextConst 'DEU=Ger„te Artikelnr.';
-      Text100@1000000013 : TextConst 'DEU=CHAMPS Import,ACTS Import,Systemartikel DC und MSRP Import,Schaeffler Systemartikel DC und MSRP Import,CHAMPS alt aktualisieren,ACTS alt aktualisieren, ACTS Schaeffler (nur ber Classic)';
+      Text030@1000000145 : TextConst 'DEU=Change %';
+      Text100@1000000013 : TextConst 'DEU=CHAMPS Import,ACTS Import,Systemartikel DC und MSRP Import,Schaeffler Systemartikel DC und MSRP Import,CHAMPS alt aktualisieren,ACTS alt aktualisieren,CHAMPS Korrektur,ACTS Korrektur,ACTS Schaeffler (nur ber Classic)';
       startdatum@1000000046 : Date;
       prerelease_date@1000000136 : Date;
       laufzeit@1000000055 : Integer;
@@ -1391,6 +1392,8 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         EnterCell(RowNo,ColumnNo,Text023,'',TRUE,FALSE,TRUE,'',TempExcelBufferExport."Cell Type"::Text);
         ColumnNo := ColumnNo + 1;
         EnterCell(RowNo,ColumnNo,Text024,'',TRUE,FALSE,TRUE,'',TempExcelBufferExport."Cell Type"::Text);
+        ColumnNo := ColumnNo + 1;
+        EnterCell(RowNo,ColumnNo,Text030,'',TRUE,FALSE,TRUE,'',TempExcelBufferExport."Cell Type"::Text);
         RowNo := 2;
 
         //********************************************************************************************
@@ -1428,6 +1431,9 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                     EnterCell(RowNo,ColumnNo,FORMAT(excel_msrp - Servicepreise.MSRP),'',FALSE,FALSE,FALSE,'[Color10]',TempExcelBufferExport."Cell Type"::Number); // dunkelgrn
                   IF  Servicepreise.MSRP < excel_msrp THEN
                     EnterCell(RowNo,ColumnNo,FORMAT(excel_msrp - Servicepreise.MSRP),'',FALSE,FALSE,FALSE,'[red]',TempExcelBufferExport."Cell Type"::Number); //rot
+                  ColumnNo := ColumnNo + 1;
+                  IF Servicepreise.MSRP <> 0 THEN
+                    EnterCell(RowNo,ColumnNo,'','=ABS(1-(D'+FORMAT(RowNo) + '/C' + FORMAT(RowNo)+'))',FALSE,FALSE,FALSE,'0.0%',TempExcelBufferExport."Cell Type"::Number); //Prozent
                   RowNo := RowNo + 1;
                   IF testlauf = FALSE THEN BEGIN
                     Servicepreise.MSRP := excel_msrp;
@@ -1582,6 +1588,8 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         EnterCell(RowNo,ColumnNo,Text023,'',TRUE,FALSE,TRUE,'',TempExcelBufferExport."Cell Type"::Text);
         ColumnNo := ColumnNo + 1;
         EnterCell(RowNo,ColumnNo,Text024,'',TRUE,FALSE,TRUE,'',TempExcelBufferExport."Cell Type"::Text);
+        ColumnNo := ColumnNo + 1;
+        EnterCell(RowNo,ColumnNo,Text030,'',TRUE,FALSE,TRUE,'',TempExcelBufferExport."Cell Type"::Text);
         RowNo := 2;
 
         //********************************************************************************************
@@ -1619,6 +1627,9 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                     EnterCell(RowNo,ColumnNo,FORMAT(excel_msrp - Servicepreise.MSRP),'',FALSE,FALSE,FALSE,'[Color10]',TempExcelBufferExport."Cell Type"::Number); // dunkelgrn
                   IF  Servicepreise.MSRP < excel_msrp THEN
                   EnterCell(RowNo,ColumnNo,FORMAT(excel_msrp - Servicepreise.MSRP),'',FALSE,FALSE,FALSE,'[red]',TempExcelBufferExport."Cell Type"::Number); //rot
+                  ColumnNo := ColumnNo + 1;
+                  IF Servicepreise.MSRP <> 0 THEN
+                    EnterCell(RowNo,ColumnNo,'','=ABS(1-(D'+FORMAT(RowNo) + '/C' + FORMAT(RowNo)+'))',FALSE,FALSE,FALSE,'0.0%',TempExcelBufferExport."Cell Type"::Number); //Prozent
                   RowNo := RowNo + 1;
                   IF testlauf = FALSE THEN BEGIN
                     Servicepreise.MSRP := excel_msrp;
@@ -1664,6 +1675,403 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         Window.CLOSE;
       END;
 
+
+      //CHAMPS Servicepreise Korrektur Job
+      IF auswahl = 7 THEN BEGIN
+
+        //********************************************************************************************
+        //                           Syntax Prfungen der Quell Datei
+        //********************************************************************************************
+
+        TempExcelBuffer.DELETEALL;
+        CLEAR(TempExcelBuffer);
+        TempExcelBuffer.OpenBook(ServerUploadFile,'Cover');
+        TempExcelBuffer.ReadSheet();
+        IF TempExcelBuffer.FINDLAST THEN
+          EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
+
+        PL_Version := TOPAS_API.replace_text(GetValueAtCell(8,7),',','.');
+        IF UPPERCASE(GetValueAtCell(10,7)) <> 'CHAMPS' THEN BEGIN
+          ERROR('Dies ist keine AudioCodes CHAMPS Preisliste.');
+        END;
+        IF (UPPERCASE(FORMAT(GetValueAtCell(9,7))) = 'EURO') OR (UPPERCASE(FORMAT(GetValueAtCell(9,7))) = 'EUR') THEN
+          PL_W„h := ''
+        ELSE
+          PL_W„h := UPPERCASE(GetValueAtCell(9,7));
+
+        PL_Kreditor := '';
+        IF PL_W„h = 'USD' THEN
+          PL_Kreditor := Kred_USD;
+        IF PL_W„h = '' THEN
+          PL_Kreditor := Kred_EURO;
+        IF PL_Kreditor = '' THEN
+          ERROR(Text998);
+
+        //+ Das Sheet wird aufbereitet, damit keine Fehlermeldung erzeugt wird, wenn eine Spalte eine L„nge gr”áer 250 Zeichen aufweist
+        XlWrkBkReader := XlWrkBkReader.Open(ServerUploadFile);
+        XlWrkShtReader := XlWrkBkReader.GetWorksheetByName(SheetName_UploadPriceBook);
+        RowCount := XlWrkShtReader.RowCount;
+        XlWrkBkReader.Close;
+
+        XlWrkBkWriter := XlWrkBkWriter.Open(ServerUploadFile);
+        XlWrkShtWriter := XlWrkBkWriter.GetWorksheetByName(SheetName_UploadPriceBook);
+
+        FOR i := 1 TO RowCount DO BEGIN
+          XlWrkShtWriter.SetCellValueText(i, 'F', '', XlWrkShtWriter.DefaultCellDecorator);
+          XlWrkShtWriter.SetCellValueText(i, 'H', '', XlWrkShtWriter.DefaultCellDecorator);
+        END;
+
+        XlWrkBkWriter.Close;
+        //-
+
+        TempExcelBuffer.DELETEALL;
+        CLEAR(TempExcelBuffer);
+        TempExcelBuffer.OpenBook(ServerUploadFile,SheetName_UploadPriceBook);
+        TempExcelBuffer.ReadSheet();
+        IF TempExcelBuffer.FINDLAST THEN
+          EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
+
+       IF STRPOS(UPPERCASE(GetValueAtCell(1,4)),'CPN') = 0 THEN BEGIN
+          FileMgt.DeleteServerFile(ServerUploadFile);
+          ERROR(PriceBookErrMsg,4,'CPN');
+        END;
+        IF STRPOS(UPPERCASE(GetValueAtCell(1,5)),'DISCOUNT') = 0 THEN BEGIN
+          FileMgt.DeleteServerFile(ServerUploadFile);
+          ERROR(PriceBookErrMsg,5,'Discount');
+        END;
+        IF STRPOS(UPPERCASE(GetValueAtCell(1,7)),'MSRP') = 0 THEN BEGIN
+          FileMgt.DeleteServerFile(ServerUploadFile);
+          ERROR(PriceBookErrMsg,7,'MSRP');
+        END;
+
+        Kreditor.GET(PL_Kreditor);
+        IF PL_W„h <> Kreditor."Currency Code" THEN BEGIN
+          ERROR(Text999,PL_Kreditor);
+        END;
+
+        //********************************************************************************************
+        //                               Definiert die Protokolldatei
+        //********************************************************************************************
+
+        IF DoUpdateExistingWorksheet THEN BEGIN
+          IF ServerFileName = '' THEN
+            ServerFileName := FileMgt.UploadFile(Text002,ExcelFileExtensionTok);
+          IF ServerFileName = '' THEN
+            EXIT;
+          SheetName := TempExcelBufferExport.SelectSheetsName(ServerFileName);
+          IF SheetName = '' THEN
+            EXIT;
+        END;
+
+        Window.OPEN(
+          Text000 +
+          '@1@@@@@@@@@@@@@@@@@@@@@\');
+
+        TempExcelBufferExport.DELETEALL;
+        CLEAR(TempExcelBufferExport);
+
+        //Protokoll Header
+        RecNo := 0;
+        RowNo := 1;
+        ColumnNo := 1;
+        EnterCell(RowNo,ColumnNo,Text020,'',TRUE,FALSE,TRUE,'',TempExcelBufferExport."Cell Type"::Text);
+        ColumnNo := ColumnNo + 1;
+        EnterCell(RowNo,ColumnNo,Text021,'',TRUE,FALSE,TRUE,'',TempExcelBufferExport."Cell Type"::Text);
+        ColumnNo := ColumnNo + 1;
+        EnterCell(RowNo,ColumnNo,Text022,'',TRUE,FALSE,TRUE,'',TempExcelBufferExport."Cell Type"::Text);
+        ColumnNo := ColumnNo + 1;
+        EnterCell(RowNo,ColumnNo,Text023,'',TRUE,FALSE,TRUE,'',TempExcelBufferExport."Cell Type"::Text);
+        ColumnNo := ColumnNo + 1;
+        EnterCell(RowNo,ColumnNo,Text024,'',TRUE,FALSE,TRUE,'',TempExcelBufferExport."Cell Type"::Text);
+        ColumnNo := ColumnNo + 1;
+        EnterCell(RowNo,ColumnNo,Text030,'',TRUE,FALSE,TRUE,'',TempExcelBufferExport."Cell Type"::Text);
+        RowNo := 2;
+
+        //********************************************************************************************
+        //                         Eigentliches Update der Service Artikel
+        //********************************************************************************************
+
+        Servicepreise.RESET;
+        Servicepreise.SETRANGE(Art,Servicepreise.Art::Champs);
+        Servicepreise.SETRANGE("Zuordnung obsolete",FALSE);
+        Servicepreise.SETRANGE(W„hrungscode,PL_W„h);
+        Servicepreise.SETRANGE("Update letzte Preisliste",TRUE);
+        Servicepreise.SETRANGE(Status,Servicepreise.Status::neu);
+        Servicepreise.SETRANGE(Preisliste,PL_Version);
+        //Servicepreise.SETFILTER(Preisliste,'<>%1','SCHAEFFLER');
+        IF Servicepreise.FIND('-') THEN BEGIN
+          TotalRecNo := Servicepreise.COUNT;
+          REPEAT
+            excel_msrp := 0;
+            row_part := FindRowNew(Servicepreise."Service Artikelnr.",'Cell','A','Z');
+            IF (row_part <> 0) THEN BEGIN
+              IF FORMAT(GetValueAtCell(row_part,7)) <> 'Quotation' THEN BEGIN
+                IF FORMAT(GetValueAtCell(row_part,7)) <> '' THEN
+                  EVALUATE(excel_msrp,GetValueAtCell(row_part,7));
+                excel_msrp := ROUND(excel_msrp,0.01);
+                IF excel_msrp <> Servicepreise.MSRP THEN BEGIN
+                  ColumnNo := 1;
+                  EnterCell(RowNo,ColumnNo,Servicepreise."Artikelnr. 2",'',FALSE,FALSE,FALSE,'',TempExcelBufferExport."Cell Type"::Text);
+                  ColumnNo := ColumnNo + 1;
+                  EnterCell(RowNo,ColumnNo,Servicepreise."Service Artikelnr.",'',FALSE,FALSE,FALSE,'',TempExcelBufferExport."Cell Type"::Text);
+                  ColumnNo := ColumnNo + 1;
+                  EnterCell(RowNo,ColumnNo,FORMAT(Servicepreise.MSRP),'',FALSE,FALSE,FALSE,'',TempExcelBufferExport."Cell Type"::Number);
+                  ColumnNo := ColumnNo + 1;
+                  EnterCell(RowNo,ColumnNo,FORMAT(excel_msrp),'',FALSE,FALSE,FALSE,'',TempExcelBufferExport."Cell Type"::Number);
+
+                  ColumnNo := ColumnNo + 1;
+                  IF  Servicepreise.MSRP > excel_msrp THEN
+                    EnterCell(RowNo,ColumnNo,FORMAT(excel_msrp - Servicepreise.MSRP),'',FALSE,FALSE,FALSE,'[Color10]',TempExcelBufferExport."Cell Type"::Number); // dunkelgrn
+                  IF  Servicepreise.MSRP < excel_msrp THEN
+                    EnterCell(RowNo,ColumnNo,FORMAT(excel_msrp - Servicepreise.MSRP),'',FALSE,FALSE,FALSE,'[red]',TempExcelBufferExport."Cell Type"::Number); //rot
+                  ColumnNo := ColumnNo + 1;
+                  IF Servicepreise.MSRP <> 0 THEN
+                    EnterCell(RowNo,ColumnNo,'','=ABS(1-(D'+FORMAT(RowNo) + '/C' + FORMAT(RowNo)+'))',FALSE,FALSE,FALSE,'0.0%',TempExcelBufferExport."Cell Type"::Number); //Prozent
+                  RowNo := RowNo + 1;
+                  IF testlauf = FALSE THEN BEGIN
+                    Servicepreise.MSRP := excel_msrp;
+                    IF STRPOS(Servicepreise.Preisliste,'-') > 0 THEN
+                      Servicepreise.Preisliste := COPYSTR(Servicepreise.Preisliste,1,STRPOS(Servicepreise.Preisliste,'-') -1) + PL_Version
+                    ELSE
+                      Servicepreise.Preisliste := Servicepreise.Preisliste + PL_Version;
+                    Servicepreise.MODIFY(TRUE);
+                  END;
+                  ge„nderte_eintr„ge += 1;
+                END;
+              END;
+            END;
+            RecNo := RecNo + 1;
+            Window.UPDATE(1,ROUND(RecNo / TotalRecNo * 10000,1));
+
+          UNTIL Servicepreise.NEXT = 0;
+        END;
+
+        FileMgt.DeleteServerFile(ServerUploadFile);
+
+        CLEAR(XlWrkShtReader);
+        CLEAR(XlWrkBkWriter);
+
+        IF DoUpdateExistingWorksheet THEN BEGIN
+          TempExcelBufferExport.UpdateBook(ServerFileName,SheetName);
+          TempExcelBufferExport.WriteSheet('',COMPANYNAME,USERID);
+          TempExcelBufferExport.CloseBook;
+          IF NOT Testmode THEN
+            TempExcelBufferExport.DownloadAndOpenExcel;
+        END ELSE BEGIN
+          TempExcelBufferExport.CreateBook(ServerFileName,Text001);
+          TempExcelBufferExport.WriteSheet(
+            PADSTR(STRSUBSTNO('%1 %2',Text001,''),30),COMPANYNAME,USERID);
+          TempExcelBufferExport.CloseBook;
+          IF NOT Testmode THEN BEGIN
+            TempExcelBufferExport.OpenExcel; //hat Autofit drin der die Spaltenbreite wieder berschreibt, deshalb neue Fkt. nachfolgend
+            //TempExcelBufferExport.OpenExcelWithoutAutoFit(Text001,Text001 + ExcelFileExtensionTok,'',TRUE);
+          END;
+        END;
+        IF NOT Testmode THEN
+          TempExcelBufferExport.GiveUserControl;
+
+        Window.CLOSE;
+
+      END;
+
+
+      //ACTS Servicepreise Korrektur Job
+      IF auswahl = 8 THEN BEGIN
+
+        //********************************************************************************************
+        //                           Syntax Prfungen der Quell Datei
+        //********************************************************************************************
+
+        TempExcelBuffer.DELETEALL;
+        CLEAR(TempExcelBuffer);
+        TempExcelBuffer.OpenBook(ServerUploadFile,'Cover');
+        TempExcelBuffer.ReadSheet();
+        IF TempExcelBuffer.FINDLAST THEN
+          EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
+
+        PL_Version := TOPAS_API.replace_text(GetValueAtCell(8,7),',','.');
+        IF UPPERCASE(GetValueAtCell(10,7)) <> 'ACTS' THEN BEGIN
+          ERROR('Dies ist keine AudioCodes ACTS Preisliste.');
+        END;
+        IF (UPPERCASE(FORMAT(GetValueAtCell(9,7))) = 'EURO') OR (UPPERCASE(FORMAT(GetValueAtCell(9,7))) = 'EUR') THEN
+          PL_W„h := ''
+        ELSE
+          PL_W„h := UPPERCASE(GetValueAtCell(9,7));
+
+        PL_Kreditor := '';
+        IF PL_W„h = 'USD' THEN
+          PL_Kreditor := Kred_USD;
+        IF PL_W„h = '' THEN
+          PL_Kreditor := Kred_EURO;
+        IF PL_Kreditor = '' THEN
+          ERROR(Text998);
+
+        //+ Das Sheet wird aufbereitet, damit keine Fehlermeldung erzeugt wird, wenn eine Spalte eine L„nge gr”áer 250 Zeichen aufweist
+        XlWrkBkReader := XlWrkBkReader.Open(ServerUploadFile);
+        XlWrkShtReader := XlWrkBkReader.GetWorksheetByName(SheetName_UploadPriceBook);
+        RowCount := XlWrkShtReader.RowCount;
+        XlWrkBkReader.Close;
+
+        XlWrkBkWriter := XlWrkBkWriter.Open(ServerUploadFile);
+        XlWrkShtWriter := XlWrkBkWriter.GetWorksheetByName(SheetName_UploadPriceBook);
+
+        FOR i := 1 TO RowCount DO BEGIN
+          XlWrkShtWriter.SetCellValueText(i, 'F', '', XlWrkShtWriter.DefaultCellDecorator);
+          XlWrkShtWriter.SetCellValueText(i, 'H', '', XlWrkShtWriter.DefaultCellDecorator);
+        END;
+
+        XlWrkBkWriter.Close;
+        //-
+
+        TempExcelBuffer.DELETEALL;
+        CLEAR(TempExcelBuffer);
+        TempExcelBuffer.OpenBook(ServerUploadFile,SheetName_UploadPriceBook);
+        TempExcelBuffer.ReadSheet();
+        IF TempExcelBuffer.FINDLAST THEN
+          EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
+
+       IF STRPOS(UPPERCASE(GetValueAtCell(1,4)),'CPN') = 0 THEN BEGIN
+          FileMgt.DeleteServerFile(ServerUploadFile);
+          ERROR(PriceBookErrMsg,4,'CPN');
+        END;
+        IF STRPOS(UPPERCASE(GetValueAtCell(1,5)),'DISCOUNT') = 0 THEN BEGIN
+          FileMgt.DeleteServerFile(ServerUploadFile);
+          ERROR(PriceBookErrMsg,5,'Discount');
+        END;
+        IF STRPOS(UPPERCASE(GetValueAtCell(1,7)),'MSRP') = 0 THEN BEGIN
+          FileMgt.DeleteServerFile(ServerUploadFile);
+          ERROR(PriceBookErrMsg,7,'MSRP');
+        END;
+
+        Kreditor.GET(PL_Kreditor);
+        IF PL_W„h <> Kreditor."Currency Code" THEN BEGIN
+          ERROR(Text999,PL_Kreditor);
+        END;
+
+        //********************************************************************************************
+        //                               Definiert die Protokolldatei
+        //********************************************************************************************
+
+        IF DoUpdateExistingWorksheet THEN BEGIN
+          IF ServerFileName = '' THEN
+            ServerFileName := FileMgt.UploadFile(Text002,ExcelFileExtensionTok);
+          IF ServerFileName = '' THEN
+            EXIT;
+          SheetName := TempExcelBufferExport.SelectSheetsName(ServerFileName);
+          IF SheetName = '' THEN
+            EXIT;
+        END;
+
+        Window.OPEN(
+          Text000 +
+          '@1@@@@@@@@@@@@@@@@@@@@@\');
+
+        TempExcelBufferExport.DELETEALL;
+        CLEAR(TempExcelBufferExport);
+
+        //Protokoll Header
+        RecNo := 0;
+        RowNo := 1;
+        ColumnNo := 1;
+        EnterCell(RowNo,ColumnNo,Text020,'',TRUE,FALSE,TRUE,'',TempExcelBufferExport."Cell Type"::Text);
+        ColumnNo := ColumnNo + 1;
+        EnterCell(RowNo,ColumnNo,Text021,'',TRUE,FALSE,TRUE,'',TempExcelBufferExport."Cell Type"::Text);
+        ColumnNo := ColumnNo + 1;
+        EnterCell(RowNo,ColumnNo,Text022,'',TRUE,FALSE,TRUE,'',TempExcelBufferExport."Cell Type"::Text);
+        ColumnNo := ColumnNo + 1;
+        EnterCell(RowNo,ColumnNo,Text023,'',TRUE,FALSE,TRUE,'',TempExcelBufferExport."Cell Type"::Text);
+        ColumnNo := ColumnNo + 1;
+        EnterCell(RowNo,ColumnNo,Text024,'',TRUE,FALSE,TRUE,'',TempExcelBufferExport."Cell Type"::Text);
+        ColumnNo := ColumnNo + 1;
+        EnterCell(RowNo,ColumnNo,Text030,'',TRUE,FALSE,TRUE,'',TempExcelBufferExport."Cell Type"::Text);
+        RowNo := 2;
+
+        //********************************************************************************************
+        //                         Eigentliches Update der Service Artikel
+        //********************************************************************************************
+
+        Servicepreise.RESET;
+        Servicepreise.SETRANGE(Art,Servicepreise.Art::ACTS);
+        Servicepreise.SETRANGE("Zuordnung obsolete",FALSE);
+        Servicepreise.SETRANGE(W„hrungscode,PL_W„h);
+        Servicepreise.SETRANGE("Update letzte Preisliste",TRUE);
+        Servicepreise.SETRANGE(Status,Servicepreise.Status::neu);
+        Servicepreise.SETRANGE(Preisliste,PL_Version);
+        //Servicepreise.SETFILTER(Preisliste,'<>%1','SCHAEFFLER');
+        IF Servicepreise.FIND('-') THEN BEGIN
+          TotalRecNo := Servicepreise.COUNT;
+          REPEAT
+            excel_msrp := 0;
+            row_part := FindRowNew(Servicepreise."Service Artikelnr.",'Cell','A','Z');
+            IF (row_part <> 0) THEN BEGIN
+              IF FORMAT(GetValueAtCell(row_part,7)) <> 'Quotation' THEN BEGIN
+                IF FORMAT(GetValueAtCell(row_part,7)) <> '' THEN
+                  EVALUATE(excel_msrp,GetValueAtCell(row_part,7));
+                excel_msrp := ROUND(excel_msrp,0.01);
+                IF excel_msrp <> Servicepreise.MSRP THEN BEGIN
+                  ColumnNo := 1;
+                  EnterCell(RowNo,ColumnNo,Servicepreise."Artikelnr. 2",'',FALSE,FALSE,FALSE,'',TempExcelBufferExport."Cell Type"::Text);
+                  ColumnNo := ColumnNo + 1;
+                  EnterCell(RowNo,ColumnNo,Servicepreise."Service Artikelnr.",'',FALSE,FALSE,FALSE,'',TempExcelBufferExport."Cell Type"::Text);
+                  ColumnNo := ColumnNo + 1;
+                  EnterCell(RowNo,ColumnNo,FORMAT(Servicepreise.MSRP),'',FALSE,FALSE,FALSE,'',TempExcelBufferExport."Cell Type"::Number);
+                  ColumnNo := ColumnNo + 1;
+                  EnterCell(RowNo,ColumnNo,FORMAT(excel_msrp),'',FALSE,FALSE,FALSE,'',TempExcelBufferExport."Cell Type"::Number);
+
+                  ColumnNo := ColumnNo + 1;
+                  IF  Servicepreise.MSRP > excel_msrp THEN
+                    EnterCell(RowNo,ColumnNo,FORMAT(excel_msrp - Servicepreise.MSRP),'',FALSE,FALSE,FALSE,'[Color10]',TempExcelBufferExport."Cell Type"::Number); // dunkelgrn
+                  IF  Servicepreise.MSRP < excel_msrp THEN
+                  EnterCell(RowNo,ColumnNo,FORMAT(excel_msrp - Servicepreise.MSRP),'',FALSE,FALSE,FALSE,'[red]',TempExcelBufferExport."Cell Type"::Number); //rot
+                  ColumnNo := ColumnNo + 1;
+                  IF Servicepreise.MSRP <> 0 THEN
+                    EnterCell(RowNo,ColumnNo,'','=ABS(1-(D'+FORMAT(RowNo) + '/C' + FORMAT(RowNo)+'))',FALSE,FALSE,FALSE,'0.0%',TempExcelBufferExport."Cell Type"::Number); //Prozent
+                  RowNo := RowNo + 1;
+                  IF testlauf = FALSE THEN BEGIN
+                    Servicepreise.MSRP := excel_msrp;
+                    IF STRPOS(Servicepreise.Preisliste,'-') > 0 THEN
+                      Servicepreise.Preisliste := COPYSTR(Servicepreise.Preisliste,1,STRPOS(Servicepreise.Preisliste,'-') -1) + PL_Version
+                    ELSE
+                      Servicepreise.Preisliste := Servicepreise.Preisliste + PL_Version;
+                    Servicepreise.MODIFY(TRUE);
+                  END;
+                  ge„nderte_eintr„ge += 1;
+                END;
+              END;
+            END;
+            RecNo := RecNo + 1;
+            Window.UPDATE(1,ROUND(RecNo / TotalRecNo * 10000,1));
+          UNTIL Servicepreise.NEXT = 0;
+        END;
+
+        FileMgt.DeleteServerFile(ServerUploadFile);
+
+        CLEAR(XlWrkShtReader);
+        CLEAR(XlWrkBkWriter);
+
+        IF DoUpdateExistingWorksheet THEN BEGIN
+          TempExcelBufferExport.UpdateBook(ServerFileName,SheetName);
+          TempExcelBufferExport.WriteSheet('',COMPANYNAME,USERID);
+          TempExcelBufferExport.CloseBook;
+          IF NOT Testmode THEN
+            TempExcelBufferExport.DownloadAndOpenExcel;
+        END ELSE BEGIN
+          TempExcelBufferExport.CreateBook(ServerFileName,Text001);
+          TempExcelBufferExport.WriteSheet(
+            PADSTR(STRSUBSTNO('%1 %2',Text001,''),30),COMPANYNAME,USERID);
+          TempExcelBufferExport.CloseBook;
+          IF NOT Testmode THEN BEGIN
+            TempExcelBufferExport.OpenExcel; //hat Autofit drin der die Spaltenbreite wieder berschreibt, deshalb neue Fkt. nachfolgend
+            //TempExcelBufferExport.OpenExcelWithoutAutoFit(Text001,Text001 + ExcelFileExtensionTok,'',TRUE);
+          END;
+        END;
+        IF NOT Testmode THEN
+          TempExcelBufferExport.GiveUserControl;
+
+        Window.CLOSE;
+      END;
+
+
       //Ausgabe des Einspiel Ergebnisses
 
       IF PL_W„h = '' THEN
@@ -1701,7 +2109,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         EXIT;
 
       //CHAMPS oder ACTS
-      IF (auswahl = 1) OR (auswahl = 2) OR (auswahl = 7) THEN BEGIN
+      IF (auswahl = 1) OR (auswahl = 2) OR (auswahl = 9) THEN BEGIN
 
         //********************************************************************************************
         //                           Syntax Prfungen der Quell Datei
@@ -2783,6 +3191,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
       3       TOP       08.01.19    ST    Pauschalartikel wie z.B. ACTS9X5-IPP_PK-A/YR werden nun beim Abgleich bercksichtigt, hier ist der Service gleich HW MSRP, EK und VK = 0
       4       TOP       19.03.19    ST    Neues Preislisten System mit neu und alt integriert, um so zwischen verschiedenen Versionen wechseln zu k”nnen
       5       TOP       19.01.21    ST    Neuer Modus "Ersetze aktuelle Preisliste" implementiert, um eine Neu Auflage der aktuell gltigen Preisliste zu realisieren und Žnderungen einzuspielen
+      6       TOP       08.04.21    ST    Neue Korrektur Modi, um bestimmte Fehler in den Preislisten zu korrigieren, die durch Diskrepanzen zwischen den Normal / EOS Sheets und dem Uploadable Flat Price Book entstehen
     }
     END.
   }
