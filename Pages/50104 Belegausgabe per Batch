@@ -2,8 +2,8 @@ OBJECT Page 50104 Belegausgabe per Batch
 {
   OBJECT-PROPERTIES
   {
-    Date=18.09.20;
-    Time=10:38:18;
+    Date=27.04.21;
+    Time=17:00:22;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -172,12 +172,20 @@ OBJECT Page 50104 Belegausgabe per Batch
                 StyleExpr=TRUE }
 
     { 1140020;3;Field     ;
-                CaptionML=DEU=Servicevertr„gen als PDF;
+                CaptionML=DEU=Servicevertr„ge als PDF;
                 SourceExpr=Servicevertr„ge_PDF }
 
     { 1000000013;3;Field  ;
                 CaptionML=DEU=ACTS Certificates als PDF;
                 SourceExpr=Certificates_PDF }
+
+    { 1000000014;3;Field  ;
+                CaptionML=DEU=Tracking Service EMail mit PDF;
+                SourceExpr=Tracking_PDF;
+                OnValidate=BEGIN
+                             Tagesdatum := WORKDATE;
+                           END;
+                            }
 
   }
   CODE
@@ -193,9 +201,12 @@ OBJECT Page 50104 Belegausgabe per Batch
       purch_header@1140028 : Record 38;
       ship_header@1000000008 : Record 110;
       ship_line@1000000022 : Record 111;
+      ShippingAgent@1000000037 : Record 291;
       Wartungsvertrag@1000000007 : Record 50011;
       Servicepositionen@1000000006 : Record 50024;
       Vendor@1000000027 : Record 23;
+      Pack_Archiv@1000000033 : Record 50039;
+      Pack_Archiv_mod@1000000034 : Record 50039;
       FileServer@1000000021 : Record 2000000022;
       Tagesdatum@1140014 : Date;
       Žnd_Best_PDF@1140013 : Boolean;
@@ -208,6 +219,7 @@ OBJECT Page 50104 Belegausgabe per Batch
       Bestellung_PDF@1140024 : Boolean;
       Servicevertr„ge_PDF@1140025 : Boolean;
       Certificates_PDF@1000000011 : Boolean;
+      Tracking_PDF@1000000032 : Boolean;
       TOPAS_API@1140002 : Codeunit 50001;
       Bullzip_PDF@1140016 : Codeunit 50005;
       DocuWare@1000000029 : Codeunit 50016;
@@ -224,6 +236,8 @@ OBJECT Page 50104 Belegausgabe per Batch
       selected@1140027 : Integer;
       wartungsnr_save@1000000005 : ARRAY [5] OF Text;
       vertrag_gedruckt@1000000004 : Boolean;
+      lieferschein_save@1000000035 : ARRAY [5] OF Text;
+      TrackingInternetAddr@1000000036 : Text;
       au_wartungsnr@1000000003 : ARRAY [5] OF Text;
       i@1000000002 : Integer;
       k@1000000001 : Integer;
@@ -242,6 +256,8 @@ OBJECT Page 50104 Belegausgabe per Batch
       CHAMPS_Agreement_deu@1000000025 : TextConst 'DEU=Zus„tzlich erhalten Sie eine AV CHAMPS Vereinbarung. Bitte schicken Sie diese unterschrieben an uns zurck oder bersenden uns Ihren hauseigenen AV-Vertrag zur Zeichnung.';
       CHAMPS_Agreement_enu@1000000026 : TextConst 'DEU=Additionally, you will receive an AV CHAMPS agreement. Please send this signed back to us or you send us your in-house agreement.';
       shipments@1000000028 : Integer;
+      contracts@1000000038 : Integer;
+      contracts_info@1000000039 : Text;
       DocuwareServiceEnable@1000000030 : Boolean;
 
     PROCEDURE Run_Batch@1140010();
@@ -464,7 +480,6 @@ OBJECT Page 50104 Belegausgabe per Batch
         IF ship_header.FINDFIRST THEN
           Bullzip_PDF.BullzipPDF_ServiceContract(ship_header,AttachmentPath,50178);
       END;
-
 
 
 
@@ -754,6 +769,8 @@ OBJECT Page 50104 Belegausgabe per Batch
       wartungsnr_save[4] := '';
       wartungsnr_save[5] := '';
       t := 1;
+      contracts := 0;
+      contracts_info := '';
       IF Servicevertr„ge_PDF = TRUE THEN BEGIN
         ship_header.RESET;
         ship_header.SETFILTER("Posting Date",'%1',Tagesdatum);
@@ -787,6 +804,9 @@ OBJECT Page 50104 Belegausgabe per Batch
                                               Wartungsvertrag.Status::"Champs Partner");
                     IF Wartungsvertrag.FINDFIRST THEN BEGIN
                       vertrag_gedruckt := TRUE;
+                      contracts += 1;
+                      IF STRLEN(contracts_info + Servicepositionen."Wartungsvertragsnr.") < 1024 THEN
+                        contracts_info += Servicepositionen."Wartungsvertragsnr." + FORMAT(chr);
                       IF STRLEN(wartungsnr_save[t] + Servicepositionen."Wartungsvertragsnr.") > 1024 THEN
                         t += 1;
                       wartungsnr_save[t] := wartungsnr_save[t] + Servicepositionen."Wartungsvertragsnr.";
@@ -833,6 +853,8 @@ OBJECT Page 50104 Belegausgabe per Batch
               END;
             END;
           UNTIL ship_header.NEXT = 0;
+
+        MESSAGE('Zusammenfassung des Jobs:' + FORMAT(chr) + 'Anzahl Vertr„ge: %1' + FORMAT(chr) + FORMAT(chr) + contracts_info,contracts);
       END;
 
 
@@ -898,6 +920,73 @@ OBJECT Page 50104 Belegausgabe per Batch
         END;
 
         MESSAGE(Result_Text,STRLEN(DELCHR(cached_processes,'=',DELCHR(cached_processes,'=','|'))));
+      END;
+
+
+      // Mail-Job fr Tracking Service
+      lieferschein_save[1] := '';
+      lieferschein_save[2] := '';
+      lieferschein_save[3] := '';
+      lieferschein_save[4] := '';
+      lieferschein_save[5] := '';
+      t := 1;
+      IF Tracking_PDF = TRUE THEN BEGIN
+
+        Pack_Archiv.RESET;
+        Pack_Archiv.SETRANGE("Tracking via EMail",TRUE);
+        //Pack_Archiv.SETRANGE("Tracking abgeschlossen",FALSE);
+        Pack_Archiv.SETFILTER(Datum,'%1',Tagesdatum);
+        Pack_Archiv.SETFILTER("Tracking EMail-Adresse",'<>%1','');
+        Pack_Archiv.SETFILTER("Paket Verfolgungsnr.",'<>%1','');
+        IF Pack_Archiv.FINDFIRST THEN
+          REPEAT
+
+            IF  (STRPOS(lieferschein_save[1],Pack_Archiv."Lieferschein Nr.") = 0)
+            AND (STRPOS(lieferschein_save[2],Pack_Archiv."Lieferschein Nr.") = 0)
+            AND (STRPOS(lieferschein_save[3],Pack_Archiv."Lieferschein Nr.") = 0)
+            AND (STRPOS(lieferschein_save[4],Pack_Archiv."Lieferschein Nr.") = 0)
+            AND (STRPOS(lieferschein_save[5],Pack_Archiv."Lieferschein Nr.") = 0) THEN BEGIN
+              IF STRLEN(lieferschein_save[t] + Pack_Archiv."Lieferschein Nr.") > 1024 THEN
+                t += 1;
+              lieferschein_save[t] := lieferschein_save[t] + Pack_Archiv."Lieferschein Nr.";
+              subject := '';
+              body := '';
+              TrackingInternetAddr := '';
+
+              ship_header.SETFILTER("No.",'%1',Pack_Archiv."Lieferschein Nr.");
+              ship_header.FINDFIRST;
+              IF ShippingAgent.GET(ship_header."Shipping Agent Code") THEN BEGIN
+                TrackingInternetAddr := STRSUBSTNO(ShippingAgent."Internet Address",ship_header."Package Tracking No.");
+                IF STRPOS(TrackingInternetAddr,'http') = 0 THEN
+                  TrackingInternetAddr := 'http' + TrackingInternetAddr;
+              END;
+
+              Bullzip_PDF.BullzipPDF_Shipment(ship_header,AttachmentPath,50078);
+              attach_files := AttachmentPath + ship_header."No." + '.pdf';
+
+              IF ship_header."Language Code" <> 'ENU' THEN BEGIN
+                body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
+                        'anbei erhalten Sie Ihren Lieferschein zu Ihrem Paket.' + FORMAT(chr) + FORMAT(chr) +
+                        'Sendungsverfolgung im Internet: ' + FORMAT(chr) + TrackingInternetAddr;
+
+                subject := 'Versandbenachrichtigung fr Referenz ' + ship_header."External Document No." + ', Paketnummer: ' + ship_header."Package Tracking No.";
+              END ELSE BEGIN
+                body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
+                        'attached you will find your delivery note for your package.' + FORMAT(chr) + FORMAT(chr) +
+                        'Shipment tracking via Internet:' + FORMAT(chr) + TrackingInternetAddr;
+                subject := 'Shipping notification for reference ' + ship_header."External Document No." + ', package number: ' + ship_header."Package Tracking No.";
+              END;
+              //Status abgeschlossen muss fr alle Datens„tze mit der gleichen Lieferscheinnr. gesetzt werden
+              Pack_Archiv_mod.RESET;
+              Pack_Archiv_mod.SETFILTER("Lieferschein Nr.",Pack_Archiv."Lieferschein Nr.");
+              IF Pack_Archiv_mod.FINDFIRST THEN
+                Pack_Archiv_mod.MODIFYALL("Tracking abgeschlossen",TRUE);
+              TOPAS_API.NewMail(Pack_Archiv."Tracking EMail-Adresse",'','',subject,body,AttachmentPath,attach_files);
+            END;
+
+          UNTIL Pack_Archiv.NEXT = 0
+        ELSE
+          MESSAGE(STRSUBSTNO('Es stehen fr den %1 keine Tracking Daten zur Verfgung.',Tagesdatum));
       END;
     END;
 
