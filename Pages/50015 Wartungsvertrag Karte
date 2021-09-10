@@ -2,8 +2,8 @@ OBJECT Page 50015 Wartungsvertrag Karte
 {
   OBJECT-PROPERTIES
   {
-    Date=12.02.21;
-    Time=10:55:25;
+    Date=31.08.21;
+    Time=13:47:30;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -230,6 +230,15 @@ OBJECT Page 50015 Wartungsvertrag Karte
                       PromotedCategory=Category5;
                       OnAction=BEGIN
                                  Servicepositionen.SystemPos_verschieben("Wartungsvertragsnr.",temp_vertragsnr);
+                               END;
+                                }
+      { 1000000014;2 ;Action    ;
+                      Name=MoveFlatSystemsToNewContract;
+                      CaptionML=DEU=Flat Systeme in neuen Vertrag verschieben;
+                      Image=ServiceLedger;
+                      PromotedCategory=Category5;
+                      OnAction=BEGIN
+                                 Flatsysteme_in_neuen_Vetrag_verschieben;
                                END;
                                 }
       { 1000000012;1 ;ActionGroup;
@@ -651,6 +660,7 @@ OBJECT Page 50015 Wartungsvertrag Karte
       Text016@1000000024 : TextConst 'DEU=Splitvorgang fr %1 %2 erfolgreich (Neue Pos.: %3).';
       Text017@1000000023 : TextConst 'DEU=Achtung: Die Servicepos. fr Seriennr. %1 wurde bereits reklamiert. Bitte fllen Sie fr die neue Systempos. %1 das Feld %2 manuell aus.';
       Text018@1000000016 : TextConst 'DEU=M”chten Sie die %1 wirklich auf %2 ab„ndern?';
+      Text019@1000000025 : TextConst 'DEU=Vorgang abgebrochen, da es sich beim Artikel %1 mit %2 %3 nicht um ein SYSTEM FLAT Artikel handelt.';
       Text100@1140020 : TextConst 'DEU=Einfach,Detailliert';
       betreuer@1140026 : Code[20];
       SORStyleTxt@1000000000 : Text;
@@ -1178,6 +1188,132 @@ OBJECT Page 50015 Wartungsvertrag Karte
           UNTIL SystemPos.NEXT = 0;
       END ELSE
         ERROR(Text011);
+    END;
+
+    LOCAL PROCEDURE Flatsysteme_in_neuen_Vetrag_verschieben@1000000001();
+    VAR
+      NeuerVertrag@1140000 : Record 50011;
+      AlterVertrag@1140003 : Record 50011;
+      Ansprech@1140007 : Record 50005;
+      DebKontaktBez@1140006 : Record 5054;
+      SystemPos@1140001 : Record 50024;
+      NeueSystemPos@1140002 : Record 50024;
+      Item@1000000004 : Record 27;
+      gesamt_systeme@1140004 : Integer;
+      markierte_systeme@1140005 : Integer;
+      Text001@1000000001 : TextConst 'DEU=M”chten Sie damit beginnen die markierten Positionen (%1)  in einen neuen Systemvertrag zu verschieben?';
+      Text002@1000000002 : TextConst 'DEU=Fr Seriennr. %1 konnte das Feld %2 nicht gefllt werden, da im neu zugewiesenen Systemvertrag kein aktives Basisger„t gefunden werden konnte.';
+      Text003@1000000003 : TextConst 'DEU=Seriennr. %1 wurde erfolgreich in Systemvertrag %2 berfhrt.';
+      neue_vertragsnr@1000000000 : Code[20];
+    BEGIN
+      AlterVertrag.GET("Wartungsvertragsnr.");
+      gesamt_systeme    := 0;
+      markierte_systeme := 0;
+
+      SystemPos.RESET;
+      SystemPos.SETRANGE(Art,SystemPos.Art::System);
+      //SystemPos.SETRANGE(Basisger„t,TRUE);
+      SystemPos.SETRANGE("Zum Verschieben markieren",TRUE);
+      SystemPos.SETRANGE("Wartungsvertragsnr.","Wartungsvertragsnr.");
+      IF SystemPos.FINDFIRST THEN BEGIN
+        gesamt_systeme := SystemPos.COUNT;
+        REPEAT
+          Item.GET(SystemPos."Artikelnr.");
+          IF Item.Serviceklassifizierung <> 'SYSTEM FLAT' THEN
+            ERROR(Text019,SystemPos."Artikelnr.",SystemPos.FIELDCAPTION("Seriennr."),SystemPos."Seriennr.");
+        UNTIL SystemPos.NEXT = 0;
+      END;
+
+      SystemPos.RESET;
+      SystemPos.SETRANGE(Art,SystemPos.Art::System);
+      SystemPos.SETRANGE("Zum Verschieben markieren",TRUE);
+      SystemPos.SETRANGE(Basisger„t,TRUE);
+      SystemPos.SETRANGE("Wartungsvertragsnr.","Wartungsvertragsnr.");
+      IF SystemPos.FINDFIRST THEN BEGIN
+
+        markierte_systeme := SystemPos.COUNT;
+        IF markierte_systeme = gesamt_systeme THEN ;
+
+        IF CONFIRM(Text001,TRUE,SystemPos.COUNT) THEN
+          REPEAT
+
+            IF neue_vertragsnr = '' THEN BEGIN
+              NeuerVertrag.INIT;
+              NeuerVertrag.INSERT(TRUE);
+              neue_vertragsnr := NeuerVertrag."Wartungsvertragsnr.";
+              DebKontaktBez.RESET;
+              DebKontaktBez.SETRANGE("Business Relation Code",'DEB');
+              DebKontaktBez.SETRANGE("No.",AlterVertrag."Debitornr.");
+              IF DebKontaktBez.FINDFIRST THEN BEGIN
+                Ansprech.RESET;
+                Ansprech.SETRANGE("Kampagnennr.",NeuerVertrag."Wartungsvertragsnr.");
+                Ansprech.SETRANGE("Kontaktnr.",DebKontaktBez."Contact No.");
+                IF NOT Ansprech.FINDFIRST THEN BEGIN
+                  Ansprech.INIT;
+                  Ansprech.VALIDATE("Kontaktnr.",DebKontaktBez."Contact No.");
+                  Ansprech."Kampagnennr." := NeuerVertrag."Wartungsvertragsnr.";
+                  Ansprech.Fhrungsrolle := TRUE;
+                  Ansprech.INSERT;
+                END;
+              END;
+            END;
+
+            SystemPos."Wartungsvertragsnr." := NeuerVertrag."Wartungsvertragsnr.";
+            SystemPos."Hauptwartungsvertragsnr." := NeuerVertrag."Hauptwartungsvertragsnr.";
+            SystemPos."Zum Verschieben markieren" := FALSE;
+            NeueSystemPos.RESET;
+            NeueSystemPos.SETRANGE(Inaktiv,FALSE);
+            NeueSystemPos.SETRANGE(Art,NeueSystemPos.Art::System);
+            NeueSystemPos.SETRANGE(Basisger„t,TRUE);
+            NeueSystemPos.SETRANGE("Wartungsvertragsnr.",NeuerVertrag."Wartungsvertragsnr.");
+            IF NeueSystemPos.FINDFIRST THEN BEGIN
+              SystemPos."Geh”rt zu Lfd. Nr." := NeueSystemPos."Geh”rt zu Lfd. Nr.";
+            END ELSE BEGIN
+              NeueSystemPos.RESET;
+              NeueSystemPos.SETRANGE(Inaktiv,FALSE);
+              NeueSystemPos.SETRANGE(Art,NeueSystemPos.Art::System);
+              NeueSystemPos.SETRANGE("Wartungsvertragsnr.",NeuerVertrag."Wartungsvertragsnr.");
+              IF NeueSystemPos.FINDFIRST THEN
+                BEGIN
+                  SystemPos."Geh”rt zu Lfd. Nr." := NeueSystemPos."Geh”rt zu Lfd. Nr.";
+                END
+              ELSE
+                IF SystemPos.Basisger„t = TRUE THEN
+                  SystemPos."Geh”rt zu Lfd. Nr." := SystemPos."Lfd. Nr."
+                ELSE
+                  MESSAGE(Text002,SystemPos."Seriennr.",SystemPos.FIELDCAPTION("Geh”rt zu Lfd. Nr."));
+            END;
+
+            IF SystemPos.Basisger„t = TRUE THEN BEGIN
+              NeuerVertrag."Debitornr." := AlterVertrag."Debitornr.";
+              NeuerVertrag.Basisger„t := SystemPos."Artikelnr.";
+              NeuerVertrag.Startdatum := SystemPos.Belegdatum;
+              NeuerVertrag."Ablauf Gew„hrleistung" := AlterVertrag."Ablauf Gew„hrleistung";
+              NeuerVertrag."Hauptwartungsvertragsnr." := AlterVertrag."Hauptwartungsvertragsnr.";
+              NeuerVertrag.Status := NeuerVertrag.Status::System;
+              NeuerVertrag.Klasse := AlterVertrag.Klasse;
+              NeuerVertrag.Volumen += 1;
+              NeuerVertrag.Verl„ngerungen := 0;
+              NeuerVertrag.Auftragsstatus := AlterVertrag.Auftragsstatus;
+              NeuerVertrag."Auftragsnr." := AlterVertrag."Auftragsnr.";
+              NeuerVertrag."Auftragszeilennr." := AlterVertrag."Auftragszeilennr.";
+              NeuerVertrag."Lieferscheinnr." := AlterVertrag."Lieferscheinnr.";
+              NeuerVertrag."Lieferscheinzeilennr." := AlterVertrag."Lieferscheinzeilennr.";
+              NeuerVertrag.SOR := AlterVertrag.SOR;
+              NeuerVertrag."SOR Option" := AlterVertrag."SOR Option";
+              NeuerVertrag.Rabatt := AlterVertrag.Rabatt;
+              NeuerVertrag.MODIFY(TRUE);
+
+              IF AlterVertrag.Klasse = AlterVertrag.Klasse::Mehrger„te THEN BEGIN
+                AlterVertrag.Volumen -= 1;
+                AlterVertrag.MODIFY(TRUE);
+              END;
+
+              SystemPos.MODIFY(TRUE);
+              MESSAGE(Text003,SystemPos."Seriennr.",NeuerVertrag."Wartungsvertragsnr.");
+            END;
+          UNTIL SystemPos.NEXT = 0;
+      END;
     END;
 
     PROCEDURE Belegstatus_pruefen@1140003(ausgabe@1140004 : Boolean);
