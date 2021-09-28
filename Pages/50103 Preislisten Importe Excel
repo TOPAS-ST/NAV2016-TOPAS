@@ -2,8 +2,8 @@ OBJECT Page 50103 Preislisten Importe Excel
 {
   OBJECT-PROPERTIES
   {
-    Date=20.09.21;
-    Time=10:34:40;
+    Date=28.09.21;
+    Time=09:44:30;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -71,7 +71,12 @@ OBJECT Page 50103 Preislisten Importe Excel
     { 1140012;3;Field     ;
                 CaptionML=DEU=Preisliste;
                 BlankZero=Yes;
-                SourceExpr=preisliste }
+                SourceExpr=preisliste;
+                OnValidate=BEGIN
+                             IF preisliste = preisliste::GSI THEN
+                               MESSAGE(Warnung_GSI);
+                           END;
+                            }
 
     { 1000000002;1;Group  ;
                 CaptionML=DEU=Optionen;
@@ -134,6 +139,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       chr@1140021 : Char;
       sheet_anzahl@1000000002 : Integer;
       i@1000000003 : Integer;
+      Warnung_GSI@1000000006 : TextConst 'DEU=Vor dem Preislisten Abgleich ist zu prfen, ob neue Reiter hinzugefgt worden sind und ob die Disti Cost Spalte auf allen Reitern immer die gleiche ist.';
 
     PROCEDURE GSI_Import@1140000();
     VAR
@@ -247,10 +253,11 @@ OBJECT Page 50103 Preislisten Importe Excel
           END;
       END;
 
-      FOR k := 1 TO 4 DO BEGIN
+      FOR k := 1 TO 5 DO BEGIN
 
         Quelle_j := '10';
         Quelle_Sheet := Quelle_Book.Worksheets.Item(k);
+        leere_zeilen := 0;
 
         REPEAT
 
@@ -317,7 +324,7 @@ OBJECT Page 50103 Preislisten Importe Excel
               //einkaufspreis.SETFILTER("Vendor No.",'%1',Artikel."Vendor No.");
               IF einkaufspreis.FINDLAST THEN BEGIN
                 IF (einkaufspreis."Direct Unit Cost" <> PL_DC) AND (PL_DC <> 0) THEN BEGIN
-                  Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+                  Protokoll_Sheet.Range('A'+Protokoll_j).Value := TOPAS_API.CreateExcelHyperlinkToNav(Artikel.TABLENAME,1,30,Artikel."No.");
                   Protokoll_Sheet.Range('B'+Protokoll_j).Value := FORMAT(einkaufspreis."Direct Unit Cost");
                   Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
                   Protokoll_Sheet.Range('D'+Protokoll_j).Value := FORMAT(PL_DC-einkaufspreis."Direct Unit Cost");
@@ -356,7 +363,6 @@ OBJECT Page 50103 Preislisten Importe Excel
                 END;
                 sonstige_aenderungen += 1;
                 „nderung := TRUE;
-                Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
                 Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'x';
               END;
 
@@ -371,7 +377,6 @@ OBJECT Page 50103 Preislisten Importe Excel
                 END;
                 sonstige_aenderungen += 1;
                 „nderung := TRUE;
-                Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
                 Protokoll_Sheet.Range('K'+Protokoll_j).Value := 'x';
               END;
 
@@ -386,7 +391,6 @@ OBJECT Page 50103 Preislisten Importe Excel
                 END;
                 sonstige_aenderungen += 1;
                 „nderung := TRUE;
-                Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
                 Protokoll_Sheet.Range('L'+Protokoll_j).Value := 'x';
               END;
               IF (STRPOS(UPPERCASE(PL_REG),'N') <> 0) AND (Artikel.Registrierbar = TRUE) THEN BEGIN
@@ -396,7 +400,6 @@ OBJECT Page 50103 Preislisten Importe Excel
                 END;
                 sonstige_aenderungen += 1;
                 „nderung := TRUE;
-                Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
                 Protokoll_Sheet.Range('L'+Protokoll_j).Value := 'x';
               END;
 
@@ -417,7 +420,6 @@ OBJECT Page 50103 Preislisten Importe Excel
                 END;
                 sonstige_aenderungen += 1;
                 „nderung := TRUE;
-                Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
                 Protokoll_Sheet.Range('M'+Protokoll_j).Value := 'x';
               END;
 
@@ -433,7 +435,6 @@ OBJECT Page 50103 Preislisten Importe Excel
                 END;
                 sonstige_aenderungen += 1;
                 „nderung := TRUE;
-                Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
                 Protokoll_Sheet.Range('N'+Protokoll_j).Value := 'x';
               END;
               IF (STRPOS(UPPERCASE(PL_LF),'NO') <> 0) AND (Artikel."Lead Free" = TRUE) THEN BEGIN
@@ -443,12 +444,14 @@ OBJECT Page 50103 Preislisten Importe Excel
                 END;
                 „nderung := TRUE;
                 sonstige_aenderungen += 1;
-                Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
                 Protokoll_Sheet.Range('N'+Protokoll_j).Value := 'x';
               END;
               }
 
-              IF „nderung = TRUE THEN Protokoll_j := INCSTR(Protokoll_j);
+              IF „nderung = TRUE THEN BEGIN
+                Protokoll_Sheet.Range('A'+Protokoll_j).Value := TOPAS_API.CreateExcelHyperlinkToNav(Artikel.TABLENAME,1,30,Artikel."No.");
+                Protokoll_j := INCSTR(Protokoll_j);
+              END;
 
               IF PL_DC <> 0 THEN BEGIN
                 IF testlauf = FALSE THEN BEGIN
@@ -494,7 +497,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       UNTIL ISCLEAR(Protokoll_Excel) AND ISCLEAR(Protokoll_Book) AND ISCLEAR(Protokoll_Sheet);
 
       MESSAGE('Abgleich der Artikel abgeschlossen.' + '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\' +
-              'Excel Datens„tze: %3 (Ausgewerte Tabs: 1)\',neuer_preis,sonstige_aenderungen,excel_datens„tze);
+              'Excel Datens„tze: %3 (Ausgewerte Tabs: %4)\',neuer_preis,sonstige_aenderungen,excel_datens„tze,k);
     END;
 
     PROCEDURE FER_Import@1140005();
@@ -1034,8 +1037,8 @@ OBJECT Page 50103 Preislisten Importe Excel
 
     PROCEDURE LSI_Import@1140008();
     VAR
-      Spalte_Part@1140012 : TextConst 'DEU=A';
-      Spalte_DC@1140011 : TextConst 'DEU=B';
+      Spalte_Part@1140012 : TextConst 'DEU=L';
+      Spalte_DC@1140011 : TextConst 'DEU=M';
       Max_Datens„tze@1140002 : TextConst 'DEU=1000';
       Text000@1140001 : TextConst 'DEU=Fehler in der Syntax der Quelldatei.\Spalte: %1';
       save_artikelname@1140005 : Code[80];
@@ -1176,7 +1179,7 @@ OBJECT Page 50103 Preislisten Importe Excel
 
             aenderung := FALSE;
 
-            Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikelname;
+            Protokoll_Sheet.Range('A'+Protokoll_j).Value := TOPAS_API.CreateExcelHyperlinkToNav(Artikel.TABLENAME,1,30,Artikel."No.");
             Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
 
             //*********************************************************************************************
@@ -3812,8 +3815,10 @@ OBJECT Page 50103 Preislisten Importe Excel
         Artikel.RESET;
         Artikel.SETFILTER("No. 2",'%1',Artikelname);
         IF NOT Artikel.FINDFIRST THEN BEGIN
-          IF (STRPOS(Artikelname,'TR') = STRLEN(Artikelname)-1) AND (COPYSTR(Artikelname,STRLEN(Artikelname)-1,2) = 'TR') THEN BEGIN
-            Artikelname := TOPAS_API.replace_text(Artikelname,'TR','-TR');
+          IF COPYSTR(Artikelname,STRLEN(Artikelname)-1,2) = 'TR' THEN BEGIN
+          //IF (STRPOS(Artikelname,'TR') = STRLEN(Artikelname)-1) AND (COPYSTR(Artikelname,STRLEN(Artikelname)-1,2) = 'TR') THEN BEGIN
+            //Artikelname := TOPAS_API.replace_text(Artikelname,'TR','-TR'); //fhrt zu Fehlern wenn TR auch zus„tzlich mittendrin z.B. bei TRLTR
+            Artikelname := COPYSTR(Artikelname,1,STRLEN(Artikelname) -2) + '-TR';
           END;
         END;
 
@@ -3912,6 +3917,10 @@ OBJECT Page 50103 Preislisten Importe Excel
             //*********************************************************************************************
             //                                     NCNR Status berprfen
             //*********************************************************************************************
+
+            IF PL_ROHS_EXEMP = '7A' THEN
+              IF (COPYSTR(Artikelname,STRLEN(Artikelname)-1,2) <> 'RL') AND (COPYSTR(Artikelname,STRLEN(Artikelname)-4,5) <> 'RL-TR') AND (COPYSTR(Artikelname,STRLEN(Artikelname)-3,4) <> 'RLTR') THEN
+                PL_ROHS_EXEMP := '7A_NEIN';
 
             IF (UPPERCASE(PL_ROHS_EXEMP) = '7A') OR (UPPERCASE(PL_Status) = 'NCNR') THEN BEGIN
               IF Artikel.NCNR = FALSE THEN BEGIN
