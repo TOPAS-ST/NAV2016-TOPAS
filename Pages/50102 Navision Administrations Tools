@@ -2,8 +2,8 @@ OBJECT Page 50102 Navision Administrations Tools
 {
   OBJECT-PROPERTIES
   {
-    Date=21.09.20;
-    Time=11:15:31;
+    Date=31.08.21;
+    Time=10:46:52;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -20,6 +20,7 @@ OBJECT Page 50102 Navision Administrations Tools
                  hinweis[8] := 'Kunden Mailings werden in den Dokumentenversand eingespielt';
                  hinweis[9] := 'Kopiert Servicepreise von einer Artikelnr. zu einer gewnschten Ziel Artikelnr. (keine Servicepreise vorhanden)';
                  hinweis[10] := 'Artikelverfolgung im Artikel „ndern - šberschriften wie folgt verwenden: Spalte A - Nr., Spalte B - Seriennummer, Spalte C - Product Key und dann pro Artikel ein X = ja setzen';
+                 hinweis[11] := 'Kunden Umstellung laut Excelfile - Arbeitsblatt muss Kundenumstellung lauten - šberschriften wie folgt verwenden: Spalte A - Debitornr., Spalte B - Debitorname (optional), Spalte C - Betreuer Innendienst, D - Verk„ufercode';
                END;
 
     ActionList=ACTIONS
@@ -107,6 +108,16 @@ OBJECT Page 50102 Navision Administrations Tools
                       PromotedCategory=Process;
                       OnAction=BEGIN
                                  Debitornr_umbuchen(alte_debnr,neue_debnr);
+                               END;
+                                }
+      { 1000000067;2 ;Action    ;
+                      Name=Debitor_umstellen;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=CoupledUsers;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 Kunden_Umstellung(kd_umstellung_speicherort);
                                END;
                                 }
       { 1140011 ;2   ;Action    ;
@@ -390,7 +401,8 @@ OBJECT Page 50102 Navision Administrations Tools
 
     { 1000000031;1;Group  ;
                 CaptionML=DEU=Debitoren;
-                GroupType=Group }
+                GroupType=Group;
+                Layout=Rows }
 
     { 1000000032;2;Group  ;
                 CaptionML=DEU=Debitornr. „ndern;
@@ -403,6 +415,43 @@ OBJECT Page 50102 Navision Administrations Tools
     { 1000000034;3;Field  ;
                 CaptionML=DEU=auf Debitornr. (aus NAV5.0) „ndern;
                 SourceExpr=neue_debnr }
+
+    { 1000000060;2;Group  ;
+                CaptionML=DEU=Kunden Umstellung;
+                GroupType=Group }
+
+    { 1000000057;3;Group  ;
+                GroupType=GridLayout }
+
+    { 1000000059;4;Group  ;
+                GroupType=Group }
+
+    { 1000000058;5;Field  ;
+                SourceExpr=hinweis[11];
+                Editable=FALSE;
+                Style=StrongAccent;
+                StyleExpr=TRUE }
+
+    { 1000000066;3;Group  ;
+                GroupType=Group }
+
+    { 1000000065;4;Group  ;
+                GroupType=Group }
+
+    { 1000000064;5;Group  ;
+                GroupType=Group }
+
+    { 1000000063;5;Field  ;
+                CaptionML=DEU=Datei;
+                SourceExpr=kd_umstellung_speicherort;
+                OnLookup=BEGIN
+                           TOPAS_API.OpenFile(unsub_speicherort);
+                         END;
+
+                OnAssistEdit=BEGIN
+                               kd_umstellung_speicherort := TOPAS_API.Save_FileDialog(kd_umstellung_speicherort);
+                             END;
+                              }
 
     { 1900003;1;Group     ;
                 CaptionML=DEU=Service }
@@ -449,6 +498,10 @@ OBJECT Page 50102 Navision Administrations Tools
                 SourceExpr=artikelnr;
                 TableRelation=Item }
 
+    { 1000000056;4;Field  ;
+                CaptionML=DEU=Vertragsnr.;
+                SourceExpr=vertragsnr }
+
     { 1140028;4;Field     ;
                 Name=Alte Seriennr.;
                 SourceExpr=alte_sn }
@@ -457,17 +510,23 @@ OBJECT Page 50102 Navision Administrations Tools
                 Name=Neue Seriennr.;
                 SourceExpr=neue_sn }
 
-    { 1000000015;2;Group  ;
+    { 1000000062;2;Group  ;
+                GroupType=Group }
+
+    { 1000000061;3;Group  ;
+                GroupType=GridLayout }
+
+    { 1000000015;4;Group  ;
                 CaptionML=DEU=Import Seriennr.;
                 GroupType=Group }
 
-    { 1000000014;3;Field  ;
+    { 1000000014;5;Field  ;
                 SourceExpr=hinweis[4];
                 Editable=FALSE;
                 Style=StrongAccent;
                 StyleExpr=TRUE }
 
-    { 1000000013;3;Field  ;
+    { 1000000013;5;Field  ;
                 SourceExpr=hinweis[5];
                 Editable=FALSE;
                 Style=StrongAccent;
@@ -537,6 +596,7 @@ OBJECT Page 50102 Navision Administrations Tools
                 GroupType=Group }
 
     { 1000000054;4;Field  ;
+                Name=vertragsnr_;
                 CaptionML=DEU=Vertragsnr.;
                 SourceExpr=vertragsnr }
 
@@ -671,14 +731,16 @@ OBJECT Page 50102 Navision Administrations Tools
       auftragszeilennr@1140031 : Integer;
       leerzeilen@1140030 : Integer;
       Text200@1140036 : TextConst 'DEU=Einfach,Detailliert';
-      hinweis@1000000001 : ARRAY [10] OF Text;
+      hinweis@1000000001 : ARRAY [15] OF Text;
       mandant@1000000003 : Text[30];
       Text300@1000000035 : TextConst 'DEU=Import erfolgreich abgeschlossen.';
       servicepreis_kopieren_von@1000000034 : Code[20];
       servicepreis_kopieren_nach@1000000036 : Code[20];
       selection@1000000041 : Integer;
+      Text301@1000000047 : TextConst 'DEU=Abgleich erfolgreich abgeschlossen.';
       Text400@1000000044 : TextConst 'DEU=Deaktivieren,L”schen';
       ServiceSelection@1000000042 : TextConst 'DEU=Alle,ACTS EURO,ACTS USD,CHAMPS EURO,CHAMPS USD';
+      kd_umstellung_speicherort@1000000046 : Text;
 
     PROCEDURE Service_neu_aufbauen@1140002(ShipmentNo@1140000 : Code[20]);
     VAR
@@ -1054,22 +1116,8 @@ OBJECT Page 50102 Navision Administrations Tools
       RMA_pruefung@1140004 : Record 50021;
       selection@1140006 : Integer;
     BEGIN
-      IF (Artikelnr = '') OR (Alte_SN = '') OR (Neue_SN = '') THEN
+      IF (Artikelnr = '') OR (Alte_SN = '') OR (Neue_SN = '') OR (vertragsnr = '') THEN
         ERROR(Text002);
-
-      // SICHERHEITSSPERRE
-      // Wenn fr eine bereits ersetzte Seriennr. die Seriennr. nachtr„glich wieder ge„ndert wird,
-      // muss das System die Žnderung abbrechen, da es sonst zu Inkonsistenzen im System kommt,
-      // die Seriennr. muss manuell in der neuen RMA Pos. auf die neue Seriennr. vorbereitet werden
-      // bevor die alte RMA Pos. ge„ndert werden kann
-
-      RMA_pruefung.RESET;
-      RMA_pruefung.SETFILTER(RMA_pruefung.Belegart,'%1|%2',RMA_pruefung.Belegart::Rechnung,
-      RMA_pruefung.Belegart::"vom Kunden");
-      RMA_pruefung.SETFILTER("Artikelnr.",'%1',Artikelnr);
-      RMA_pruefung.SETFILTER("SN-Nr. / DC",'%1',Alte_SN);
-      IF RMA_pruefung.FINDFIRST THEN
-        ERROR(Text003,Alte_SN,RMA_pruefung."RMA-Nr.");
 
       // Fhrt Umbuchungen der Seriennr. im System durch, wenn diese noch nicht gekennzeichnet sind
       ServicePos.RESET;
@@ -1077,7 +1125,25 @@ OBJECT Page 50102 Navision Administrations Tools
       ServicePos.SETFILTER("Artikelnr.",'%1',Artikelnr);
       ServicePos.SETFILTER("Seriennr.",'%1',Alte_SN);
       ServicePos.SETFILTER(Reklamiert,'%1',FALSE);
+      ServicePos.SETFILTER(Inaktiv,'%1',FALSE);
+      ServicePos.SETFILTER("Wartungsvertragsnr.",'%1',vertragsnr);
       IF ServicePos.FIND('-') THEN BEGIN
+
+        // SICHERHEITSSPERRE
+        // Wenn fr eine bereits ersetzte Seriennr. die Seriennr. nachtr„glich wieder ge„ndert wird,
+        // muss das System die Žnderung abbrechen, da es sonst zu Inkonsistenzen im System kommt,
+        // die Seriennr. muss manuell in der neuen RMA Pos. auf die neue Seriennr. vorbereitet werden
+        // bevor die alte RMA Pos. ge„ndert werden kann
+
+        RMA_pruefung.RESET;
+        RMA_pruefung.SETFILTER(RMA_pruefung.Belegart,'%1|%2',RMA_pruefung.Belegart::Rechnung,
+        RMA_pruefung.Belegart::"vom Kunden");
+        RMA_pruefung.SETFILTER("Artikelnr.",'%1',Artikelnr);
+        RMA_pruefung.SETFILTER("SN-Nr. / DC",'%1',Alte_SN);
+        RMA_pruefung.SETFILTER("Debitornr.",ServicePos."Debitornr.");
+        IF RMA_pruefung.FINDFIRST THEN
+          ERROR(Text003,Alte_SN,RMA_pruefung."RMA-Nr.");
+
         selection := STRMENU(Text004,1);
         IF selection = 1 THEN
         IF CONFIRM(Text005,FALSE,Alte_SN,Neue_SN) THEN
@@ -1441,6 +1507,95 @@ OBJECT Page 50102 Navision Administrations Tools
             END;
           END;
       END;
+    END;
+
+    PROCEDURE Kunden_Umstellung@1000000054(Speicherort@1000000000 : Text);
+    VAR
+      Contact@1000000010 : Record 5050;
+      Customer@1000000009 : Record 18;
+      ContactBusinessRelation@1000000005 : Record 5054;
+      ServerUploadFile@1000000011 : Text;
+      CustNo@1000000006 : Code[20];
+      CustName@1000000007 : Text;
+      Betreuer@1000000008 : Code[20];
+      Salesperson@1000000012 : Code[20];
+      ContactNo@1000000001 : Code[20];
+      Spalte_Debitornr_Nr@1000000004 : Integer;
+      db_change@1000000002 : Boolean;
+      Spalte_Debitornr@1000000003 : TextConst 'DEU=A';
+    BEGIN
+      IF (Speicherort = '') THEN ERROR(Text002);
+
+      ServerUploadFile := FileMgt.UploadFileSilent(Speicherort);
+
+      TempExcelBuffer.DELETEALL;
+        TempExcelBuffer.OpenBook(ServerUploadFile,'Kundenumstellung');
+        TempExcelBuffer.ReadSheet();
+        IF TempExcelBuffer.FINDLAST THEN
+          EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
+
+      Spalte_Debitornr_Nr := 1;
+
+      IF UPPERCASE(GetValueAtCell(1,Spalte_Debitornr_Nr)) <> 'DEBITORNR.' THEN
+          ERROR('Fehlerhafte Syntax in der Liste > Spalte ' + Spalte_Debitornr + ' muss Debitornr. sein.');
+
+      //********************************************************************************************
+      //                         Eigentlicher Abgleich des Kundenstamms
+      //********************************************************************************************
+
+      Window.OPEN(
+        Text000 +
+        '@1@@@@@@@@@@@@@@@@@@@@@\');
+
+      FOR i := 2 TO TotalRows DO BEGIN
+
+        EVALUATE(CustNo,GetValueAtCell(i,1));
+        CustName := GetValueAtCell(i,2);
+        Betreuer := GetValueAtCell(i,3);
+        Salesperson := GetValueAtCell(i,4);
+        db_change := FALSE;
+
+        IF Customer.GET(CustNo) THEN BEGIN
+          IF (Betreuer <> '') AND (Customer."Betreuer Innendienst" <> Betreuer) THEN BEGIN
+            Customer.VALIDATE("Betreuer Innendienst",Betreuer);
+            db_change := TRUE;
+          END;
+          IF (Salesperson <> '') AND (Customer."Salesperson Code" <> Salesperson) THEN BEGIN
+            Customer.VALIDATE("Salesperson Code",Salesperson);
+            db_change := TRUE;
+          END;
+          IF db_change THEN
+            Customer.MODIFY(TRUE);
+
+          db_change := FALSE;
+          ContactBusinessRelation.RESET;
+          ContactBusinessRelation.SETRANGE("No.",Customer."No.");
+          ContactBusinessRelation.SETRANGE("Link to Table",ContactBusinessRelation."Link to Table"::Customer);
+          IF ContactBusinessRelation.FINDFIRST THEN BEGIN
+            ContactNo := ContactBusinessRelation."Contact No.";
+            IF Contact.GET(ContactNo) THEN BEGIN
+              IF (Betreuer <> '') AND (Contact."Betreuer Innendienst" <> Betreuer) THEN BEGIN
+                Contact.VALIDATE("Betreuer Innendienst",Betreuer);
+                db_change := TRUE;
+              END;
+              IF (Salesperson <> '') AND (Contact."Salesperson Code" <> Salesperson) THEN BEGIN
+                Contact.VALIDATE("Salesperson Code",Salesperson);
+                db_change := TRUE;
+              END;
+              IF db_change THEN
+                Contact.MODIFY(TRUE);
+            END;
+          END;
+        END;
+
+        Window.UPDATE(1,ROUND(i / TotalRows * 10000,1));
+
+      END;
+
+      Window.CLOSE;
+
+      IF TotalRows > 1 THEN
+        MESSAGE(Text301);
     END;
 
     LOCAL PROCEDURE "-----------NEUES EXCEL-----------"@1000000012();
