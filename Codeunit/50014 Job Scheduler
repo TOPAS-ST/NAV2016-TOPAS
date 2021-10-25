@@ -2,8 +2,8 @@ OBJECT Codeunit 50014 Job Scheduler
 {
   OBJECT-PROPERTIES
   {
-    Date=09.03.21;
-    Time=14:22:07;
+    Date=31.03.21;
+    Time=17:44:45;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -205,6 +205,7 @@ OBJECT Codeunit 50014 Job Scheduler
       Services@1000000003 : Record 50028;
       Services_new@1000000004 : Record 50028;
       Services_del@1000000008 : Record 50028;
+      Service_check@1000000012 : Record 50028;
       PreislistenStatus@1000000002 : Record 50001;
       PreislistenStatusUmst@1000000005 : Record 50001;
       Item@1000000011 : Record 27;
@@ -213,10 +214,17 @@ OBJECT Codeunit 50014 Job Scheduler
       champs_services_pre@1000000000 : Integer;
       acts_services_pre@1000000001 : Integer;
       last_time_buy@1000000006 : Date;
+      chr@1000000017 : Char;
+      SMPTMail@1000000016 : Codeunit 400;
+      mail_subject@1000000015 : Text;
+      mail_body@1000000014 : Text;
+      uncorrected@1000000013 : Text;
     BEGIN
       //Umstellung der Preislisten Information in der Optionstabelle
       champs_services_pre := 0;
       acts_services_pre := 0;
+      uncorrected := '';
+      chr := 10;
 
       Services_new.RESET;
       Services_new.SETRANGE("Update letzte Preisliste",TRUE);
@@ -344,9 +352,21 @@ OBJECT Codeunit 50014 Job Scheduler
                       SETRANGE(Status,Services.Status::neu);
                       IF FIND('-') THEN BEGIN
                         REPEAT
-                          RENAME("Service Artikelnr.","SUP Artikelnr.","Artikelnr. 2",W„hrungscode,Services.Status::alt);
-                          "Last Time Buy" := last_time_buy;
-                          MODIFY;
+                          Service_check.RESET;
+                          Service_check.SETRANGE(Status,Services.Status::alt);
+                          Service_check.SETRANGE("Service Artikelnr.","Service Artikelnr.");
+                          Service_check.SETRANGE("SUP Artikelnr.","SUP Artikelnr.");
+                          Service_check.SETRANGE("Artikelnr. 2","Artikelnr. 2");
+                          Service_check.SETRANGE(W„hrungscode,W„hrungscode);
+                          IF NOT Service_check.FINDFIRST THEN BEGIN
+                            RENAME("Service Artikelnr.","SUP Artikelnr.","Artikelnr. 2",W„hrungscode,Services.Status::alt);
+                            "Last Time Buy" := last_time_buy;
+                            MODIFY;
+                          END ELSE BEGIN
+                            //Ausnahmefehler tritt ein, wenn Preise tempor„r ins System geraten sind fr nur eine W„hrung o.„, siehe Bsp.: 920-0002-001 und Hardware Replacement Service
+                            uncorrected += 'Service Artikelnr.=' + "Service Artikelnr." + ' SUP Artikelnr.=' + "SUP Artikelnr." + ' Artikelnr. 2=' + "Artikelnr. 2" + ' W„hrungscode=' + W„hrungscode +
+                                           ' Status=' + FORMAT(Status) + FORMAT(chr);
+                          END;
                         UNTIL NEXT = 0;
                       END;
                       SETRANGE(Status,Services.Status::vorab);
@@ -422,6 +442,15 @@ OBJECT Codeunit 50014 Job Scheduler
                 IF SalesHeader.FINDFIRST THEN BEGIN
                   SalesHeader.MODIFYALL("Preislisten Kalkulation",SalesHeader."Preislisten Kalkulation"::alt);
                 END;
+
+                IF uncorrected <> '' THEN BEGIN
+                  chr := 10;
+                  mail_subject := 'Warnung: System Preislisten Importjob';
+                  mail_body :=    'Folgende Artikel wurden nicht richtig umgestellt, bitte prfen:' + FORMAT(chr) + FORMAT(chr) + uncorrected;
+                  SMPTMail.CreateMessage('','nav2016@topas.de','administrativ@topas.de',mail_subject,mail_body,FALSE);
+                  SMPTMail.Send;
+                END;
+
               END;
             END;
           END;
@@ -525,8 +554,8 @@ OBJECT Codeunit 50014 Job Scheduler
 
       IF corrected_info <> '' THEN BEGIN
         chr := 10;
-        mail_subject := 'Info: Unerwnschte Sonderzeichen Unicode Zeichen Nullbreite korrigiert ';
-        mail_body :=    'Folgende Tabellen wurden automatisch korrigiert::' + FORMAT(chr) + FORMAT(chr) + corrected_info;
+        mail_subject := 'Info: Unerwnschte Sonderzeichen Unicode Zeichen Nullbreite korrigiert';
+        mail_body :=    'Folgende Tabellen wurden automatisch korrigiert:' + FORMAT(chr) + FORMAT(chr) + corrected_info;
         SMPTMail.CreateMessage('','nav2016@topas.de','administrativ@topas.de',mail_subject,mail_body,FALSE);
         SMPTMail.Send;
       END;
