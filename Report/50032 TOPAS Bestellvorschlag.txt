@@ -1,0 +1,128 @@
+OBJECT Report 50032 TOPAS Bestellvorschlag
+{
+  OBJECT-PROPERTIES
+  {
+    Date=10.07.17;
+    Time=11:23:18;
+    Modified=Yes;
+    Version List=Topas Bericht NAV5.0;
+  }
+  PROPERTIES
+  {
+    ProcessingOnly=Yes;
+    OnPreReport=BEGIN
+                  Counter := 0;
+                  MaxDate:= 31129999D;
+                  IF OrderDate = 0D THEN
+                    ERROR(Text002);
+                  //IF ToDate = 0D THEN
+                  //  ERROR(Text003);
+                  //PeriodLength := ToDate - OrderDate + 1;
+                  //IF PeriodLength <= 0 THEN
+                  //  ERROR(Text004);
+                  IF PrRcptDate = 0D THEN
+                    ERROR(Text008);
+
+                  ReqLine.SETRANGE("Worksheet Template Name",CurrTemplateName);
+                  ReqLine.SETRANGE("Journal Batch Name",CurrWorksheetName);
+                  IF ReqLine.FINDFIRST THEN ERROR(Text007);
+
+                  //Lagerort_filter := Item.GETFILTER("Location Filter");;
+
+                  Window.OPEN(
+                    Text005 +
+                    Text006);
+                END;
+
+  }
+  DATASET
+  {
+    { 1000000000;;DataItem;                  ;
+               DataItemTable=Table27;
+               DataItemTableView=SORTING(Vendor No.);
+               OnAfterGetRecord=BEGIN
+                                  IF Counter MOD 5 = 0 THEN
+                                    Window.UPDATE(1,"No.");
+                                  Counter := Counter + 1;
+
+                                  //Item.SETFILTER("Location Filter",Lagerort_filter);
+                                  Item.SETFILTER("Location Filter",'ZENT');
+                                  Item.CALCFIELDS(Inventory,"Qty. on Sales Order","Qty. on Purch. Order");
+                                  Menge_bedarf := Item.Inventory + Item."Qty. on Purch. Order" - Item."Qty. on Sales Order";
+                                  IF Menge_bedarf < 0 THEN BEGIN
+                                    ReqLine.INIT;
+                                    ReqLine."Worksheet Template Name" := 'BESTVORSCH';
+                                    ReqLine."Journal Batch Name" := 'STANDARD';
+                                    ReqLine."Action Message" := ReqLine."Action Message"::New;
+                                    IF ReqLine.FINDLAST THEN
+                                      ReqLine."Line No." := ReqLine."Line No." + 10000
+                                    ELSE
+                                      ReqLine."Line No." := 10000;
+                                    ReqLine.Type := ReqLine.Type::Item;
+                                    //ReqLine."Location Code" := Lagerort_filter;
+                                    ReqLine."Location Code" := 'ZENT';
+                                    ReqLine.VALIDATE("No.",Item."No.");
+                                    ReqLine.Quantity := Menge_bedarf * (-1);
+                                    ReqLine."Due Date" := OrderDate;
+                                    ReqLine."Promised Receipt Date" := PrRcptDate;
+                                    ReqLine.INSERT;
+                                  END;
+                                END;
+                                 }
+
+  }
+  REQUESTPAGE
+  {
+    PROPERTIES
+    {
+    }
+    CONTROLS
+    {
+      { 1000000000;;Container;
+                  ContainerType=ContentArea }
+
+      { 1000000001;1;Field  ;
+                  Name=Bestelldatum;
+                  SourceExpr=OrderDate }
+
+      { 1000000002;1;Field  ;
+                  Name=Zugesagte Wareneingangsdatum;
+                  SourceExpr=PrRcptDate }
+
+    }
+  }
+  LABELS
+  {
+  }
+  CODE
+  {
+    VAR
+      ReqLine@1000000002 : Record 246;
+      CurrTemplateName@1000000003 : Code[10];
+      CurrWorksheetName@1000000004 : Code[10];
+      OrderDate@1000000001 : Date;
+      PrRcptDate@1000000000 : Date;
+      MaxDate@1000000006 : Date;
+      Window@1000000010 : Dialog;
+      Menge_bedarf@1000000013 : Decimal;
+      Counter@1000000005 : Integer;
+      Text002@1000000007 : TextConst 'DEU=Das Bestelldatum muss eingegeben werden.';
+      Text005@1000000011 : TextConst 'DEU=Plan berechnen...\\';
+      Text006@1000000012 : TextConst 'DEU=Artikelnr. #1##################';
+      Text007@1000000009 : TextConst 'DEU=Das Buchblatt Bestellvorschlag ist nicht leer.';
+      Text008@1000000008 : TextConst 'DEU=Das Zugesagte Wareneingangsdatum muss angegeben werden.';
+
+    PROCEDURE SetTemplAndWorksheet@1140001(TemplateName@1140001 : Code[10];WorksheetName@1140000 : Code[10]);
+    BEGIN
+      CurrTemplateName := TemplateName;
+      CurrWorksheetName := WorksheetName;
+    END;
+
+    BEGIN
+    END.
+  }
+  RDLDATA
+  {
+  }
+}
+
