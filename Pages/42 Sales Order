@@ -2,10 +2,10 @@ OBJECT Page 42 Sales Order
 {
   OBJECT-PROPERTIES
   {
-    Date=29.04.21;
-    Time=15:00:00;
+    Date=26.10.21;
+    Time=17:00:00;
     Modified=Yes;
-    Version List=NAVW19.00.00.50682,TOP1.18;
+    Version List=NAVW19.00.00.50682,TOP1.19;
   }
   PROPERTIES
   {
@@ -1801,6 +1801,13 @@ OBJECT Page 42 Sales Order
                 Visible=FALSE;
                 PartType=Page }
 
+    { 1000000084;1;Part   ;
+                Name=DocuWareStatus;
+                SubPageLink=No.=FIELD(No.);
+                PagePartID=Page50111;
+                Visible=DocuWareStatusEnable;
+                PartType=Page }
+
     { 1906127307;1;Part   ;
                 SubPageLink=Document Type=FIELD(Document Type),
                             Document No.=FIELD(Document No.),
@@ -1933,6 +1940,7 @@ OBJECT Page 42 Sales Order
       var_AU_Nr@1000000015 : Code[20];
       DocuwareControlText@1000000037 : Text;
       DocuwareControlEnable@1000000036 : Boolean;
+      DocuWareStatusEnable@1000000039 : Boolean;
       ControlReady@1000000035 : Boolean;
 
     LOCAL PROCEDURE Post@4(PostingCodeunitID@1000 : Integer);
@@ -2019,6 +2027,10 @@ OBJECT Page 42 Sales Order
 
       OpenApprovalEntriesExistForCurrUser := ApprovalsMgmt.HasOpenApprovalEntriesForCurrentUser(RECORDID);
       OpenApprovalEntriesExist := ApprovalsMgmt.HasOpenApprovalEntries(RECORDID);
+
+      //TOPAS 26.10.21 ST DocuWare Status Anzeige +
+      DocuWareStatusEnable := "Order Date" < WORKDATE;
+      //TOPAS -
     END;
 
     LOCAL PROCEDURE "***TOPAS_Func***"@1000000000();
@@ -2073,10 +2085,13 @@ OBJECT Page 42 Sales Order
     END;
 
     LOCAL PROCEDURE CheckDocuWareStatus@1000000003();
+    VAR
+      DocuwareStatusRec@1000000000 : Record 50041;
     BEGIN
       DocuwareControlEnable := FALSE;
       IF ("Location Code" <> 'ZENT') AND ("Location Code" <> 'KONSI') THEN
         EXIT;
+
       IF ("Docuware Status" = "Docuware Status"::Neu) AND ("Docuware Gesendet" = FALSE) THEN BEGIN
         DocuwareControlText := 'Deckblatt noch nicht an DocuWare gesendet!';
         DocuwareControlEnable := TRUE;
@@ -2089,8 +2104,19 @@ OBJECT Page 42 Sales Order
           CurrPage.DocuwareControl.SendDatatoJavaScript(DocuwareControlText, 460, 17, '#ffff66', ''); //gelb
         END ELSE BEGIN
           IF ("Docuware Gesendet") THEN BEGIN
-            DocuwareControlText := 'OK';
-            CurrPage.DocuwareControl.SendDatatoJavaScript(DocuwareControlText, 460, 17, '#33cc33', ''); //grn
+            DocuwareStatusRec.RESET;
+            DocuwareStatusRec.SETRANGE(Belegart,'Deckblatt');
+            DocuwareStatusRec.SETRANGE("Belegnr.","No.");
+            IF DocuwareStatusRec.FINDFIRST THEN BEGIN
+              DocuwareControlText := 'OK';
+              CurrPage.DocuwareControl.SendDatatoJavaScript(DocuwareControlText, 460, 17, '#33cc33', ''); //grn
+            END ELSE BEGIN
+              IF "Order Date" < WORKDATE THEN BEGIN
+                DocuwareControlText := 'Deckblatt wurde gedruckt, aber es gibt kein Dokument in DocuWare!';
+                DocuwareControlEnable := TRUE;
+                CurrPage.DocuwareControl.SendDatatoJavaScript(DocuwareControlText, 460, 17, '#ff9966', ''); //orange
+              END;
+            END;
           END;
         END;
       END;
@@ -2140,6 +2166,7 @@ OBJECT Page 42 Sales Order
       22      TOP1.16   09.12.20    ST    DocuWare Status wird nun angezeigt und Deckblatt an DocuWare Druck setzt Status auf "gesendet"
       23      TOP1.17   15.04.21    ST    Neues Feld "Tracking via EMail" eingebaut
       24      TOP1.18   29.04.21    ST    Neues Feld "Tracking EMail wie AB" und eine Vorschau auf die "Tracking EMail Adresse" eingebaut
+      25      TOP1.19   26.10.21    ST    DocuWare Status Factbox implementiert
     }
     END.
   }
