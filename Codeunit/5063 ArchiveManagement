@@ -2,9 +2,10 @@ OBJECT Codeunit 5063 ArchiveManagement
 {
   OBJECT-PROPERTIES
   {
-    Date=23.02.17;
-    Time=12:00:00;
-    Version List=NAVW19.00.00.48067,NAVDACH9.00.00.48067;
+    Date=16.06.17;
+    Time=12:58:34;
+    Modified=Yes;
+    Version List=NAVW19.00.00.48067,NAVDACH9.00.00.48067,TOP1.00;
   }
   PROPERTIES
   {
@@ -106,6 +107,10 @@ OBJECT Codeunit 5063 ArchiveManagement
       SalesHeaderArchive@1004 : Record 5107;
       SalesLineArchive@1001 : Record 5108;
       RecordLinkManagement@1003 : Codeunit 447;
+      "***TOPAS_Var***"@1000000000 : Integer;
+      Todo@1000000001 : Record 5080;
+      Musterberwachung@1000000002 : Record 50029;
+      Wartungsvertrag@1000000003 : Record 50011;
     BEGIN
       SalesHeaderArchive.INIT;
       SalesHeaderArchive.TRANSFERFIELDS(SalesHeader);
@@ -139,6 +144,30 @@ OBJECT Codeunit 5063 ArchiveManagement
               SalesLine."Document No.",SalesLine."Line No.",SalesHeader."Doc. No. Occurrence",SalesHeaderArchive."Version No.");
 
         UNTIL SalesLine.NEXT = 0;
+
+      //TOPAS 16.06.17 ST - Umstellung von TOPAS Feldern bzw. - Tabellen +
+      //Umstellung Musterberwachung bei Archivierung
+      Musterberwachung.RESET;
+      Musterberwachung.SETFILTER(Nr,SalesHeader."No.");
+      IF (Musterberwachung.FINDFIRST) AND (Musterberwachung."Belegnr." <> '') THEN BEGIN
+        Musterberwachung.MODIFYALL("Arch. Belegnr.",Musterberwachung."Belegnr.");
+        Musterberwachung.MODIFYALL("Belegnr.",'');
+      END;
+
+      //Umstellung der Aufgaben bei Archivierung
+      Todo.RESET;
+      Todo.SETFILTER("Belegnr.",'%1',SalesHeader."No.");
+      IF (Todo.FINDFIRST) AND (Todo."Belegnr." <> '') THEN BEGIN
+        Todo.MODIFYALL("Arch. Belegnr.",Todo."Belegnr.");
+        Todo.MODIFYALL("Belegnr.",'');
+      END;
+
+      //zugeh”rige System- bzw. Wartungsvertr„ge werden im Feld Status von Atkuell auf Archiviert umgestellt
+      Wartungsvertrag.RESET;
+      Wartungsvertrag.SETFILTER("Auftragsnr.",'%1',SalesHeader."No.");
+      IF Wartungsvertrag.FINDFIRST THEN
+        Wartungsvertrag.MODIFYALL(Auftragsstatus,Wartungsvertrag.Auftragsstatus::Archiviert);
+      //TOPAS -
     END;
 
     PROCEDURE StorePurchDocument@12(VAR PurchHeader@1001 : Record 38;InteractionExist@1000 : Boolean);
@@ -622,6 +651,11 @@ OBJECT Codeunit 5063 ArchiveManagement
     END;
 
     BEGIN
+    {
+      Lfd.Nr. Version   Datum       User  Beschreibung
+      ===========================================================================
+      1       TOP1.00   16.06.17    ST    Funktion StoreSalesDocument() angepasst, um Musterberwachung, Aufgaben und Wartungsvertr„ge zu aktualisieren
+    }
     END.
   }
 }
