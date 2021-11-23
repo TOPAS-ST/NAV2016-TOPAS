@@ -1,0 +1,125 @@
+OBJECT Codeunit 83 Sales-Quote to Order (Yes/No)
+{
+  OBJECT-PROPERTIES
+  {
+    Date=19.05.17;
+    Time=14:56:54;
+    Modified=Yes;
+    Version List=NAVW17.00,TOP1.00;
+  }
+  PROPERTIES
+  {
+    TableNo=36;
+    OnRun=BEGIN
+            //TOPAS 27.05.08 ST - Angebotsprfung
+            IF Erledigtstatus <> 'AUFTRAG' THEN
+              ERROR(Text50000);
+
+            DocNo := "No.";
+            SalesLine.RESET;
+            SalesLine.SETFILTER("Document No.",'%1',"No.");
+            SalesLine.SETFILTER(Type,'%1',SalesLine.Type::Item);
+            SalesLine.SETFILTER("Quotenr.",'<>%1','');
+            IF SalesLine.FINDFIRST THEN
+              REPEAT
+                IF Quotes.GET(SalesLine."Quotenr.") THEN BEGIN
+                  IF Quotes.Erledigtstatus = Quotes.Erledigtstatus::"Erledigt " THEN
+                    ERROR(Text50001,Quotes."Quotenr.",SalesLine."Line No.")
+                END ELSE
+                  ERROR(Text50002,SalesLine."Quotenr.",SalesLine."Line No.");
+              UNTIL SalesLine.NEXT = 0;
+
+            IF (Status = Status :: Open) AND (Erledigtstatus <> 'FEHLERHAFT') THEN
+              ERROR(Text50003);
+            //TOPAS Ende
+
+            TESTFIELD("Document Type","Document Type"::Quote);
+            IF GUIALLOWED THEN
+              IF NOT CONFIRM(Text000,FALSE) THEN
+                EXIT;
+
+            IF "Document Type" = "Document Type"::Quote THEN
+              IF CheckCustomerCreated(TRUE) THEN
+                GET("Document Type"::Quote,"No.")
+              ELSE
+                EXIT;
+
+            SalesQuoteToOrder.RUN(Rec);
+            SalesQuoteToOrder.GetSalesOrderHeader(SalesHeader2);
+            COMMIT;
+            MESSAGE(Text001,"No.",SalesHeader2."No.");
+
+            //TOPAS 17.07.09 ST - Abfrage, ob dazugeh”rige Aufgaben (offen) auf erledigt gesetzt werden sollen
+            Todo.RESET;
+            Todo.SETFILTER("System To-do Type",'%1',Todo."System To-do Type"::Organizer);
+            Todo.SETFILTER(Closed,'%1',FALSE);
+            Todo.SETFILTER("Arch. Belegnr.",'%1',DocNo);
+            IF Todo.FINDFIRST THEN BEGIN
+              REPEAT
+                IF CONFIRM(Text50004,TRUE,Todo."No.") THEN BEGIN
+                  Todo.VALIDATE(Todo.Status,Todo.Status::Completed);
+                  Todo.MODIFY(TRUE);
+                END;
+              UNTIL Todo.NEXT = 0;
+            END;
+
+            //TOPAS 25.08.11 ST - Service Kalkulation aus Angebot 1:1 Kopie in Auftrags Service Kalkulation
+            //DocNo = Angebotsnr.
+            //SalesHeader2."No." = neue Auftragsnr.
+
+            ServiceKalkultion.RESET;
+            ServiceKalkultion.SETFILTER("Nr.",'%1',DocNo);
+            IF ServiceKalkultion.FINDFIRST THEN
+              REPEAT
+                KopieServiceKalkultion.INIT;
+                KopieServiceKalkultion.TRANSFERFIELDS(ServiceKalkultion);
+                KopieServiceKalkultion."Nr." := SalesHeader2."No.";
+                IF ServiceKalkultion."Nachtr„gliche Service Order" = FALSE THEN
+                  KopieServiceKalkultion."Belegnr." := SalesHeader2."No.";
+                KopieServiceKalkultion.Gruppierung := KopieServiceKalkultion.Gruppieren(KopieServiceKalkultion."Belegnr.",KopieServiceKalkultion."Belegzeilennr.",
+                                                      KopieServiceKalkultion.Basisger„t);
+                KopieServiceKalkultion.INSERT(TRUE);
+              UNTIL ServiceKalkultion.NEXT = 0;
+
+            TempPositionen.RESET;
+            TempPositionen.SETFILTER(Art,'%1',TempPositionen.Art :: Tempor„r);
+            TempPositionen.SETFILTER("Auftragsnr.",'%1',DocNo);
+            IF TempPositionen.FINDFIRST THEN
+              TempPositionen.MODIFYALL("Auftragsnr.",SalesHeader2."No.");
+
+            COMMIT;
+            //TOPAS Ende
+          END;
+
+  }
+  CODE
+  {
+    VAR
+      Text000@1000 : TextConst 'DEU=M”chten Sie das Angebot in einen Auftrag bernehmen?;ENU=Do you want to convert the quote to an order?';
+      Text001@1001 : TextConst 'DEU=Angebot %1 wurde in Auftrag %2 bernommen.;ENU=Quote %1 has been changed to order %2.';
+      SalesHeader2@1002 : Record 36;
+      SalesQuoteToOrder@1003 : Codeunit 86;
+      Text50000@1000000000 : TextConst 'DEU=Der Erledigtstatus des Angebotes ist nicht auf Auftrag gesetzt!';
+      "***TOPAS_Var***"@1000000001 : Integer;
+      SalesLine@1000000003 : Record 37;
+      Todo@1000000005 : Record 5080;
+      ServiceKalkultion@1000000007 : Record 50027;
+      KopieServiceKalkultion@1000000008 : Record 50027;
+      TempPositionen@1000000009 : Record 50024;
+      Quotes@1000000004 : Record 50014;
+      DocNo@1000000002 : Code[20];
+      Text50001@1000000010 : TextConst 'DEU=Fehler: Der Quote %1 in Zeile %2 ist bereits erledigt.';
+      Text50002@1000000011 : TextConst 'DEU=Der Quote %1 in Zeile %2 existiert nicht mehr.';
+      Text50003@1000000012 : TextConst 'DEU=Nur Angebote mit dem Status freigegeben k”nnen archiviert werden.';
+      Text50004@1000000006 : TextConst 'DEU=Soll die dazugeh”rige Aufgabe %1 (offen) auf erledigt gesetzt werden?';
+
+    BEGIN
+    {
+      Lfd.Nr.  Version  Datum       User   Beschreibung
+      ===========================================================================
+      1       TOP1.00   19.05.17    ST     diverse TOPAS Prfungen eingebaut, Abfrage Aufgaben abschliessen, šbernahme Service Kalkulation vom Angebot in Auftrag
+    }
+    END.
+  }
+}
+
