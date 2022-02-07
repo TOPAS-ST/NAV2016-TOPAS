@@ -1,0 +1,671 @@
+OBJECT Report 50064 Kontaktinfos CTI Export
+{
+  OBJECT-PROPERTIES
+  {
+    Date=12.12.18;
+    Time=14:59:42;
+    Modified=Yes;
+    Version List=Fr CTI Rufnummer;
+  }
+  PROPERTIES
+  {
+    ProcessingOnly=Yes;
+    OnPreReport=BEGIN
+                  //Run_Job;
+
+                  //muss ber XMLport gel”st werden, da sonst zu langsam
+                  Filename := '\\W2K8R2-FILESRV\IT\CTI\NAV2016\cti_nav2016.csv';
+
+                  _File.CREATE(Filename);
+                  _File.CREATEOUTSTREAM(_DatafileOutstream);
+                  XMLPORT.EXPORT(50090, _DatafileOutstream);  //   Hier die XMLport ID angeben!!!!!!   ************************
+                  _File.CLOSE;
+                END;
+
+    UseRequestPage=No;
+  }
+  DATASET
+  {
+  }
+  REQUESTPAGE
+  {
+    PROPERTIES
+    {
+    }
+    CONTROLS
+    {
+    }
+  }
+  LABELS
+  {
+  }
+  CODE
+  {
+    VAR
+      Excel@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00024500-0000-0000-C000-000000000046}:Unknown Automation Server.Application";
+      Book@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";
+      Range@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";
+      Sheet@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020820-0000-0000-C000-000000000046}:Unknown Automation Server.Worksheet";
+      kontakt@1000000008 : Record 5050;
+      Mandant@1000000020 : Record 5050;
+      deb@1000000010 : Record 18;
+      verbindung@1000000009 : Record 5054;
+      TOPAS_API@1000000025 : Codeunit 50001;
+      FileMgt@1000000019 : Codeunit 419;
+      j@1000000006 : Text[30];
+      v_saldo@1000000011 : Text[15];
+      v_ab@1000000012 : Text[15];
+      v_limit@1000000017 : Text[15];
+      v_debnr@1000000016 : Code[10];
+      v_telnr@1000000015 : Text[30];
+      v_mobilnr@1000000014 : Text[30];
+      v_anrede@1000000013 : Text[15];
+      LogFile@1000000005 : File;
+      FilePath@1000000021 : Text;
+      Filename@1000000018 : Text;
+      ExportFile@1000000024 : Integer;
+      chr@1000000004 : Char;
+      temp_url@1000000026 : Text;
+      counter@1000000007 : Integer;
+      _File@1000000023 : File;
+      _DatafileOutstream@1000000022 : OutStream;
+
+    PROCEDURE Run_Job@1000000001();
+    BEGIN
+      //************************ ACHTUNG Funktion veraltet , NEU siehe XMLport 50090 !!!!! ************************
+
+      CREATE(Excel,FALSE,TRUE);                                    //erzeugt excel
+      Book  := Excel.Workbooks.Add(-4167);                         //legt neue datei in excel an
+      Sheet := Excel.ActiveSheet;                                  //definiert aktives worksheet
+      //Excel.Visible(FALSE);
+      // Sheet.Range('H2:H25000').NumberFormat := '@'; // Text
+      chr := 10;
+
+      //Fr Testzwecke aktivieren und ganz am Ende auch
+      //LogFile.TEXTMODE := TRUE;
+      //LogFile.CREATE(TEMPORARYPATH + '\Navision_Job.log');
+      //LogFile.OPEN(TEMPORARYPATH + '\Navision_Job.log');
+
+      Sheet.Range('A1').Value := 'No.';                            // definiert die Beschriftung der berschriftszeile
+      Sheet.Range('B1').Value := 'Company Name';
+      Sheet.Range('C1').Value := 'Surname';
+      Sheet.Range('D1').Value := 'First Name';
+      Sheet.Range('E1').Value := 'Job Title';
+      Sheet.Range('F1').Value := 'Organizational Level Code';
+      Sheet.Range('G1').Value := 'Abteilung';
+      Sheet.Range('H1').Value := 'Telefonnr';
+      Sheet.Range('I1').Value := 'Mobile Phone No.';
+      Sheet.Range('J1').Value := 'Fax No.';
+      Sheet.Range('K1').Value := 'Country/Region Code';
+      Sheet.Range('L1').Value := 'Post Code';
+      Sheet.Range('M1').Value := 'City';
+      Sheet.Range('N1').Value := 'Salesperson Code';
+      Sheet.Range('O1').Value := 'Betreuer Innendienst';
+      Sheet.Range('P1').Value := 'akadem Grad';
+      Sheet.Range('Q1').Value := 'Zusatzangaben';
+      Sheet.Range('R1').Value := 'anrede';
+      Sheet.Range('S1').Value := 'saldo';
+      Sheet.Range('T1').Value := 'ab';
+      Sheet.Range('U1').Value := 'limit';
+      Sheet.Range('V1').Value := 'E-Mail';
+      Sheet.Range('W1').Value := 'debnr';
+      Sheet.Range('X1').Value := 'Unternehmen verl.';
+      Sheet.Range('Y1').Value := 'Mandantennr.';
+      Sheet.Range('Z1').Value := 'Gebietscode';
+      Sheet.Range('AA1').Value := 'NAV URL';
+
+      j := '2';                                        // <-Export in Excel ab Zeile 2
+      counter := 1;
+
+      kontakt.RESET;
+      //kontakt.SETFILTER(kontakt."No.",'%1..%2','KT000016','KT000500');
+      //kontakt.SETFILTER(kontakt."No.",'%1..%2','KT000001','KT999999');
+      //kontakt.SETFILTER("No.",'%1','KT023080');
+      kontakt.SETFILTER("Phone No.",'<>%1','');
+      kontakt.SETFILTER("Unternehmen verlassen",'%1',FALSE);
+      IF kontakt.FINDFIRST THEN BEGIN
+        REPEAT
+
+          verbindung.RESET;
+          verbindung.SETRANGE("Contact No.",kontakt."Company No.");
+          verbindung.SETRANGE("Business Relation Code",'Deb');
+            IF verbindung.FINDFIRST THEN BEGIN
+              deb.RESET;
+              deb.SETRANGE(deb."No.",verbindung."No.");
+               IF deb.FINDFIRST THEN BEGIN
+                 deb.CALCFIELDS(deb."Balance (LCY)",deb."Outstanding Orders (LCY)");
+                 v_saldo:=FORMAT(ROUND(deb."Balance (LCY)",0.01),15,3);
+                 v_ab:=FORMAT(ROUND(deb."Outstanding Orders (LCY)",0.01),15,3);
+                 v_limit:=FORMAT(deb."Credit Limit (LCY)",15,3);
+                 v_debnr:=deb."No.";
+               END;
+            END;
+
+          // Entfernen von Sonderzeichen aus Tel-Nr.
+          v_telnr := FORMAT(kontakt."Phone No.");
+          v_mobilnr  := FORMAT(kontakt."Mobile Phone No.");
+
+          //  v_telnr:=DELCHR(kontakt."Phone No.",'=','()-_/\ ');
+          v_telnr := DELCHR(v_telnr,'=','()-_/\ ');
+          v_mobilnr := DELCHR(v_mobilnr,'=','()-_/\ ');
+
+          //  0049 entfernen und durch +49 ersetzen
+          IF kontakt."Country/Region Code"='DE' THEN BEGIN
+            IF STRPOS(v_telnr,'0')=1 THEN BEGIN
+              IF STRPOS(v_telnr,'0')=2 THEN BEGIN
+                 IF STRPOS(v_telnr,'4')=3 THEN BEGIN
+                   IF STRPOS(v_telnr,'9')=4 THEN BEGIN
+                     v_telnr:=COPYSTR(v_telnr,5);
+                     v_telnr:=INSSTR(v_telnr, '+49',1);
+                   END;
+                 END;
+              END;
+            END;
+          END;
+
+          // fhrende Null entfernen und durch +49 ersetzen
+          IF kontakt."Country/Region Code"='DE' THEN BEGIN
+            IF STRPOS(v_telnr,'0')=1 THEN BEGIN
+              IF STRPOS(v_telnr,'0')=2 THEN BEGIN
+                END ELSE BEGIN
+                  v_telnr:=COPYSTR(v_telnr,2);
+                  v_telnr:=INSSTR(v_telnr, '+49',1);
+                END;
+              END;
+            END;
+
+          //  0043 entfernen und durch +43 ersetzen
+          IF kontakt."Country/Region Code"='AT' THEN BEGIN
+            IF STRPOS(v_telnr,'0')=1 THEN BEGIN
+              IF STRPOS(v_telnr,'0')=2 THEN BEGIN
+                 IF STRPOS(v_telnr,'4')=3 THEN BEGIN
+                   IF STRPOS(v_telnr,'3')=4 THEN BEGIN
+                     v_telnr:=COPYSTR(v_telnr,5);
+                     v_telnr:=INSSTR(v_telnr, '+43',1);
+                   END;
+                 END;
+              END;
+            END;
+          END;
+
+          //  0041 entfernen und durch +41 ersetzen
+          IF kontakt."Country/Region Code"='CH' THEN BEGIN
+            IF STRPOS(v_telnr,'0')=1 THEN BEGIN
+              IF STRPOS(v_telnr,'0')=2 THEN BEGIN
+                 IF STRPOS(v_telnr,'4')=3 THEN BEGIN
+                   IF STRPOS(v_telnr,'1')=4 THEN BEGIN
+                     v_telnr:=COPYSTR(v_telnr,5);
+                     v_telnr:=INSSTR(v_telnr, '+41',1);
+                   END;
+                 END;
+              END;
+            END;
+          END;
+
+          //  0048 entfernen und durch +48 ersetzen
+          IF kontakt."Country/Region Code"='PL' THEN BEGIN
+            IF STRPOS(v_telnr,'0')=1 THEN BEGIN
+              IF STRPOS(v_telnr,'0')=2 THEN BEGIN
+                 IF STRPOS(v_telnr,'4')=3 THEN BEGIN
+                   IF STRPOS(v_telnr,'8')=4 THEN BEGIN
+                     v_telnr:=COPYSTR(v_telnr,5);
+                     v_telnr:=INSSTR(v_telnr, '+48',1);
+                   END;
+                 END;
+              END;
+            END;
+          END;
+
+          //  0045 entfernen und durch +45 ersetzen
+          IF kontakt."Country/Region Code"='DK' THEN BEGIN
+            IF STRPOS(v_telnr,'0')=1 THEN BEGIN
+              IF STRPOS(v_telnr,'0')=2 THEN BEGIN
+                 IF STRPOS(v_telnr,'4')=3 THEN BEGIN
+                   IF STRPOS(v_telnr,'5')=4 THEN BEGIN
+                     v_telnr:=COPYSTR(v_telnr,5);
+                     v_telnr:=INSSTR(v_telnr, '+45',1);
+                   END;
+                 END;
+              END;
+            END;
+          END;
+
+          IF kontakt."Salutation Code"='MANDANT' THEN
+            v_anrede:='Mandant';
+          IF kontakt."Salutation Code"='HERR' THEN
+            v_anrede:='Herr';
+          IF kontakt."Salutation Code"='FRAU' THEN
+            v_anrede:='Frau';
+
+          Sheet.Range('A'+j).Value := kontakt."No.";
+          Sheet.Range('B'+j).Value := kontakt."Company Name";
+          Sheet.Range('C'+j).Value := kontakt.Surname;
+          Sheet.Range('D'+j).Value := kontakt."First Name";
+          Sheet.Range('E'+j).Value := kontakt."Job Title";
+          Sheet.Range('F'+j).Value := kontakt."Organizational Level Code";
+          Sheet.Range('G'+j).Value := kontakt.Abteilung;
+          Sheet.Range('H'+j).NumberFormat := '@'; // Text
+          Sheet.Range('H'+j).Value := v_telnr;
+          Sheet.Range('I'+j).NumberFormat := '@'; // Text
+          Sheet.Range('I'+j).Value := v_mobilnr;
+          Sheet.Range('J'+j).NumberFormat := '@'; // Text
+          Sheet.Range('J'+j).Value := kontakt."Fax No.";
+          Sheet.Range('K'+j).Value := kontakt."Country/Region Code";
+          Sheet.Range('L'+j).Value := kontakt."Post Code";
+          Sheet.Range('M'+j).Value := kontakt.City;
+          Sheet.Range('N'+j).Value := kontakt."Salesperson Code";
+          Sheet.Range('O'+j).Value := kontakt."Betreuer Innendienst";
+          Sheet.Range('P'+j).Value := kontakt."akadem Grad";
+          Sheet.Range('Q'+j).Value := kontakt.Zusatzangaben;
+          Sheet.Range('R'+j).Value := v_anrede;
+          Sheet.Range('S'+j).Value := v_saldo;
+          Sheet.Range('T'+j).Value := v_ab;
+          Sheet.Range('U'+j).Value := v_limit;
+          Sheet.Range('V'+j).Value := kontakt."E-Mail";
+          Sheet.Range('W'+j).Value := v_debnr;
+          Sheet.Range('X'+j).Value := kontakt."Unternehmen verlassen";
+          Sheet.Range('Y'+j).Value := kontakt."Company No.";
+          Sheet.Range('Z'+j).Value := kontakt."Territory Code";
+          IF Mandant.GET(kontakt."Company No.") THEN BEGIN
+            Sheet.Range('Z'+j).Value := TOPAS_API.replace_text(GETURL(CLIENTTYPE::Windows, 'TOPAS', OBJECTTYPE::Page, 50091, Mandant),'7146/DynamicsNAV90-nas','7046/DynamicsNAV90');
+          END;
+          //LogFile.WRITE('Datensatz ' + FORMAT(counter) + ' Zeit: ' + FORMAT(TIME) + FORMAT(chr));
+          counter += 1;
+          j:=INCSTR(j);
+        UNTIL kontakt.NEXT=0;
+      END;
+
+      FilePath := 'R:\CTI\NAV2016\';
+      Filename := 'cti_nav2016.csv';
+      IF FileMgt.ClientFileExists(FilePath + Filename) THEN FileMgt.DeleteClientFile(FilePath + Filename);
+
+      IF NOT FileMgt.ClientDirectoryExists(FilePath) THEN FileMgt.CreateClientDirectory(FilePath);
+
+      Book._SaveAs(FilePath + Filename,6,'','',FALSE,FALSE);                         //.csv Format
+      SLEEP(1000);
+      Book.Close(TRUE);
+      CLEAR(Excel);
+
+      //LogFile.CLOSE;
+    END;
+
+    EVENT Sheet@1000000000::SelectionChange@1543(Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000000::BeforeDoubleClick@1537(Target@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000000::BeforeRightClick@1534(Target@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000000::Activate@304();
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000000::Deactivate@1530();
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000000::Calculate@279();
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000000::Change@1545(Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000000::FollowHyperlink@1470(Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00024431-0000-0000-C000-000000000046}:Unknown Automation Server.Hyperlink");
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000000::PivotTableUpdate@2156(Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000000::PivotTableAfterValueChange@2886(TargetPivotTable@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";TargetRange@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000000::PivotTableBeforeAllocateChanges@2889(TargetPivotTable@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";ValueChangeStart@1000000002 : Integer;ValueChangeEnd@1000000001 : Integer;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000000::PivotTableBeforeCommitChanges@2892(TargetPivotTable@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";ValueChangeStart@1000000002 : Integer;ValueChangeEnd@1000000001 : Integer;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000000::PivotTableBeforeDiscardChanges@2893(TargetPivotTable@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";ValueChangeStart@1000000001 : Integer;ValueChangeEnd@1000000000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Sheet@1000000000::PivotTableChangeSync@2894(Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::Open@1923();
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::Activate@304();
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::Deactivate@1530();
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::BeforeClose@1546(VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::BeforeSave@1547(SaveAsUI@1000000001 : Boolean;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::BeforePrint@1549(VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::NewSheet@1550(Sh@1000000000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::AddinInstall@1552();
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::AddinUninstall@1553();
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::WindowResize@1554(Wn@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:Unknown Automation Server.Window");
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::WindowActivate@1556(Wn@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:Unknown Automation Server.Window");
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::WindowDeactivate@1557(Wn@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:Unknown Automation Server.Window");
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::SheetSelectionChange@1558(Sh@1000000001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::SheetBeforeDoubleClick@1559(Sh@1000000002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::SheetBeforeRightClick@1560(Sh@1000000002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::SheetActivate@1561(Sh@1000000000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::SheetDeactivate@1562(Sh@1000000000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::SheetCalculate@1563(Sh@1000000000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::SheetChange@1564(Sh@1000000001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::SheetFollowHyperlink@1854(Sh@1000000001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00024431-0000-0000-C000-000000000046}:Unknown Automation Server.Hyperlink");
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::SheetPivotTableUpdate@2157(Sh@1000000001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::PivotTableCloseConnection@2158(Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::PivotTableOpenConnection@2159(Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::Sync@2266(SyncEventType@1000000000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::BeforeXmlImport@2283(Map@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";Url@1000000002 : Text;IsRefresh@1000000001 : Boolean;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::AfterXmlImport@2285(Map@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";IsRefresh@1000000001 : Boolean;Result@1000000000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::BeforeXmlExport@2287(Map@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";Url@1000000001 : Text;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::AfterXmlExport@2288(Map@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";Url@1000000001 : Text;Result@1000000000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::RowsetComplete@2610(Description@1000000002 : Text;Sheet@1000000001 : Text;Success@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::SheetPivotTableAfterValueChange@2895(Sh@1000000002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";TargetRange@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::SheetPivotTableBeforeAllocateChanges@2896(Sh@1000000004 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";ValueChangeStart@1000000002 : Integer;ValueChangeEnd@1000000001 : Integer;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::SheetPivotTableBeforeCommitChanges@2897(Sh@1000000004 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";ValueChangeStart@1000000002 : Integer;ValueChangeEnd@1000000001 : Integer;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::SheetPivotTableBeforeDiscardChanges@2898(Sh@1000000003 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";ValueChangeStart@1000000001 : Integer;ValueChangeEnd@1000000000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::SheetPivotTableChangeSync@2899(Sh@1000000001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::AfterSave@2900(Success@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1000000002::NewChart@2901(Ch@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020821-0000-0000-C000-000000000046}:Unknown Automation Server.Chart");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::NewWorkbook@1565(Wb@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::SheetSelectionChange@1558(Sh@1000000001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::SheetBeforeDoubleClick@1559(Sh@1000000002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::SheetBeforeRightClick@1560(Sh@1000000002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::SheetActivate@1561(Sh@1000000000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::SheetDeactivate@1562(Sh@1000000000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::SheetCalculate@1563(Sh@1000000000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::SheetChange@1564(Sh@1000000001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WorkbookOpen@1567(Wb@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WorkbookActivate@1568(Wb@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WorkbookDeactivate@1569(Wb@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WorkbookBeforeClose@1570(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WorkbookBeforeSave@1571(Wb@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";SaveAsUI@1000000001 : Boolean;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WorkbookBeforePrint@1572(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WorkbookNewSheet@1573(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Sh@1000000000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WorkbookAddinInstall@1574(Wb@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WorkbookAddinUninstall@1575(Wb@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WindowResize@1554(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Wn@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:Unknown Automation Server.Window");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WindowActivate@1556(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Wn@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:Unknown Automation Server.Window");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WindowDeactivate@1557(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Wn@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:Unknown Automation Server.Window");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::SheetFollowHyperlink@1854(Sh@1000000001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00024431-0000-0000-C000-000000000046}:Unknown Automation Server.Hyperlink");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::SheetPivotTableUpdate@2157(Sh@1000000001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WorkbookPivotTableCloseConnection@2160(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WorkbookPivotTableOpenConnection@2161(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Target@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WorkbookSync@2289(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";SyncEventType@1000000000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WorkbookBeforeXmlImport@2290(Wb@1000000004 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Map@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";Url@1000000002 : Text;IsRefresh@1000000001 : Boolean;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WorkbookAfterXmlImport@2291(Wb@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Map@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";IsRefresh@1000000001 : Boolean;Result@1000000000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WorkbookBeforeXmlExport@2292(Wb@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Map@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";Url@1000000001 : Text;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WorkbookAfterXmlExport@2293(Wb@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Map@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";Url@1000000001 : Text;Result@1000000000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WorkbookRowsetComplete@2611(Wb@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Description@1000000002 : Text;Sheet@1000000001 : Text;Success@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::AfterCalculate@2612();
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::SheetPivotTableAfterValueChange@2895(Sh@1000000002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";TargetRange@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::SheetPivotTableBeforeAllocateChanges@2896(Sh@1000000004 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";ValueChangeStart@1000000002 : Integer;ValueChangeEnd@1000000001 : Integer;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::SheetPivotTableBeforeCommitChanges@2897(Sh@1000000004 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1000000003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";ValueChangeStart@1000000002 : Integer;ValueChangeEnd@1000000001 : Integer;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::SheetPivotTableBeforeDiscardChanges@2898(Sh@1000000003 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";ValueChangeStart@1000000001 : Integer;ValueChangeEnd@1000000000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::ProtectedViewWindowOpen@2903(Pvw@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:Unknown Automation Server.ProtectedViewWindow");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::ProtectedViewWindowBeforeEdit@2905(Pvw@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:Unknown Automation Server.ProtectedViewWindow";VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::ProtectedViewWindowBeforeClose@2906(Pvw@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:Unknown Automation Server.ProtectedViewWindow";Reason@1000000001 : Integer;VAR Cancel@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::ProtectedViewWindowResize@2908(Pvw@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:Unknown Automation Server.ProtectedViewWindow");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::ProtectedViewWindowActivate@2909(Pvw@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:Unknown Automation Server.ProtectedViewWindow");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::ProtectedViewWindowDeactivate@2910(Pvw@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:Unknown Automation Server.ProtectedViewWindow");
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WorkbookAfterSave@2911(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Success@1000000000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1000000003::WorkbookNewChart@2912(Wb@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Ch@1000000000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020821-0000-0000-C000-000000000046}:Unknown Automation Server.Chart");
+    BEGIN
+    END;
+
+    BEGIN
+    END.
+  }
+  RDLDATA
+  {
+  }
+}
+
