@@ -2,13 +2,14 @@ OBJECT Page 50104 Belegausgabe per Batch
 {
   OBJECT-PROPERTIES
   {
-    Date=05.11.21;
-    Time=15:14:04;
+    Date=08.02.22;
+    Time=09:52:03;
     Modified=Yes;
     Version List=TOPAS;
   }
   PROPERTIES
   {
+    Permissions=TableData 50001=rimd;
     InsertAllowed=No;
     DeleteAllowed=No;
     ModifyAllowed=No;
@@ -225,6 +226,7 @@ OBJECT Page 50104 Belegausgabe per Batch
       Pack_Archiv@1000000033 : Record 50039;
       Pack_Archiv_mod@1000000034 : Record 50039;
       FileServer@1000000021 : Record 2000000022;
+      Optionstabelle@1000000045 : Record 50001;
       Tagesdatum@1140014 : Date;
       Žnd_Best_PDF@1140013 : Boolean;
       Žnd_Best_Druck@1140012 : Boolean;
@@ -281,6 +283,7 @@ OBJECT Page 50104 Belegausgabe per Batch
       contracts_info@1000000039 : Text;
       DocuwareServiceEnable@1000000030 : Boolean;
       counter_mails@1000000040 : Integer;
+      v_nr@1000000046 : Code[20];
 
     PROCEDURE Run_Batch@1140010();
     VAR
@@ -465,6 +468,28 @@ OBJECT Page 50104 Belegausgabe per Batch
               UNTIL ship_header.NEXT = 0;
             END;
           UNTIL inv_header.NEXT = 0;
+
+          //Job fr die Ablage der Rechnungskopien in DocuWare wird nun vorbereitet
+          IF (Tagesdatum < WORKDATE) AND (belegnr = '') THEN BEGIN
+            Optionstabelle.RESET;
+            Optionstabelle.SETRANGE("Tabellen ID",112);
+            Optionstabelle.SETRANGE("Feld ID",20);
+            Optionstabelle.SETRANGE(Code,'RE_DATUM');
+            EVALUATE(v_nr,FORMAT(Tagesdatum));
+            Optionstabelle.SETRANGE("Nr.",v_nr);
+            Optionstabelle.SETRANGE(Startdatum,Tagesdatum);
+            IF NOT Optionstabelle.FINDFIRST THEN BEGIN
+              Optionstabelle.INIT;
+              Optionstabelle."Tabellen ID" := 112;
+              Optionstabelle."Feld ID" := 20;
+              Optionstabelle.Code := 'RE_DATUM';
+              Optionstabelle."Nr." := v_nr;
+              Optionstabelle.Startdatum := Tagesdatum;
+              Optionstabelle.Beschreibung := 'Docuware Rechnungen Export';
+              Optionstabelle.INSERT;
+            END;
+          END;
+
         END;
       END;
 
@@ -761,7 +786,7 @@ OBJECT Page 50104 Belegausgabe per Batch
                   IF inv_header."Language Code" <> 'ENU' THEN
                     body += 'Das Paket wurde mit ' + shipment_info + ' verschickt.'
                   ELSE
-                    body += 'The packet was sent via ' + shipment_info + ship_header."Package Tracking No.";
+                    body += 'The packet was sent via ' + shipment_info;
                 END;
               END;
 
