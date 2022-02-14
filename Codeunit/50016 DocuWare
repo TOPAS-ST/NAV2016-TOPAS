@@ -2,8 +2,8 @@ OBJECT Codeunit 50016 DocuWare
 {
   OBJECT-PROPERTIES
   {
-    Date=27.11.20;
-    Time=11:25:59;
+    Date=06.01.22;
+    Time=13:16:43;
     Modified=Yes;
     Version List=TOPAS DocuWare Print;
   }
@@ -96,6 +96,11 @@ OBJECT Codeunit 50016 DocuWare
       Wartungsvertrag2@1000000022 : Record 50011;
       SalesCommentLine@1000000001 : Record 44;
       SalesCommentLine2@1000000002 : Record 44;
+      Optionstabelle@1000000011 : Record 50001;
+      lPrinterSelection@1000000008 : Record 78;
+      FileMgt@1000000012 : Codeunit 419;
+      printerselection_inserted@1000000009 : Boolean;
+      OriginalPrinter@1000000010 : Text;
       FileOustream@1000000004 : OutStream;
       ReportNo@1000000021 : Integer;
       AttachmentPath@1000000020 : Text;
@@ -199,6 +204,7 @@ OBJECT Codeunit 50016 DocuWare
             END;
             }
 
+            //Gutschriften werden als PDF exportiert
             CreditMemo.RESET;
             CreditMemo.SETFILTER("Sell-to Customer No.",'<>%1','');
             CreditMemo.SETFILTER("Posting Date",'%1',DocDate);
@@ -266,6 +272,71 @@ OBJECT Codeunit 50016 DocuWare
                 IF (ReportNo <> 0) AND (DocExport) THEN
                   REPORT.SAVEASPDF(ReportNo, AttachmentPath + SalesHeader2."No." + '.pdf', SalesHeader2);
               UNTIL SalesHeader.NEXT = 0;
+            END;
+          END;
+
+         4 :
+          BEGIN
+            //Nur Rechnungskopien werden als PDF exportiert
+            Optionstabelle.RESET;
+            Optionstabelle.SETRANGE("Tabellen ID",112);
+            Optionstabelle.SETRANGE("Feld ID",20);
+            Optionstabelle.SETRANGE(Code,'RE_DATUM');
+            Optionstabelle.SETRANGE(Enddatum,0D);
+            IF Optionstabelle.FINDFIRST THEN BEGIN
+              REPEAT
+
+                Invoices.RESET;
+                Invoices.SETFILTER("Location Code",'<>%1','MUST');
+                Invoices.SETFILTER("Sell-to Customer No.",'<>%1','');
+                Invoices.SETFILTER("Posting Date",'%1',Optionstabelle.Startdatum);
+                IF Invoices.FIND('-') THEN BEGIN
+
+                  ReportNo := 50076;
+
+                  // Printer Selection wird temp. gefllt, sonst wird das PDF zwecks "Original RE nicht drucken" im Debitor nicht erstellt
+                  IF NOT lPrinterSelection.GET(USERID,ReportNo) THEN BEGIN
+                    lPrinterSelection.INIT;
+                    lPrinterSelection."User ID" := USERID;
+                    lPrinterSelection."Report ID" := ReportNo;
+                    lPrinterSelection."Printer Name" := 'Bullzip PDF Printer';
+                    lPrinterSelection.INSERT;
+                    printerselection_inserted := TRUE;
+                  END ELSE BEGIN
+                      OriginalPrinter := lPrinterSelection."Printer Name";
+                      lPrinterSelection."Printer Name" := 'Bullzip PDF Printer';
+                      lPrinterSelection.MODIFY(TRUE);
+                  END;
+
+                  REPEAT
+                    Invoices2.COPY(Invoices);
+                    Invoices2.SETRECFILTER;
+                    IF ReportNo <> 0 THEN BEGIN
+                      IF Invoices2."No. Printed" = 0 THEN BEGIN
+                        IF FileMgt.ServerDirectoryExists('\\WIN-FILESRV\Daten\Daten NEU\Gemeinsame Ordner\Customer Service\EMailVersand\Original\') THEN BEGIN
+                          IF NOT FileMgt.ServerFileExists('\\WIN-FILESRV\Daten\Daten NEU\Gemeinsame Ordner\Customer Service\EMailVersand\Original\' + Invoices2."No." + '.pdf') THEN
+                            REPORT.SAVEASPDF(ReportNo, '\\WIN-FILESRV\Daten\Daten NEU\Gemeinsame Ordner\Customer Service\EMailVersand\Original\' + Invoices2."No." + '.pdf', Invoices2);
+                        END;
+                      END;
+                      REPORT.SAVEASPDF(ReportNo, AttachmentPath + Invoices2."No." + '.pdf', Invoices2);
+                    END;
+                    //cache += Invoices."No."+'.pdf' + FORMAT(chr);
+                  UNTIL Invoices.NEXT = 0;
+
+                  IF printerselection_inserted THEN BEGIN
+                    IF lPrinterSelection.GET(USERID,ReportNo) THEN BEGIN
+                      lPrinterSelection.DELETE;
+                    END;
+                  END ELSE BEGIN
+                    IF lPrinterSelection.GET(USERID,ReportNo) THEN BEGIN
+                      lPrinterSelection."Printer Name" := OriginalPrinter;
+                      lPrinterSelection.MODIFY(TRUE);
+                    END;
+                  END;
+                END;
+                Optionstabelle.Enddatum := WORKDATE;
+                Optionstabelle.MODIFY;
+              UNTIL Optionstabelle.NEXT = 0;
             END;
           END;
 
