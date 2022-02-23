@@ -2,8 +2,8 @@ OBJECT Codeunit 50000 Importiere Wechselkurse
 {
   OBJECT-PROPERTIES
   {
-    Date=17.08.20;
-    Time=14:49:24;
+    Date=24.11.21;
+    Time=17:19:53;
     Modified=Yes;
     Version List=TOPAS/CE1.00;
   }
@@ -42,6 +42,7 @@ OBJECT Codeunit 50000 Importiere Wechselkurse
       Range@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";
       Sheet@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020820-0000-0000-C000-000000000046}:Unknown Automation Server.Worksheet";
       wshShell@1000000001 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{72C24DD5-D70A-438B-8A42-98424B88AFB8}:'Windows Script Host Object Model'.WshShell";
+      wshExec@1000000004 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{08FED191-BE19-11D3-A28B-00104BD35090}:'Windows Script Host Object Model'.WshExec";
       wshFile@1000000002 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{0D43FE01-F093-11CF-8940-00A0C9054228}:'Windows Script Host Object Model'.FileSystemObject";
       TOPAS_Funktionen@1140000 : Codeunit 50006;
       Text000@1140007 : TextConst 'DEU=W„hrungs Wechselkurse wurden aktualisiert.;ENU=Currency Exchange Rates updated.';
@@ -50,7 +51,8 @@ OBJECT Codeunit 50000 Importiere Wechselkurse
       Text003@1140008 : TextConst 'DEU=Importiere Wechselkurse aus XLS ...\W„hrungsdatum        #1########\W„hrungscode         #2########\W„hrungs Wechselkurs #3########\@4@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@';
       Text004@1140009 : TextConst 'DEU=Programm Abbruch: Die Quell Datei: %1 konnte nicht verarbeitet werden.';
       Text005@1140010 : TextConst 'DEU=Die Datei %1 existiert nicht! Der Import wird abgebrochen.';
-      Text006@1140011 : TextConst 'DEU=Es stehen keine Kurse fr das heutige Datum zur Verfgung.';
+      Text006@1140011 : TextConst 'DEU=Es stehen keine Kurse fr das vorgegebene Datum zur Verfgung.';
+      Text007@1000000005 : TextConst 'DEU=M”glicher Syntax Fehler in der Excel Datei, es konnte kein Wechselkurs fr %1 bestimmt werden.';
       Dialog_Datum@1140013 : TextConst 'DEU=Heute,Letzter Werktag,Vorletzter Werktag';
       TOPAS_API@1000000003 : Codeunit 50001;
 
@@ -82,6 +84,7 @@ OBJECT Codeunit 50000 Importiere Wechselkurse
       body@1140002 : ARRAY [2] OF Text[1024];
       ExchCurrRateText@1140001 : Text[1024];
       subject@1140000 : Text[80];
+      Column_Curr_Kurs@1000000000 : Text[30];
     BEGIN
       //Info:
 
@@ -93,7 +96,7 @@ OBJECT Codeunit 50000 Importiere Wechselkurse
       CREATE(wshFile,FALSE,TRUE);
 
       //CurrencyURL := ENVIRON('TEMP') + '\coba_rates_DE.xls'; //ENVIRON Methode ist im RTC veraltet
-      CurrencyURL := wshShell.ExpandEnvironmentStrings('%TEMP%') + '\coba_rates_DE.xls';
+      CurrencyURL := wshShell.ExpandEnvironmentStrings('%TEMP%') + '\coba_rates.xls';
       NewCurrencyDate := TOPAS_Funktionen.CalcNextWorkday(+1,v_date);
       //Fr Testzwecke
       //NewCurrencyDate := 030816D;
@@ -105,9 +108,10 @@ OBJECT Codeunit 50000 Importiere Wechselkurse
       //Program_GetExchRate := 'D:\Wechselkurse_holen.Exe';
       Program_GetExchRate := '"H:\software\TOPAS eigen\Wechselkurse\Wechselkurse_holen.Exe"';
       //SHELL(Program_GetExchRate); //SHELL Methode ist im RTC veraltet
-      wshShell.Exec(Program_GetExchRate);
-      //YIELD; //YIELD Methode ist im RTC veraltet
+      wshExec := wshShell.Exec(Program_GetExchRate);
 
+      //YIELD; //YIELD Methode ist im RTC veraltet
+      i := 0;
       REPEAT
         i += 1;
         SLEEP(1000);
@@ -136,7 +140,7 @@ OBJECT Codeunit 50000 Importiere Wechselkurse
         COMPRESSARRAY(_aCurrency);
         FOR i := 1 TO CurrCount DO BEGIN
 
-          Row_Date := FindRow(FORMAT(TOPAS_Funktionen.CalcNextWorkday(-1,NewCurrencyDate),0,'<Day,2>.<Month,2>.<Year4>'),'Row','A','Z');
+          Row_Date := FindRow_new(FORMAT(TOPAS_Funktionen.CalcNextWorkday(-1,NewCurrencyDate),0,'<Day,2>.<Month,2>.<Year4>'),'Row','A','Z');
           Column_Date := FindRow(FORMAT(TOPAS_Funktionen.CalcNextWorkday(-1,NewCurrencyDate),0,'<Day,2>.<Month,2>.<Year4>'),
                         'Column','A','Z');
           Column_Curr := FindRow(_aCurrency[i],'Column','A','Z');
@@ -145,14 +149,21 @@ OBJECT Codeunit 50000 Importiere Wechselkurse
           NewCurrencyCode := _aCurrency[i];
           Window.UPDATE(1, NewCurrencyDate);
           Window.UPDATE(2, NewCurrencyCode);
-          IF FORMAT(Excel.Range(Column_Curr + INCSTR(Row_Curr)).Value) = 'Geld' THEN
-            ExchCurrRate := Excel.Range(Column_Curr + Row_Date).Value;
+          Column_Curr_Kurs := FindRow_new('Geld','Column',Column_Curr,'Z');
+          IF FORMAT(Excel.Range(Column_Curr_Kurs + INCSTR(Row_Curr)).Value) = 'Geld' THEN
+            ExchCurrRate := Excel.Range(Column_Curr_Kurs + Row_Date).Value;
           Currency.GET(NewCurrencyCode);
           EVALUATE(NewCurrencyRate, CONVERTSTR(FORMAT(ExchCurrRate,0,'<Precision,' + Currency."Unit-Amount Decimal Places" +
                     '><Integer><Decimal>'), '.', ','));
           Window.UPDATE(3, NewCurrencyRate);
 
           // Insert new Currency Exchange Rate
+          IF NewCurrencyRate = 0 THEN BEGIN
+            Book.Close;
+            CLEAR(Book);
+            ERROR(Text007,NewCurrencyCode);
+          END;
+
           IF Currency.GET(NewCurrencyCode) THEN BEGIN
             IF NOT CurrencyExchRate.RECORDLEVELLOCKING THEN
               CurrencyExchRate.LOCKTABLE(TRUE);
@@ -218,12 +229,61 @@ OBJECT Codeunit 50000 Importiere Wechselkurse
         IF ISCLEAR(Range1) THEN EXIT('');
         IF FORMAT(Range1.Value) <> What THEN
           Range1 := Sheet.Rows.FindNext(Range1);
-        IF FORMAT(Range1.Value) <> What THEN EXIT('');
+        //IF FORMAT(Range1.Value) <> What THEN EXIT('');
         Cell := Range1.Address;
         CASE Art OF
           'Row' : EVALUATE(Cell,FORMAT(TOPAS_API.ConvertStrToNum(Cell)));
           'Column' : EVALUATE(Cell,COPYSTR(Cell,2,STRPOS(COPYSTR(Cell,2),'$')-1));
         END;
+        EXIT(Cell);
+      END;
+    END;
+
+    PROCEDURE FindRow_new@1000000005(What@1140000 : Code[40];Art@1000000002 : Text[30];Col1@1000000001 : Text[30];Col2@1000000000 : Text[30]) : Text[30];
+    VAR
+      Range1@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";
+      Cell@1140003 : Code[40];
+      vorherige_zeile@1140004 : Integer;
+      naechste_zeile@1140005 : Integer;
+      i@1140007 : Integer;
+    BEGIN
+      CLEAR(Range1);
+      WITH Sheet.Range(Col1 + ':' + Col2) DO BEGIN
+        i := 1;
+        Range1 :=
+        (Sheet.Columns.Find(
+          What));
+        // Wird der Artikel nicht gefunden, steigt er sofort aus den Schleifen aus
+        IF ISCLEAR(Range1) THEN EXIT('');
+        Cell := Range1.Address;
+        // Schleife notwendig, da die šbergabe der Range nicht richtig funktioniert
+        IF (STRPOS(Cell,Col1) = 0) THEN BEGIN
+          REPEAT
+            Range1 := Sheet.Rows.FindNext(Range1);
+            Cell := Range1.Address;
+            i += 1;
+            IF Col1 < COPYSTR(Cell,2,1) THEN
+              i := 10;
+          UNTIL (STRPOS(Cell,Col1) = 2) OR (i > 5);
+        END ELSE
+          IF Col1 = Col2 THEN BEGIN
+            // mehr als ein Parameter gibt Probleme bei der Find Methode > HRESULT Fehler, vermutlich
+            // liegt es an einer fehlenden Instanz im 2. Parameter, deshalb wird solange gesucht,
+            // bis der Suchbegriff auch exakt mit dem Treffer bereinstimmt
+            IF (FORMAT(Sheet.Range(Cell).Value) <> What) AND (STRPOS(Cell,Col1) <> 0) THEN
+              REPEAT
+                Range1 := Sheet.Rows.FindNext(Range1);
+                EVALUATE(vorherige_zeile,COPYSTR(Cell,4));
+                Cell := Range1.Address;
+                EVALUATE(naechste_zeile,COPYSTR(Cell,4));
+                IF (vorherige_zeile = naechste_zeile) AND (Col1 = COPYSTR(Cell,STRPOS(Cell,'$')+1,1)) AND (UPPERCASE(FORMAT(Range(Cell).Value)) <> UPPERCASE(What)) THEN
+                  EXIT(''); //Abbruch, sonst Endlosschleife wegen unterschiedlicher Gross- und Kleinschreibung
+              UNTIL (UPPERCASE(FORMAT(Sheet.Range(Cell).Value)) = UPPERCASE(What));
+          END;
+          CASE Art OF
+          'Row' : EVALUATE(Cell,FORMAT(TOPAS_API.ConvertStrToNum(Cell)));
+          'Column' : EVALUATE(Cell,COPYSTR(Cell,2,STRPOS(COPYSTR(Cell,2),'$')-1));
+          END;
         EXIT(Cell);
       END;
     END;
