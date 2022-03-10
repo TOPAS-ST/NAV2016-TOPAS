@@ -1,0 +1,95 @@
+OBJECT Report 50030 Angebote archivieren
+{
+  OBJECT-PROPERTIES
+  {
+    Date=09.03.22;
+    Time=11:27:46;
+    Modified=Yes;
+    Version List=Topas, manueller Job;
+  }
+  PROPERTIES
+  {
+    ProcessingOnly=Yes;
+    OnPreReport=BEGIN
+                  SalesReceivablesSetup.FINDFIRST;
+                  IF (SalesReceivablesSetup."Archiving Sales Quote" = SalesReceivablesSetup."Archiving Sales Quote"::Never) OR (SalesReceivablesSetup."Archiving Sales Quote" =  SalesReceivablesSetup."Archiving Sales Quote"::Question) THEN
+                    ERROR(TextSalesRecSetup,SalesReceivablesSetup.FIELDCAPTION("Archiving Sales Quote"),SalesReceivablesSetup.TABLECAPTION);
+                END;
+
+    OnPostReport=BEGIN
+                   MESSAGE(TextSuccess,FORMAT(counter));
+                 END;
+
+  }
+  DATASET
+  {
+    { 1000000000;;DataItem;                  ;
+               DataItemTable=Table36;
+               DataItemTableView=SORTING(Document Type,No.)
+                                 WHERE(Document Type=CONST(Quote));
+               OnPreDataItem=BEGIN
+                               IF "Sales Header".GETFILTER("Document Date") = '' THEN
+                                 ERROR(TextErrField,"Sales Header".FIELDCAPTION("Document Date"));
+
+                               DateFilter := "Sales Header".GETFILTER("Document Date");
+                               IF STRLEN(DateFilter) > 1 THEN BEGIN
+                                 IF COPYSTR(DateFilter,STRLEN(DateFilter)-1) = COPYSTR(FORMAT(DATE2DWY(WORKDATE,3)),3) THEN
+                                   ERROR(TextDateRangeErr);
+                               END ELSE ERROR(TextDateErr);
+
+                               counter := COUNT;
+                               IF NOT CONFIRM(TextConfirmation,FALSE,counter,"Document Type") OR (counter = 0) THEN
+                                 ERROR(TextCancelJob);
+                             END;
+
+               OnAfterGetRecord=BEGIN
+                                  IF "Sales Header".Erledigtstatus = '' THEN BEGIN
+                                    "Sales Header".VALIDATE(Erledigtstatus,'ZUR INFO');
+                                    "Sales Header".MODIFY;
+                                  END;
+                                  "Sales Header".DELETE(TRUE);
+                                END;
+
+               ReqFilterFields=Document Date,Territory Code,Salesperson Code,No.,Sell-to Customer No. }
+
+  }
+  REQUESTPAGE
+  {
+    PROPERTIES
+    {
+      OnOpenPage=BEGIN
+                   "Sales Header".SETRANGE("Territory Code",'SYSTEM');
+                   RequestOptionsPage.SETSELECTIONFILTER("Sales Header");
+                 END;
+
+    }
+    CONTROLS
+    {
+    }
+  }
+  LABELS
+  {
+  }
+  CODE
+  {
+    VAR
+      SalesReceivablesSetup@1000000001 : Record 311;
+      SalesHeader@1000000007 : Record 36;
+      counter@1000000000 : Integer;
+      TextSalesRecSetup@1000000002 : TextConst 'DEU=Angebote werden zur Zeit nicht archiviert. Bitte richten Sie zun„chst die Option %1 in der Tabelle %2 ein und stellen Sie den Wert auf immer.';
+      TextConfirmation@1000000004 : TextConst 'DEU=M”chten Sie die Archivierung und L”schung von %1 Belegen (%2) jetzt fortsetzen?';
+      TextSuccess@1000000003 : TextConst 'DEU=Vorgang erfolreich abgeschlossen: %1 Belege archiviert und gel”scht';
+      TextCancelJob@1000000005 : TextConst 'DEU=Vorgang manuell abgebrochen oder keine Datens„tze zum archivieren vorhanden.';
+      TextErrField@1000000006 : TextConst 'DEU=Bitte geben Sie einen Filter im Feld %1 ein.';
+      DateFilter@1000000008 : Text;
+      TextDateRangeErr@1000000010 : TextConst 'DEU=Der Datumsfilter darf nicht das aktuelle Kalendarjahr umfassen.';
+      TextDateErr@1000000009 : TextConst 'DEU=Datumsfilter ungltig.';
+
+    BEGIN
+    END.
+  }
+  RDLDATA
+  {
+  }
+}
+
