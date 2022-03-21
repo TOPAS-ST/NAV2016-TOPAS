@@ -2,8 +2,8 @@ OBJECT Page 50023 Service Kalkulationsblatt
 {
   OBJECT-PROPERTIES
   {
-    Date=07.01.22;
-    Time=12:21:36;
+    Date=21.03.22;
+    Time=17:22:29;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -406,7 +406,6 @@ OBJECT Page 50023 Service Kalkulationsblatt
                 GroupType=Group }
 
     { 1000000033;4;Field  ;
-                Name=hinweis_ablaufdatum;
                 CaptionML=DEU=Vertragsdaten:;
                 SourceExpr=hinweis_ablaufdatum;
                 Editable=FALSE;
@@ -633,6 +632,7 @@ OBJECT Page 50023 Service Kalkulationsblatt
       ServRelaDoc@1140045 : Record 50027;
       TempServRelaDoc@1140044 : Record 50027;
       CheckServRelaDoc@1140046 : Record 50027;
+      BasisServRelaDoc@1000000027 : Record 50027;
       Opt@1140052 : Record 50001;
       ServicePos@1140051 : Record 50024;
       SystemPos@1140043 : Record 50024;
@@ -695,6 +695,7 @@ OBJECT Page 50023 Service Kalkulationsblatt
       start_ablaufdatum_nachtragen@1000000014 : Boolean;
       Text026@1000000024 : TextConst 'DEU=M”chten Sie wirklich einen neuen Servicequote fr %1 anlegen?';
       Text027@1000000025 : TextConst 'DEU=Bitte hinterlegen Sie die Laufzeit fr Artikel %1 in der %2 (Feld %3), damit der Service-Preis fr Artikel %4 richtig ermittelt werden kann.';
+      Text028@1000000028 : TextConst 'DEU=Die Service Erweiterung %1 aus Zeile %2 wird in diesem Verkaufsbeleg bereits fr ein weiteres Basissystem %3 in Kalkulation Zeile %4 angegeben. Bitte korrigieren Sie diese Kalkulation und fgen die richtige Erweiterung hinzu oder l”schen Sie diese.';
       TextExport@1000000017 : TextConst 'DEU=Daten werden analysiert ...\\';
       service_ablaufdatum@1000000022 : Date;
       wartungsvertrag_gefunden@1000000021 : Boolean;
@@ -1400,6 +1401,36 @@ OBJECT Page 50023 Service Kalkulationsblatt
             END;
             IF ServRelaDoc.Fremderwerb THEN
               v_belegnr_fremd := ServRelaDoc."Belegnr.";
+
+            //Verschiedene Fremderwerb Basis Systeme drfen nicht mit der gleichen Lizenz aus dem Beleg, sprich mit der gleichen Herkunfszeile, verbunden werden
+            IF (ServRelaDoc.Fremderwerb) AND (Ger„teArtikel.Serviceklassifizierung = 'SYSTEM CHAMPS') THEN BEGIN
+              CheckServRelaDoc.RESET;
+              CheckServRelaDoc.SETRANGE(Art,CheckServRelaDoc.Art::"SUP-AU");
+              CheckServRelaDoc.SETRANGE("Nr.","Nr.");
+              CheckServRelaDoc.SETRANGE("Zeilennr.","Zeilennr.");
+              CheckServRelaDoc.SETRANGE("Belegnr.","Nr.");
+              CheckServRelaDoc.SETRANGE(Basisger„t,FALSE);
+              IF CheckServRelaDoc.FIND('-') THEN BEGIN
+                TempServRelaDoc.RESET;
+                TempServRelaDoc.SETRANGE(Art,TempServRelaDoc.Art::"SUP-AU");
+                TempServRelaDoc.SETRANGE("Ger„te Artikelnr.",CheckServRelaDoc."Ger„te Artikelnr.");
+                TempServRelaDoc.SETRANGE("Nr.",CheckServRelaDoc."Nr.");
+                TempServRelaDoc.SETFILTER("Zeilennr.",'<>%1',CheckServRelaDoc."Zeilennr.");
+                TempServRelaDoc.SETRANGE("Belegzeilennr.",CheckServRelaDoc."Belegzeilennr.");
+                TempServRelaDoc.SETRANGE(Basisger„t,FALSE);
+                IF TempServRelaDoc.FIND('-') THEN
+                  REPEAT
+                    BasisServRelaDoc.RESET;
+                    BasisServRelaDoc.SETRANGE("Nr.",TempServRelaDoc."Nr.");
+                    BasisServRelaDoc.SETRANGE("Zeilennr.",TempServRelaDoc."Zeilennr.");
+                    BasisServRelaDoc.SETRANGE(Basisger„t,TRUE);
+                    BasisServRelaDoc.SETRANGE(Fremderwerb,TRUE);
+                    IF BasisServRelaDoc.FIND('-') THEN
+                      IF (BasisServRelaDoc."Belegnr." <> ServRelaDoc."Belegnr.") AND (CheckServRelaDoc."Belegzeilennr." = TempServRelaDoc."Belegzeilennr.") THEN
+                        ERROR(Text028,CheckServRelaDoc."Ger„te Artikelnr.",CheckServRelaDoc."Belegzeilennr.",BasisServRelaDoc."Ger„te Artikelnr.",BasisServRelaDoc."Zeilennr.");
+                  UNTIL TempServRelaDoc.NEXT = 0;
+              END;
+            END;
           UNTIL ServRelaDoc.NEXT = 0;
 
         serv_price_au := 0;
