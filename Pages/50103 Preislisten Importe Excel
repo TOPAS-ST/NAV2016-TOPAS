@@ -2,8 +2,8 @@ OBJECT Page 50103 Preislisten Importe Excel
 {
   OBJECT-PROPERTIES
   {
-    Date=03.01.22;
-    Time=13:39:04;
+    Date=27.01.22;
+    Time=10:50:36;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -29,6 +29,7 @@ OBJECT Page 50103 Preislisten Importe Excel
                                    preisliste::GSI     : GSI_Import;
                                    preisliste::FER     : FER_Import;
                                    preisliste::ICP     : ICP_Import;
+                                   preisliste::DIGI    : DIGI_Import;
                                    preisliste::LSI     : LSI_Import;
                                    preisliste::CIR     : CIR_Import;
                                    preisliste::OVT     : OVT_Import;
@@ -131,13 +132,14 @@ OBJECT Page 50103 Preislisten Importe Excel
       min_datens„tze_upd_pl@1140035 : Integer;
       update_job@1140008 : Boolean;
       filename@1140002 : Text;
-      preisliste@1140000 : ',GSI,FER,ICP,LSI,CIR,RIC,XMOS,OVT,SIL,HAL_IND,HAL_HCJ,HAL';
+      preisliste@1140000 : ',GSI,FER,ICP,DIGI,LSI,CIR,RIC,XMOS,OVT,SIL,HAL_IND,HAL_HCJ,HAL';
       Text000@1140037 : TextConst 'DEU=Fehler in der Syntax der Quelldatei.\Spalte: %1';
       Text100@1140001 : TextConst 'DEU=Die Datei oder der Pfad %1 konnte nicht gefunden werden.';
       testlauf@1140017 : Boolean;
       aenderung@1140036 : Boolean;
       chr@1140021 : Char;
       sheet_anzahl@1000000002 : Integer;
+      decstr@1000000007 : Integer;
       i@1000000003 : Integer;
       Warnung_GSI@1000000006 : TextConst 'DEU=Vor dem Preislisten Abgleich ist zu prfen, ob neue Reiter hinzugefgt worden sind und ob die Disti Cost Spalte auf allen Reitern immer die gleiche ist.';
 
@@ -1033,6 +1035,288 @@ OBJECT Page 50103 Preislisten Importe Excel
 
       MESSAGE('Abgleich der Artikel abgeschlossen.' + '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\' +
               'Excel Datens„tze: %3 (Ausgewerte Tabs: 1)\',neuer_preis,sonstige_aenderungen,excel_datens„tze);
+    END;
+
+    PROCEDURE DIGI_Import@1000000004();
+    VAR
+      Spalte_Part_Chips@1140012 : TextConst 'DEU=E';
+      Spalte_Descr_Chips@1000000000 : TextConst 'DEU=F';
+      Spalte_DC_Chips@1140011 : TextConst 'DEU=V';
+      Spalte_Reg_Chips@1140009 : TextConst 'DEU=F';
+      Spalte_MOQ_Chips@1140008 : TextConst 'DEU=X';
+      Spalte_NRND_Chips@1000000001 : TextConst 'DEU=AC';
+      Max_Datens„tze@1140002 : TextConst 'DEU=1000';
+      Text000@1140001 : TextConst 'DEU=Fehler in der Syntax der Quelldatei.\Spalte: %1';
+      PL@1140013 : 'Chips,FullEval,MiniEval';
+    BEGIN
+      //Digi Preislisten Abgleich
+
+      CLEAR(Quelle_Excel);
+      CLEAR(Quelle_Sheet);
+      CLEAR(Quelle_Book);
+
+      CLEAR(Protokoll_Excel);
+      CLEAR(Protokoll_Sheet);
+      CLEAR(Protokoll_Book);
+
+      //********************************************************************************************
+      //                               Excel Datei Definitionen
+      // *******************************************************************************************
+
+      // Definiert die zu importierende Datei
+      IF CREATE(Quelle_Excel,FALSE,TRUE) THEN BEGIN END ELSE ERROR('Cannot start Excel Application.');
+      Quelle_Book := Quelle_Excel.Workbooks._Open(filename,0,TRUE);
+      Quelle_Sheet := Quelle_Book.Worksheets.Item('Upload');
+      Quelle_j := '2';
+
+      neuer_preis := 0;
+      sonstige_aenderungen := 0;
+      excel_datens„tze := 0;
+
+      //********************************************************************************************
+      //                          šberprfung Syntax Quelldatei - Chips
+      //********************************************************************************************
+
+      IF FORMAT(Quelle_Sheet.Range(Spalte_Part_Chips + '1').Value) <> 'Item Number' THEN BEGIN
+        Quelle_Book.Close;
+        ERROR(Text000,Spalte_Part_Chips);
+      END;
+      IF FORMAT(Quelle_Sheet.Range(Spalte_Descr_Chips + '1').Value) <> 'Item Full Description' THEN BEGIN
+        Quelle_Book.Close;
+        ERROR(Text000,Spalte_Descr_Chips);
+      END;
+      IF FORMAT(Quelle_Sheet.Range(Spalte_MOQ_Chips + '1').Value) <> 'Minimum Order Quantity' THEN BEGIN
+        Quelle_Book.Close;
+        ERROR(Text000,Spalte_MOQ_Chips);
+      END;
+      IF FORMAT(Quelle_Sheet.Range(Spalte_DC_Chips + '1').Value) <> 'Distributor - Qty1' THEN BEGIN
+        Quelle_Book.Close;
+        ERROR(Text000,Spalte_DC_Chips);
+      END;
+      IF FORMAT(Quelle_Sheet.Range(Spalte_NRND_Chips + '1').Value) <> 'Not Recommended for New Designs' THEN BEGIN
+        Quelle_Book.Close;
+        ERROR(Text000,Spalte_NRND_Chips);
+      END;
+
+      //********************************************************************************************
+      //                               Definiert die Protokolldatei
+      //********************************************************************************************
+
+      CREATE(Protokoll_Excel,FALSE,TRUE);                                    // erzeugt excel
+      Protokoll_Book := Protokoll_Excel.Workbooks.Add(-4167);                // legt neue datei in excel an
+      Protokoll_Sheet := Protokoll_Excel.ActiveSheet;                        // definiert aktives worksheet
+      Protokoll_j := '2';
+
+      Protokoll_Sheet.Range('A'+'1').Value:= 'Artikelnr';                    // šberschriften der 2. Datei
+      Protokoll_Sheet.Range('A:A').ColumnWidth := 20;
+      Protokoll_Sheet.Range('B'+'1').Value:= 'DC alt';
+      Protokoll_Sheet.Range('C'+'1').Value:= 'DC neu';
+      Protokoll_Sheet.Range('D'+'1').Value:= 'Differenz';
+      Protokoll_Sheet.Range('E'+'1').Value:= 'LB';
+      Protokoll_Sheet.Range('F'+'1').Value:= 'AN';
+      Protokoll_Sheet.Range('G'+'1').Value:= 'AU';
+      Protokoll_Sheet.Range('H'+'1').Value:= 'AUR';
+      Protokoll_Sheet.Range('I'+'1').Value:= 'BB';
+      Protokoll_Sheet.Range('J'+'1').Value:= 'Preis';
+      Protokoll_Sheet.Range('K'+'1').Value:= 'MOQ';
+      Protokoll_Sheet.Range('L'+'1').Value:= 'NRND Status';
+      Protokoll_Sheet.Range('A1:L1').Interior.ColorIndex := 15;
+      Protokoll_Sheet.Range('A1:L1').Font.Bold := TRUE;
+
+      //********************************************************************************************
+      //                     Eigentliches Update der Digi Artikel
+      //********************************************************************************************
+
+      EVALUATE(a,Quelle_j);
+      excel_datens„tze := Quelle_Sheet.UsedRange.Rows.Count - a + 1;
+
+      IF testlauf = FALSE THEN BEGIN
+        IF excel_datens„tze > 99 THEN
+          IF CONFIRM('Es konnte mehr als 100 Eintr„ge in der Quelldatei gefunden werden.\' +
+                      'Soll der Status Update letzte Preisliste fr alle Artikel zurckgesetzt und neu ' +
+                      'bewertet werden?',TRUE) THEN BEGIN
+            Artikel.RESET;
+            Artikel.SETFILTER("Manufacturer Code",'%1','74');
+            IF Artikel.FINDFIRST THEN
+              Artikel.MODIFYALL("Update letzte Preisliste",FALSE);
+          END;
+      END;
+
+      REPEAT
+
+        Artikelname := '';
+        IF STRLEN(FORMAT(Quelle_Sheet.Range(Spalte_Part_Chips+Quelle_j).Value)) <= 40 THEN
+          Artikelname := FORMAT(Quelle_Sheet.Range(Spalte_Part_Chips+Quelle_j).Value);
+        //PL_msl := FORMAT(Quelle_Sheet.Range(Spalte_MSL+Quelle_j).Value);
+        PL_DISTI_TEXT := FORMAT(Quelle_Sheet.Range(Spalte_DC_Chips+Quelle_j).Value);
+        IF (FORMAT(Quelle_Sheet.Range(Spalte_MOQ_Chips+Quelle_j).Value) <> '') AND
+        (FORMAT(Quelle_Sheet.Range(Spalte_MOQ_Chips+Quelle_j).Value) <> 'TBA') THEN
+          EVALUATE(PL_MOQ,FORMAT(Quelle_Sheet.Range(Spalte_MOQ_Chips+Quelle_j).Value))
+        ELSE
+          PL_MOQ := 0;
+        PL_Status := FORMAT(Quelle_Sheet.Range(Spalte_NRND_Chips+Quelle_j).Value);
+
+        IF (STRLEN(DELCHR(PL_DISTI_TEXT,'=','ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')) =
+        (STRLEN(PL_DISTI_TEXT))) THEN BEGIN
+          //falls sich 1000er Trennzeichen eingeschlichen hat wird dies entfernt
+          IF STRLEN(COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1)) > 2 THEN
+            PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','.');
+
+          IF STRPOS(PL_DISTI_TEXT, ',') <> 0 THEN BEGIN
+            PL_DISTI_TEXT := COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, ',')-1)
+                      + ',' + COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, ',')+1);
+          END;
+          IF STRPOS(PL_DISTI_TEXT, '.') <> 0 THEN BEGIN
+            PL_DISTI_TEXT:= COPYSTR(PL_DISTI_TEXT,1,STRPOS(PL_DISTI_TEXT, '.')-1)
+                      + ',' + COPYSTR(PL_DISTI_TEXT,STRPOS(PL_DISTI_TEXT, '.')+1);
+          END;
+          IF PL_DISTI_TEXT = '' THEN PL_DISTI_TEXT := '0';
+
+          // Wenn manuell das Dollar Zeichen in die Zeile geraten ist
+          IF STRPOS(PL_DISTI_TEXT,'$') <> 0 THEN BEGIN
+            //PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=','$');
+            hilfs_PL_DISTI_TEXT := PL_DISTI_TEXT;
+            hilfs_PL_DISTI_TEXT := DELCHR(hilfs_PL_DISTI_TEXT,'<>=',' ');
+            hilfs_PL_DISTI_TEXT := DELCHR(PL_DISTI_TEXT,'=',DELCHR(PL_DISTI_TEXT,'=','.,0123456789'));
+            PL_DISTI_TEXT := hilfs_PL_DISTI_TEXT;
+          END;
+
+          EVALUATE(PL_DC,PL_DISTI_TEXT);
+          PL_DC := ROUND(PL_DC,0.01);
+        END ELSE
+          PL_DC := 0;
+
+        IF Artikelname <> '' THEN BEGIN
+          Artikel.RESET;
+          Artikel.SETFILTER("No. 2",'%1',Artikelname);
+          IF Artikel.FINDFIRST THEN BEGIN
+
+            aenderung := FALSE;
+
+            //*********************************************************************************************
+            //                                    EK-Preise updaten
+            //*********************************************************************************************
+
+            einkaufspreis.RESET;
+            einkaufspreis.SETFILTER(einkaufspreis."Item No.",'%1',Artikel."No.");
+            //einkaufspreis.SETFILTER(einkaufspreis."Vendor No.",'%1',Artikel."Vendor No.");
+            IF einkaufspreis.FINDLAST THEN BEGIN
+              IF (einkaufspreis."Direct Unit Cost" <> PL_DC) AND (PL_DC <> 0) THEN BEGIN
+                Protokoll_Sheet.Range('A'+Protokoll_j).Value := TOPAS_API.CreateExcelHyperlinkToNav(Artikel.TABLENAME,1,30,Artikel."No.");
+                Protokoll_Sheet.Range('B'+Protokoll_j).Value := FORMAT(einkaufspreis."Direct Unit Cost");
+                Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
+                Protokoll_Sheet.Range('D'+Protokoll_j).Value := FORMAT(PL_DC-einkaufspreis."Direct Unit Cost");
+                IF einkaufspreis."Direct Unit Cost" > PL_DC THEN
+                  Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-11489280'; //grn
+                IF einkaufspreis."Direct Unit Cost" < PL_DC THEN
+                  Protokoll_Sheet.Range('D'+Protokoll_j).Font.Color := '-16776961'; //rot
+                Artikel.CALCFIELDS(Inventory,Artikel."Qty. on Purch. Order",Artikel."Qty. on Sales Order",
+                Artikel."Menge in Angebot",Artikel."Menge im Rahmen");
+                Protokoll_Sheet.Range('E'+Protokoll_j).Value := FORMAT(Artikel.Inventory);
+                Protokoll_Sheet.Range('F'+Protokoll_j).Value := FORMAT(Artikel."Menge in Angebot");
+                Protokoll_Sheet.Range('G'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Sales Order");
+                Protokoll_Sheet.Range('H'+Protokoll_j).Value := FORMAT(Artikel."Menge im Rahmen");
+                Protokoll_Sheet.Range('I'+Protokoll_j).Value := FORMAT(Artikel."Qty. on Purch. Order");
+                Protokoll_Sheet.Range('J'+Protokoll_j).Value := 'X';
+
+                IF testlauf = FALSE THEN BEGIN
+                  einkaufspreis."Direct Unit Cost" := PL_DC;
+                  einkaufspreis.MODIFY(TRUE);
+                  Artikel.MODIFY(TRUE);
+                END;
+
+                neuer_preis += 1;
+                aenderung := TRUE;
+
+              END;
+            END;
+
+            //*********************************************************************************************
+            //                                       MOQ berprfen
+            //*********************************************************************************************
+
+            IF (Artikel.Mindestbestellmenge <> PL_MOQ) AND (PL_MOQ <> 0) THEN BEGIN
+              IF testlauf = FALSE THEN BEGIN
+                Artikel.Mindestbestellmenge := PL_MOQ;
+                Artikel.MODIFY(TRUE);
+              END;
+              sonstige_aenderungen += 1;
+              aenderung := TRUE;
+              Protokoll_Sheet.Range('K'+Protokoll_j).Value := 'X';
+            END;
+
+            //*********************************************************************************************
+            //                         Lifetime Status Flag berprfen
+            //*********************************************************************************************
+
+            CASE PL_Status OF
+              'Y' : BEGIN
+                PL_Status := 'NRND';
+                IF Artikel."Lifetime Status Flag" <> PL_Status THEN BEGIN
+                  IF testlauf = FALSE THEN BEGIN
+                    Artikel."Lifetime Status Flag" := PL_Status;
+                    Artikel.MODIFY(TRUE);
+                  END;
+                  sonstige_aenderungen += 1;
+                  aenderung := TRUE;
+                  Protokoll_Sheet.Range('L'+Protokoll_j).Value := 'X - ' + PL_Status;
+                  Protokoll_Sheet.Range('M'+Protokoll_j).Value := Artikel."Description 2";
+                END;
+              END;
+            END;
+
+            //*********************************************************************************************
+            //                                    Update letzte Preisliste
+            //*********************************************************************************************
+
+            IF PL_DC <> 0 THEN BEGIN
+              IF testlauf = FALSE THEN BEGIN
+                Artikel."Update letzte Preisliste" := TRUE;
+                Artikel.MODIFY;
+              END;
+            END;
+
+            IF aenderung THEN BEGIN
+              Protokoll_Sheet.Range('A'+Protokoll_j).Value := TOPAS_API.CreateExcelHyperlinkToNav(Artikel.TABLENAME,1,30,Artikel."No.");
+              Protokoll_j := INCSTR(Protokoll_j);
+            END;
+
+          END;
+        END;
+
+        //*********************************************************************************************
+        //                                       Abbruchbedingung
+        //*********************************************************************************************
+
+        // Wenn in der Quelldatei 5 Leere Zeilen hintereinander kommen, ist das Dateiende erreicht
+        IF Artikelname = '' THEN                                 // erkennt das Ende der Excel Datei
+          leere_zeilen += 1
+        ELSE
+          leere_zeilen := 0;
+
+        Quelle_j := INCSTR(Quelle_j);                            // n„chste Zeile Importdatei
+
+      UNTIL (Max_Datens„tze = Quelle_j) OR (leere_zeilen = 5);  // Nach 5 Zeilen ohne Artikel ist Schluss
+
+      Quelle_Excel.Visible(TRUE);
+      Protokoll_Excel.Visible(TRUE);
+
+      CLEAR(Quelle_Sheet);
+      CLEAR(Quelle_Book);
+      CLEAR(Quelle_Excel);
+
+      CLEAR(Protokoll_Sheet);
+      CLEAR(Protokoll_Book);
+      CLEAR(Protokoll_Excel);
+
+      REPEAT
+      UNTIL ISCLEAR(Quelle_Excel) AND ISCLEAR(Quelle_Book) AND ISCLEAR(Quelle_Sheet);
+
+      REPEAT
+      UNTIL ISCLEAR(Protokoll_Excel) AND ISCLEAR(Protokoll_Book) AND ISCLEAR(Protokoll_Sheet);
+
+      MESSAGE('Abgleich der Digi Artikel abgeschlossen.' + '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\' +
+              'Excel Datens„tze: %3\',neuer_preis,sonstige_aenderungen,excel_datens„tze);
     END;
 
     PROCEDURE LSI_Import@1140008();
@@ -2361,11 +2645,11 @@ OBJECT Page 50103 Preislisten Importe Excel
 
     PROCEDURE XMOS_Import@1140007();
     VAR
-      Spalte_Part_Kits@1140007 : TextConst 'DEU=A';
+      Spalte_Part_Kits@1140007 : TextConst 'DEU=B';
       Spalte_Part_Chips@1140002 : TextConst 'DEU=B';
-      Spalte_DC_Kits@1140006 : TextConst 'DEU=C';
+      Spalte_DC_Kits@1140006 : TextConst 'DEU=E';
       Spalte_DC_Chips@1140005 : TextConst 'DEU=N';
-      Spalte_MOQ_Kits@1140004 : TextConst 'DEU=D';
+      Spalte_MOQ_Kits@1140004 : TextConst 'DEU=F';
       Spalte_MOQ_Chips@1140008 : TextConst 'DEU=O';
       Manufac_Code@1140001 : TextConst 'DEU=04';
       Max_Datens„tze@1140003 : TextConst 'DEU=1000';
@@ -2388,7 +2672,6 @@ OBJECT Page 50103 Preislisten Importe Excel
       // Definiert die zu importierende Datei
       IF CREATE(Quelle_Excel,FALSE,TRUE) THEN BEGIN END ELSE ERROR('Cannot start Excel Application.');
       Quelle_Book := Quelle_Excel.Workbooks._Open(filename,0,TRUE);
-      Quelle_Sheet := Quelle_Book.Worksheets.Item(1);
 
       neuer_preis := 0;
       sonstige_aenderungen := 0;
@@ -2408,44 +2691,59 @@ OBJECT Page 50103 Preislisten Importe Excel
       //********************************************************************************************
 
       IF selection = 1 THEN BEGIN
-        Quelle_Sheet := Quelle_Book.Worksheets.Item(3);
+        Quelle_Sheet := Quelle_Book.Worksheets.Item(13); //Standard: Sheet 11 xCORE-200
         sheet_anzahl := 5;
         Quelle_j := '6';
         v_Spalte_PL_Part := Spalte_Part_Chips;
         v_Spalte_PL_DC := Spalte_DC_Chips;
         v_Spalte_PL_MOQ := Spalte_MOQ_Chips;
-        IF LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte_Part_Chips + '4').Value)) <> 'order code' THEN BEGIN
-          Quelle_Book.Close;
-          ERROR(Text000,Spalte_Part_Chips);
+
+        IF LOWERCASE(FORMAT(Quelle_Sheet.Name)) = 'xs1 disty' THEN BEGIN //Sheet 10
+          v_Spalte_PL_DC[STRLEN(v_Spalte_PL_DC)] := v_Spalte_PL_DC[STRLEN(v_Spalte_PL_DC)] - 3;
+          v_Spalte_PL_MOQ[STRLEN(v_Spalte_PL_MOQ)] := v_Spalte_PL_MOQ[STRLEN(v_Spalte_PL_MOQ)] - 3;
         END;
-        IF LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte_DC_Chips + '4').Value)) <> 'distributor cost' THEN BEGIN
-          Quelle_Book.Close;
-          ERROR(Text000,Spalte_DC_Chips);
+        IF LOWERCASE(FORMAT(Quelle_Sheet.Name)) = 'xcore.ai disty' THEN BEGIN //Sheet: 12
+          v_Spalte_PL_DC[STRLEN(v_Spalte_PL_DC)] := v_Spalte_PL_DC[STRLEN(v_Spalte_PL_DC)] - 1;
+          v_Spalte_PL_MOQ[STRLEN(v_Spalte_PL_MOQ)] := v_Spalte_PL_MOQ[STRLEN(v_Spalte_PL_MOQ)] - 1;
         END;
-        IF LOWERCASE(DELCHR(FORMAT(Quelle_Sheet.Range(Spalte_MOQ_Chips + '4').Value),'=',FORMAT(chr))) <> 'moq' THEN BEGIN
+         IF LOWERCASE(FORMAT(Quelle_Sheet.Name)) = 'xvf disty' THEN BEGIN //Sheet: 13
+          v_Spalte_PL_DC[STRLEN(v_Spalte_PL_DC)] := v_Spalte_PL_DC[STRLEN(v_Spalte_PL_DC)] - 2;
+          v_Spalte_PL_MOQ[STRLEN(v_Spalte_PL_MOQ)] := v_Spalte_PL_MOQ[STRLEN(v_Spalte_PL_MOQ)] - 2;
+        END;
+
+        IF LOWERCASE(FORMAT(Quelle_Sheet.Range(v_Spalte_PL_Part + '4').Value)) <> 'order code' THEN BEGIN
           Quelle_Book.Close;
-          ERROR(Text000,Spalte_MOQ_Chips);
+          ERROR(Text000,v_Spalte_PL_Part);
+        END;
+        IF LOWERCASE(FORMAT(Quelle_Sheet.Range(v_Spalte_PL_DC + '4').Value)) <> 'distributor cost' THEN BEGIN
+          Quelle_Book.Close;
+          ERROR(Text000,v_Spalte_PL_DC);
+        END;
+        IF LOWERCASE(DELCHR(FORMAT(Quelle_Sheet.Range(v_Spalte_PL_MOQ + '4').Value),'=',FORMAT(chr))) <> 'moq' THEN BEGIN
+          Quelle_Book.Close;
+          ERROR(Text000,v_Spalte_PL_MOQ);
         END;
       END;
 
 
       IF selection = 2 THEN BEGIN
+        Quelle_Sheet := Quelle_Book.Worksheets.Item(14);
         sheet_anzahl := 1;
         Quelle_j := '5';
         v_Spalte_PL_Part := Spalte_Part_Kits;
         v_Spalte_PL_DC := Spalte_DC_Kits;
         v_Spalte_PL_MOQ := Spalte_MOQ_Kits;
-        IF FORMAT(Quelle_Sheet.Range(Spalte_Part_Kits + '4').Value) <> 'Part number / SKU' THEN BEGIN
+        IF LOWERCASE(FORMAT(Quelle_Sheet.Range(Spalte_Part_Kits + '4').Value)) <> 'order code' THEN BEGIN
           Quelle_Book.Close;
           ERROR(Text000,Spalte_Part_Kits);
         END;
 
         chr := 10;
-        IF DELCHR(FORMAT(Quelle_Sheet.Range(Spalte_DC_Kits + '4').Value),'=',FORMAT(chr)) <> 'DistributionBuy Price' THEN BEGIN
+        IF LOWERCASE(DELCHR(FORMAT(Quelle_Sheet.Range(Spalte_DC_Kits + '4').Value),'=',FORMAT(chr))) <> 'distributor cost' THEN BEGIN
           Quelle_Book.Close;
           ERROR(Text000,Spalte_DC_Kits);
         END;
-        IF DELCHR(FORMAT(Quelle_Sheet.Range(Spalte_MOQ_Kits + '4').Value),'=',FORMAT(chr)) <> 'MinimumOrder Quantity' THEN BEGIN
+        IF LOWERCASE(DELCHR(FORMAT(Quelle_Sheet.Range(Spalte_MOQ_Kits + '4').Value),'=',FORMAT(chr))) <> 'moq' THEN BEGIN
           Quelle_Book.Close;
           ERROR(Text000,Spalte_MOQ_Kits);
         END;
@@ -2570,7 +2868,7 @@ OBJECT Page 50103 Preislisten Importe Excel
               //einkaufspreis.SETFILTER(einkaufspreis."Vendor No.",'%1',Artikel."Vendor No.");
               IF einkaufspreis.FINDFIRST THEN BEGIN
                 IF (einkaufspreis."Direct Unit Cost" <> PL_DC) AND (PL_DC <> 0) THEN BEGIN
-                  Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikel."No. 2";
+                  Protokoll_Sheet.Range('A'+Protokoll_j).Value := TOPAS_API.CreateExcelHyperlinkToNav(Artikel.TABLENAME,1,30,Artikel."No.");
                   Protokoll_Sheet.Range('B'+Protokoll_j).Value := FORMAT(einkaufspreis."Direct Unit Cost");
                   Protokoll_Sheet.Range('C'+Protokoll_j).Value := FORMAT(PL_DC);
                   Protokoll_Sheet.Range('D'+Protokoll_j).Value := FORMAT(PL_DC-einkaufspreis."Direct Unit Cost");
@@ -2668,9 +2966,9 @@ OBJECT Page 50103 Preislisten Importe Excel
               'Excel Datens„tze: %3\',neuer_preis,sonstige_aenderungen,excel_datens„tze);
 
       IF selection = 1 THEN
-        MESSAGE('Bitte bedenk, dass die Chip Preisliste nun in 5 Sheets aufgeteilt ist und nur das 3. Sheet analyisiert wird,\' +
+        MESSAGE('Bitte bedenk, dass die Chip Preisliste nun in mehrere Sheets aufgeteilt ist und nur das 11. Sheet (xCORE-200) analyisiert wird,\' +
                 'da die Struktur leider in allen Sheets voneinander abweichen.\\Fr die autom. Auswertung eines anderen muss die Sheet Nr. oben ' +
-                '(Suche hier nach "Quelle_Sheet := Quelle_Book.Worksheets.Item(3);") und die TextConstanten mssen auf die jeweilige Spalte abge„ndert werden.\' +
+                '(Suche hier nach "Quelle_Sheet := Quelle_Book.Worksheets.Item(xxx);") und die TextConstanten mssen auf die jeweilige Spalte abge„ndert werden.\' +
                 'Hinterher bitte wieder alles auf die Standardwerte zurckstellen.');
     END;
 
