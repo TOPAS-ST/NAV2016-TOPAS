@@ -2,15 +2,15 @@ OBJECT Report 50071 TOPAS Packvorschlag
 {
   OBJECT-PROPERTIES
   {
-    Date=10.07.19;
-    Time=09:06:32;
+    Date=18.10.21;
+    Time=09:35:58;
     Modified=Yes;
-    Version List=Beleg Packvorschlag,FORNAV3.1.0.1460/1460;
+    Version List=Beleg Packvorschlag,FORNAV6.1.0.2145/2145;
   }
   PROPERTIES
   {
     OnInitReport=BEGIN
-                   ;ReportForNav:= ReportForNav.Report(CurrReport.OBJECTID,CurrReport.LANGUAGE,SERIALNUMBER,USERID,COMPANYNAME);ReportForNav.Init;
+                   {;ReportForNav};ReportsForNavInit();
                  END;
 
     OnPreReport=BEGIN
@@ -312,11 +312,22 @@ OBJECT Report 50071 TOPAS Packvorschlag
       AndruckText@1140039 : ARRAY [5] OF Text[120];
       hinweis_acs_projektinfo@1140036 : Text[260];
       system_champs_verbindung@1140004 : Boolean;
-      ReportForNav@5000 : DotNet "'ForNav.Reports.3.1.0.1460, Version=3.1.0.1460, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
-      ReportForNavClient@5003 : DotNet "'ForNav.Reports.3.1.0.1460, Version=3.1.0.1460, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
+      ReportForNav@5000 : DotNet "'ForNav.Reports.6.1.0.2145, Version=6.1.0.2145, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
+      ReportForNavClient@5003 : DotNet "'ForNav.Reports.6.1.0.2145, Version=6.1.0.2145, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
       ReportForNavDialog@5001 : Dialog;
       ReportForNavOpenDesigner@5002 : Boolean;
       ReportForNavAllowDesign@5004 : Boolean INDATASET;
+
+    LOCAL PROCEDURE ReportsForNavInit@5005();
+    VAR
+      fn@1000000000 : Text;
+    BEGIN
+      fn := APPLICATIONPATH() + 'Add-ins\ReportsForNAV_6_1_0_2145\ForNav.Reports.6.1.0.2145.dll';
+      IF NOT FILE.EXISTS(APPLICATIONPATH + 'Add-ins\ReportsForNAV_6_1_0_2145\ForNav.Reports.6.1.0.2145.dll') THEN
+        ERROR('Please install the ForNAV DLL version 6.1.0.2145 in your service tier Add-ins folder under the file name "%1"', fn);
+      ReportForNav := ReportForNav.Report(CurrReport.OBJECTID(), CurrReport.LANGUAGE() ,SERIALNUMBER(), USERID(), COMPANYNAME());
+      ReportForNav.Init();
+    END;
 
     LOCAL PROCEDURE OnPreSectionSalesHeader_Body1@5010(VAR "Sales Header"@1000000000 : Record 36);
     BEGIN
@@ -437,7 +448,6 @@ OBJECT Report 50071 TOPAS Packvorschlag
       ReportLayoutSelection@1000 : Record 9651;
       CustomReportLayout@1001 : Record 9650;
       CustomLayoutID@1002 : Variant;
-      InStream@1004 : InStream;
       EmptyLayout@1003 : Text;
     BEGIN
       // This code is created automatically every time Reports ForNAV saves the report.
@@ -453,13 +463,9 @@ OBJECT Report 50071 TOPAS Packvorschlag
 
       IF (FORMAT(CustomLayoutID) <> EmptyLayout) AND CustomReportLayout.GET(CustomLayoutID) THEN BEGIN
         CustomReportLayout.TESTFIELD(Type,CustomReportLayout.Type::RDLC);
-        CustomReportLayout.CALCFIELDS(Layout);
-        CustomReportLayout.Layout.CREATEINSTREAM(InStream,TEXTENCODING::UTF8);
         ReportForNav.IsCustomLayout := TRUE;
-      END ELSE
-        REPORT.RDLCLAYOUT(ReportForNav.ReportID,InStream);
+      END;
 
-      ReportForNav.LoadRdlc(InStream);
       IF ReportForNav.IsWindowsClient THEN BEGIN
         ReportForNav.CheckClientAddIn();
         ReportForNavClient := ReportForNavClient.Report(ReportForNav.Definition);
@@ -476,21 +482,21 @@ OBJECT Report 50071 TOPAS Packvorschlag
       OutStream@1006 : OutStream;
       Bstr@1005 : BigText;
       EmptyLayout@1001 : Text;
+      ReportID@1008 : Integer;
     BEGIN
       // This code is created automatically every time Reports ForNAV saves the report.
       // Do not modify this code.
       EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
       LayoutId := ReportLayoutSelection."Custom Report Layout ID";
-      IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN BEGIN
+      EVALUATE(ReportID, FORMAT(ReportForNav.ReportID));
+      IF ReportLayoutSelection.HasCustomLayout(ReportID) = 1 THEN BEGIN
         IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN BEGIN
           LayoutId := ReportLayoutSelection.GetTempLayoutSelected;
         END ELSE BEGIN
-          IF ReportLayoutSelection.GET(ReportForNav.ReportID, COMPANYNAME) THEN BEGIN
+          IF ReportLayoutSelection.GET(ReportID, COMPANYNAME) THEN BEGIN
           LayoutId := ReportLayoutSelection."Custom Report Layout ID";
           END;
         END;
-      END ELSE BEGIN
-        IF CONFIRM('Default custom layout not found. Create one?') THEN;
       END;
       IF FORMAT(LayoutId) <> EmptyLayout THEN BEGIN
         TempBlob.Blob.CREATEOUTSTREAM(OutStream);
@@ -521,7 +527,6 @@ OBJECT Report 50071 TOPAS Packvorschlag
       PdfFile.CREATEOUTSTREAM(OutStream);
       REPORT.SAVEAS(ReportForNav.ReportID, Parameters, REPORTFORMAT::Pdf, OutStream);
       PdfFile.CREATEINSTREAM(InStream);
-      ReportForNavClient.ShowDesigner;
       IF ReportForNav.IsValidPdf(PdfFile.NAME) THEN DOWNLOADFROMSTREAM(InStream, '', '', '', FileName);
       PdfFile.CLOSE;
     END;
@@ -554,41 +559,6 @@ OBJECT Report 50071 TOPAS Packvorschlag
 
     EVENT ReportForNav@5000::OnPostSection@5013(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
     BEGIN
-    END;
-
-    EVENT ReportForNav@5000::OnClientOperation@5014(Args@1000 : DotNet "'mscorlib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Array");
-    VAR
-      op@1001 : Text;
-      FileMgmt@1002 : Codeunit 419;
-      Process@1006 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.Process" RUNONCLIENT;
-      PathObj@1005 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Path" RUNONCLIENT;
-      FileVersionInfo@1003 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.FileVersionInfo" RUNONCLIENT;
-      DirectoryHelper@1004 : DotNet "'mscorlib'.System.IO.Directory" RUNONCLIENT;
-    BEGIN
-      // This code is created automatically every time Reports ForNAV saves the report.
-      // Do not modify this code.
-      op := Args.GetValue(0);
-      CASE op OF
-        'TempPath': ReportForNav.Result := PathObj.GetTempPath();
-        'FileExists': ReportForNav.Result := FileMgmt.ClientFileExists(Args.GetValue(1));
-        'DirectoryExists': ReportForNav.Result := FileMgmt.ClientDirectoryExists(Args.GetValue(1));
-        'ProcessLocation': ReportForNav.Result := Process.GetCurrentProcess().MainModule.FileName;
-        'FileVersion': ReportForNav.Result := FileVersionInfo.GetVersionInfo(Args.GetValue(1)).FileVersion;
-        'DeleteFile': FileMgmt.DeleteClientFile(Args.GetValue(1));
-        'DeleteDirectory': IF STRLEN(Args.GetValue(1)) > 20 THEN
-          IF FileMgmt.ClientDirectoryExists(Args.GetValue(1)) THEN
-            DirectoryHelper.Delete(FORMAT(Args.GetValue(1)), TRUE);
-      END;
-    END;
-
-    EVENT ReportForNav@5000::OnCheckForNavClientVersion@5015();
-    BEGIN
-      // This code is created automatically every time Reports ForNAV saves the report.
-      // Do not modify this code.
-      ReportForNavClient := ReportForNavClient.Report();
-      IF ReportForNav.MyFileVersion <> ReportForNavClient.MyFileVersion THEN
-        ERROR('You have version %1 of the Reports ForNAV assembly here:\\%2\\Please close your NAV client and update it to version %3.',
-              ReportForNavClient.MyFileVersion, ReportForNavClient.MyFileName, ReportForNav.MyFileVersion);
     END;
 
     EVENT ReportForNav@5000::OnSelectPrinter@5006();
@@ -656,10 +626,7 @@ OBJECT Report 50071 TOPAS Packvorschlag
       // Do not modify this code.
       CurrReport.LANGUAGE := SYSTEM.GLOBALLANGUAGE;
       DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
-      WHILE ReportForNavClient.PrintPreviewDialog(ClientFileName,ReportForNav.PrinterSettings.PrinterName,Preview) DO BEGIN
-        ReportForNav.HandlePrintPreviewRequest(ReportForNavClient.GetPrintPreviewRequest());
-        SLEEP(100);
-      END;
+      ReportForNavClient.PrintPreviewDialog(ClientFileName,ReportForNav.PrinterSettings.PrinterName,Preview);
     END;
 
     BEGIN
@@ -669,7 +636,78 @@ OBJECT Report 50071 TOPAS Packvorschlag
   {
     <?xml version="1.0" encoding="utf-8"?>
 <Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
-  <Description>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</Description>
+  <Description>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</Description>
   <DataSources>
     <DataSource Name="DataSource">
       <ConnectionProperties>
@@ -687,117 +725,6 @@ OBJECT Report 50071 TOPAS Packvorschlag
       <Page></Page>
     </ReportSection>
   </ReportSections>
-  <DataSets>
-    <DataSet Name="DataSet_Result">
-      <Fields>
-        <Field Name="Account2">
-          <DataField>Account2</DataField>
-        </Field>
-        <Field Name="Account">
-          <DataField>Account</DataField>
-        </Field>
-        <Field Name="DebAdr1">
-          <DataField>DebAdr1</DataField>
-        </Field>
-        <Field Name="DebAdr2">
-          <DataField>DebAdr2</DataField>
-        </Field>
-        <Field Name="DebAdr3">
-          <DataField>DebAdr3</DataField>
-        </Field>
-        <Field Name="DebAdr4">
-          <DataField>DebAdr4</DataField>
-        </Field>
-        <Field Name="DebAdr5">
-          <DataField>DebAdr5</DataField>
-        </Field>
-        <Field Name="DebAdr6">
-          <DataField>DebAdr6</DataField>
-        </Field>
-        <Field Name="DebAdr8">
-          <DataField>DebAdr8</DataField>
-        </Field>
-        <Field Name="DebAdr7">
-          <DataField>DebAdr7</DataField>
-        </Field>
-        <Field Name="No_SalesHeader">
-          <DataField>No_SalesHeader</DataField>
-        </Field>
-        <Field Name="Sell_toCustomerNo_SalesHeader">
-          <DataField>Sell_toCustomerNo_SalesHeader</DataField>
-        </Field>
-        <Field Name="PostingDate_SalesHeader">
-          <DataField>PostingDate_SalesHeader</DataField>
-        </Field>
-        <Field Name="AndruckText2">
-          <DataField>AndruckText2</DataField>
-        </Field>
-        <Field Name="AndruckText1">
-          <DataField>AndruckText1</DataField>
-        </Field>
-        <Field Name="AndruckText3">
-          <DataField>AndruckText3</DataField>
-        </Field>
-        <Field Name="Comment_SalesCommentLine">
-          <DataField>Comment_SalesCommentLine</DataField>
-        </Field>
-        <Field Name="Endkunde_SalesLine">
-          <DataField>Endkunde_SalesLine</DataField>
-        </Field>
-        <Field Name="LineNo_SalesLine">
-          <DataField>LineNo_SalesLine</DataField>
-        </Field>
-        <Field Name="SearchDescription_Item">
-          <DataField>SearchDescription_Item</DataField>
-        </Field>
-        <Field Name="Description_SalesLine">
-          <DataField>Description_SalesLine</DataField>
-        </Field>
-        <Field Name="Artikelnr2_SalesLine">
-          <DataField>Artikelnr2_SalesLine</DataField>
-        </Field>
-        <Field Name="QtytoShip_SalesLine">
-          <DataField>QtytoShip_SalesLine</DataField>
-        </Field>
-        <Field Name="QtytoShip_SalesLineFormat">
-          <DataField>QtytoShip_SalesLineFormat</DataField>
-        </Field>
-        <Field Name="UnitofMeasure_SalesLine">
-          <DataField>UnitofMeasure_SalesLine</DataField>
-        </Field>
-        <Field Name="hinweis_acs_projektinfo">
-          <DataField>hinweis_acs_projektinfo</DataField>
-        </Field>
-        <Field Name="Ursprungsland_ReservationEntry">
-          <DataField>Ursprungsland_ReservationEntry</DataField>
-        </Field>
-        <Field Name="LotNo_ReservationEntry">
-          <DataField>LotNo_ReservationEntry</DataField>
-        </Field>
-        <Field Name="ReservationEntryQuantity_Base__1">
-          <DataField>ReservationEntryQuantity_Base__1</DataField>
-        </Field>
-        <Field Name="ReservationEntryQuantity_Base__1Format">
-          <DataField>ReservationEntryQuantity_Base__1Format</DataField>
-        </Field>
-        <Field Name="SerialNo_ReservationEntry">
-          <DataField>SerialNo_ReservationEntry</DataField>
-        </Field>
-        <Field Name="ProductKey_ReservationEntry">
-          <DataField>ProductKey_ReservationEntry</DataField>
-        </Field>
-      </Fields>
-      <Query>
-        <DataSourceName>DataSource</DataSourceName>
-        <CommandText />
-      </Query>
-      <rd:DataSetInfo>
-        <rd:DataSetName>DataSet</rd:DataSetName>
-        <rd:SchemaPath>Report.xsd</rd:SchemaPath>
-        <rd:TableName>Result</rd:TableName>
-      </rd:DataSetInfo>
-    </DataSet>
-  </DataSets>
 </Report>
     END_OF_RDLDATA
   }
