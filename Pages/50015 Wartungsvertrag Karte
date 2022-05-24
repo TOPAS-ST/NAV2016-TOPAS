@@ -2,8 +2,8 @@ OBJECT Page 50015 Wartungsvertrag Karte
 {
   OBJECT-PROPERTIES
   {
-    Date=31.08.21;
-    Time=13:47:30;
+    Date=10.09.21;
+    Time=15:31:50;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -632,6 +632,7 @@ OBJECT Page 50015 Wartungsvertrag Karte
       Statistiken@1000000001 : Codeunit 50002;
       TOPAS_API@1000000010 : Codeunit 50001;
       TOPAS_ServiceModul@1000000009 : Codeunit 50008;
+      PageManagement@1000000026 : Codeunit 700;
       temp_vertragsnr@1140009 : Code[20];
       vertragsart@1140002 : Text[30];
       vertragsablaufdatum_style@1000000022 : Text;
@@ -661,6 +662,7 @@ OBJECT Page 50015 Wartungsvertrag Karte
       Text017@1000000023 : TextConst 'DEU=Achtung: Die Servicepos. fr Seriennr. %1 wurde bereits reklamiert. Bitte fllen Sie fr die neue Systempos. %1 das Feld %2 manuell aus.';
       Text018@1000000016 : TextConst 'DEU=M”chten Sie die %1 wirklich auf %2 ab„ndern?';
       Text019@1000000025 : TextConst 'DEU=Vorgang abgebrochen, da es sich beim Artikel %1 mit %2 %3 nicht um ein SYSTEM FLAT Artikel handelt.';
+      Text020@1000000027 : TextConst 'DEU=Beleg konnte nicht gefunden werden.';
       Text100@1140020 : TextConst 'DEU=Einfach,Detailliert';
       betreuer@1140026 : Code[20];
       SORStyleTxt@1000000000 : Text;
@@ -1319,7 +1321,7 @@ OBJECT Page 50015 Wartungsvertrag Karte
     PROCEDURE Belegstatus_pruefen@1140003(ausgabe@1140004 : Boolean);
     VAR
       SalesHeader@1140000 : Record 36;
-      ArchSalesHeader@1140001 : Record 5107;
+      SalesHeaderArchive@1140001 : Record 5107;
       ServicePos@1140002 : Record 50024;
       ServiceZuordnung@1140003 : Record 50027;
       v_datum@1140005 : Date;
@@ -1361,12 +1363,12 @@ OBJECT Page 50015 Wartungsvertrag Karte
               v_service_artikel := ServiceZuordnung."SUP Artikelnr.";
             END;
 
-          ArchSalesHeader.SETRANGE("No.",ServiceZuordnung."Nr.");
-          IF ArchSalesHeader.FINDFIRST THEN
-            IF v_datum < ArchSalesHeader."Document Date" THEN BEGIN
+          SalesHeaderArchive.SETRANGE("No.",ServiceZuordnung."Nr.");
+          IF SalesHeaderArchive.FINDFIRST THEN
+            IF v_datum < SalesHeaderArchive."Document Date" THEN BEGIN
               AN_liegt_vor := TRUE;
-              v_datum := ArchSalesHeader."Document Date";
-              v_belegnr := ArchSalesHeader."No.";
+              v_datum := SalesHeaderArchive."Document Date";
+              v_belegnr := SalesHeaderArchive."No.";
               v_zeilennr := ServiceZuordnung."Zeilennr.";
               v_service_artikel := ServiceZuordnung."SUP Artikelnr.";
             END;
@@ -1388,8 +1390,20 @@ OBJECT Page 50015 Wartungsvertrag Karte
       //END;
 
       IF (ausgabe) AND (AN_liegt_vor) THEN
-        MESSAGE('Der aktuellste Beleg ist:'+'\\'+'Service: %1'+'\'+
-        'Belegnr: %2, Zeile: %3 vom %4',v_service_artikel,v_belegnr,v_zeilennr,v_datum);
+        IF CONFIRM('Der aktuellste Beleg ist:'+'\\'+'Service: %1'+'\'+
+        'Belegnr: %2, Zeile: %3 vom %4' + '\\M”chten Sie den Beleg jetzt ”ffnen?' ,TRUE,v_service_artikel,v_belegnr,v_zeilennr,v_datum) THEN BEGIN
+          IF v_belegnr <> '' THEN BEGIN
+            SalesHeader.SETRANGE("No.",v_belegnr);
+            IF SalesHeader.FINDLAST THEN
+              PageManagement.PageRun(SalesHeader)
+            ELSE BEGIN
+            SalesHeaderArchive.SETRANGE("No.",v_belegnr);
+              IF SalesHeaderArchive.FINDLAST THEN
+                PageManagement.PageRun(SalesHeaderArchive)
+              ELSE MESSAGE(Text020);
+            END;
+          END;
+        END;
 
       IF (ausgabe) AND (AN_liegt_vor = FALSE) THEN
         MESSAGE('Es konnte kein Beleg im System gefunden werden.');
