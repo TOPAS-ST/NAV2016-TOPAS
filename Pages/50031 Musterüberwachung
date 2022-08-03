@@ -1,0 +1,517 @@
+OBJECT Page 50031 Musterberwachung
+{
+  OBJECT-PROPERTIES
+  {
+    Date=25.01.18;
+    Time=14:53:20;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    SourceTable=Table50029;
+    PageType=Document;
+    PromotedActionCategoriesML=DEU=Neu,Verwalten,Berichte,Aufgaben,Bemerkung,Beleg;
+    OnAfterGetCurrRecord=BEGIN
+                           EnableFields;
+
+                           //Details der Aufgabe anzeigen
+                           vbearbeiter      := '';
+                           vstartdatum      := 0D;
+                           vfollowup        := 0D;
+                           vstatus          := vstatus::"Nicht begonnen";
+                           vbeschreibung    := '';
+                           "vprojektnr."    := '';
+                           vaufgabenart     := '';
+                           vabgeschlossenam := 0D;
+                           vabgeschlossen   := FALSE;
+                           versteller       := '';
+
+
+                           IF (Aufgabennr <> '') AND (ToDo.GET(Aufgabennr)) THEN BEGIN
+                             vbearbeiter      := ToDo."Salesperson Code";
+                             vstartdatum      := ToDo.Date;
+                             vfollowup        := ToDo."Follow Up";
+                             vstatus          := ToDo.Status;
+                             vbeschreibung    := ToDo.Description;
+                             "vprojektnr."    := ToDo."Campaign No.";
+                             vaufgabenart     := ToDo.Aufgabenart;
+                             vabgeschlossenam := ToDo."Date Closed";
+                             vabgeschlossen   := ToDo.Closed;
+                             versteller       := ToDo.Ersteller;
+                           END;
+
+                           bemerkung[1] := '';
+                           bemerkung[2] := '';
+                           bemerkung[3] := '';
+                           bemerkung[4] := '';
+                           bemerkung[5] := '';
+                           bemerkung[6] := '';
+                           bemerkung[7] := '';
+                           bemerkung[8] := '';
+
+                           i := 1;
+
+                           //Anzeige Bemerkungen
+                           ContBemerkung.SETRANGE("Table Name",ContBemerkung."Table Name"::"To-do");
+                           ContBemerkung.SETRANGE("No.",Aufgabennr);
+                           ContBemerkung.SETRANGE("Sub No.",0);
+                           IF ContBemerkung.FINDFIRST AND (Aufgabennr <> '') THEN
+                             REPEAT
+                               IF ContBemerkung.Date = 0D THEN
+                                 bemerkung[i] := '                 ' + ContBemerkung.Comment
+                               ELSE
+                                 bemerkung[i] := FORMAT(ContBemerkung.Date) + ' ' + ContBemerkung.Comment;
+                               i += 1;
+                             UNTIL (i = 9) OR (ContBemerkung.NEXT = 0);
+
+                           //Artikel des Beleges k”nnen angezeigt werden
+                           artikeltext := '';
+                           k := 0;
+                           IF Nr <> '' THEN BEGIN
+                             SalesLine.RESET;
+                             SalesLine.SETRANGE("Document No.",Nr);
+                             SalesLine.SETRANGE(Type,SalesLine.Type::Item);
+                             IF SalesLine.FINDFIRST THEN
+                               REPEAT
+                                 k += 1;
+                                 IF k = 1 THEN artikeltext := SalesLine."Artikelnr. 2";
+                                 IF k > 1 THEN artikeltext := artikeltext + ', ' + SalesLine."Artikelnr. 2";
+                               UNTIL SalesLine.NEXT = 0
+                             ELSE BEGIN
+                               SalesLineArchive.RESET;
+                               SalesLineArchive.SETRANGE("Document No.",Nr);
+                               SalesLineArchive.SETRANGE(Type,SalesLineArchive.Type::Item);
+                               SalesLineArchive.SETFILTER(Quantity,'>%1',0);
+                               IF SalesLineArchive.FINDFIRST THEN BEGIN
+                                 REPEAT
+                                   k += 1;
+                                   IF k = 1 THEN artikeltext := SalesLineArchive."Artikelnr. 2";
+                                   IF k > 1 THEN artikeltext := artikeltext + ', ' + SalesLineArchive."Artikelnr. 2";
+                                 UNTIL SalesLineArchive.NEXT = 0;
+                               END ELSE BEGIN
+                                 Beleghistorie.RESET;
+                                 Beleghistorie.SETRANGE(Belegart,Beleghistorie.Belegart::Invoice);
+                                 Beleghistorie.SETRANGE("Auftragsnr.",Nr);
+                                 Beleghistorie.SETFILTER(Menge,'>%1',0);
+                                 IF Beleghistorie.FINDFIRST THEN BEGIN
+                                   REPEAT
+                                     k += 1;
+                                     IF k = 1 THEN artikeltext := Beleghistorie."Artikelnr.";
+                                     IF k > 1 THEN artikeltext := artikeltext + ', ' + Beleghistorie."Artikelnr.";
+                                   UNTIL SalesLineArchive.NEXT = 0;
+                                 END;
+                               END;
+                             END;
+                           END;
+                         END;
+
+    ActionList=ACTIONS
+    {
+      { 1900000000;  ;ActionContainer;
+                      ActionContainerType=ActionItems }
+      { 1       ;1   ;ActionGroup;
+                      CaptionML=[DEU=Allgmein;
+                                 ENU=General] }
+      { 1140051 ;2   ;Action    ;
+                      Name=EditToDo;
+                      CaptionML=DEU=Aufgabe editieren;
+                      Promoted=Yes;
+                      Image=Task;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 IF Aufgabennr <> '' THEN BEGIN
+                                   ToDo.SETRANGE("No.",Aufgabennr);
+                                   PAGE.RUN(5098,ToDo);
+                                 END ELSE
+                                   MESSAGE(Text000);
+                               END;
+                                }
+      { 1140055 ;2   ;Action    ;
+                      Name=CreateToDo;
+                      CaptionML=DEU=Aufgabe erst.;
+                      Promoted=Yes;
+                      Image=NewToDo;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 CreateToDoMuster;
+                               END;
+                                }
+      { 1000000026;1 ;ActionGroup;
+                      CaptionML=DEU=Bemerkung;
+                      ActionContainerType=NewDocumentItems }
+      { 1140075 ;2   ;Action    ;
+                      Name=EditComment;
+                      CaptionML=DEU=Bemerkung;
+                      Promoted=Yes;
+                      Image=ViewComments;
+                      PromotedCategory=Category5;
+                      OnAction=BEGIN
+                                 ContBemerkung.SETRANGE("Table Name",ContBemerkung."Table Name"::"To-do");
+                                 ContBemerkung.SETRANGE("No.",Aufgabennr);
+                                 ContBemerkung.SETRANGE("Sub No.",0);
+                                 IF (Aufgabennr <> '') THEN BEGIN
+                                   IF NOT ContBemerkung.FINDFIRST THEN
+                                     PAGE.RUN(5072,ContBemerkung)
+                                   ELSE BEGIN
+                                     ContBemerkung.FINDFIRST;
+                                     PAGE.RUN(5072,ContBemerkung);
+                                   END;
+                                 END ELSE
+                                   MESSAGE(Text001);
+                               END;
+                                }
+      { 1000000027;1 ;ActionGroup;
+                      CaptionML=DEU=Beleg }
+      { 1140076 ;2   ;Action    ;
+                      Name=ShowDoc;
+                      CaptionML=DEU=Beleg anzeigen;
+                      Promoted=Yes;
+                      Image=Order;
+                      PromotedCategory=Category6;
+                      OnAction=BEGIN
+                                 IF Nr <> '' THEN BEGIN
+                                   SalesHeader.RESET;
+                                   SalesHeader.SETRANGE("No.",Nr);
+                                   IF SalesHeader.FINDFIRST THEN PAGE.RUN(42,SalesHeader)
+                                   ELSE BEGIN
+                                     ArchSalesHeader.RESET;
+                                     ArchSalesHeader.SETRANGE("No.",Nr);
+                                     IF ArchSalesHeader.FINDFIRST THEN PAGE.RUN(5159,ArchSalesHeader);
+                                   END;
+                                 END ELSE
+                                   MESSAGE(Text002);
+                               END;
+                                }
+    }
+  }
+  CONTROLS
+  {
+    { 1900000;0;Container ;
+                ContainerType=ContentArea }
+
+    { 1000000008;1;Group  ;
+                CaptionML=DEU=Musterberwachung;
+                GroupType=Group;
+                Layout=Rows }
+
+    { 1000000006;2;Group  ;
+                GroupType=Group }
+
+    { 1000000007;3;Field  ;
+                SourceExpr=Nr;
+                Editable=FALSE;
+                OnValidate=BEGIN
+                             //CurrPAGE."Arch. Belegnr.".ENABLED(Auftragsnummer='');
+
+                             //Artikel des Beleges werden angezeigt
+                             artikeltext := '';
+                             k := 0;
+                             IF Nr <> '' THEN BEGIN
+                               SalesLine.RESET;
+                               SalesLine.SETRANGE("Document No.",Nr);
+                               SalesLine.SETRANGE(Type,SalesLine.Type :: Item);
+                               IF SalesLine.FINDFIRST THEN
+                                 REPEAT
+                                   k := k + 1;
+                                   IF k = 1 THEN artikeltext := SalesLine."Artikelnr. 2";
+                                   IF k > 1 THEN artikeltext := artikeltext + ' , ' + SalesLine."Artikelnr. 2";
+                                 UNTIL SalesLine.NEXT = 0;
+                             END;
+                           END;
+                            }
+
+    { 1000000005;3;Field  ;
+                SourceExpr=Debitornr;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=TRUE }
+
+    { 1000000004;3;Field  ;
+                SourceExpr=Debitorname }
+
+    { 1000000011;1;Group  ;
+                CaptionML=DEU=Allgemein;
+                GroupType=Group }
+
+    { 1000000013;2;Group  ;
+                CaptionML=DEU=Projektangaben;
+                GroupType=Group }
+
+    { 1000000000;3;Field  ;
+                SourceExpr=Projektname;
+                ColumnSpan=2 }
+
+    { 1140009;3;Field     ;
+                SourceExpr=Applikation }
+
+    { 1000000001;3;Field  ;
+                SourceExpr=Projektschutz }
+
+    { 1000000002;3;Field  ;
+                SourceExpr=Endkunde }
+
+    { 1140010;3;Field     ;
+                SourceExpr=Status }
+
+    { 1140038;3;Field     ;
+                SourceExpr="Bearbeiter/in" }
+
+    { 1140015;3;Field     ;
+                SourceExpr="letzte Žnderung";
+                Editable=FALSE }
+
+    { 1140022;3;Field     ;
+                SourceExpr=Erledigt }
+
+    { 1000000003;3;Field  ;
+                CaptionML=DEU=Artikel;
+                SourceExpr=artikeltext;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=TRUE;
+                ColumnSpan=2 }
+
+    { 1000000014;2;Group  ;
+                CaptionML=DEU=Weitere Details;
+                GroupType=Group }
+
+    { 1000000028;3;Field  ;
+                SourceExpr="Belegnr.";
+                Visible=FALSE }
+
+    { 1140018;3;Field     ;
+                SourceExpr="Arch. Belegnr.";
+                Visible=FALSE;
+                OnValidate=BEGIN
+                             //CurrPAGE.Auftragsnummer.ENABLED("Arch. Belegnr."='');
+
+                             //Artikel des Beleges werden angezeigt
+                             IF "Arch. Belegnr." <> '' THEN BEGIN
+                               SalesLineArchive.RESET;
+                               SalesLineArchive.SETRANGE("Document No.","Arch. Belegnr.");
+                               SalesLineArchive.SETRANGE(Type,SalesLineArchive.Type :: Item);
+                               SalesLineArchive.SETFILTER(Quantity,'>%1',0);
+                               IF SalesLineArchive.FINDFIRST THEN
+                                 REPEAT
+                                   k := k + 1;
+                                   IF k = 1 THEN artikeltext := SalesLineArchive."Artikelnr. 2";
+                                   IF k > 1 THEN artikeltext := artikeltext + ' , ' + SalesLineArchive."Artikelnr. 2";
+                                 UNTIL SalesLineArchive.NEXT = 0;
+                             END;
+                           END;
+                            }
+
+    { 1140033;3;Field     ;
+                SourceExpr=Aufgabennr;
+                OnValidate=BEGIN
+                             CurrPage.UPDATE;
+                           END;
+
+                OnLookup=BEGIN
+                           Aufgabe.RESET;
+                           Aufgabe.SETRANGE(Aufgabe."System To-do Type",Aufgabe."System To-do Type"::Organizer);
+                           Aufgabe.ASCENDING(FALSE);
+                           IF Aufgabe.FINDFIRST THEN BEGIN
+                             Posfilter:= ('Nr.=CONST('+Aufgabennr+')');
+                             Aufgabe.SETPOSITION(Posfilter);
+                             IF PAGE.RUNMODAL(5096,Aufgabe) = ACTION::LookupOK THEN BEGIN
+                               VALIDATE(Aufgabennr,Aufgabe."No.");
+                               CurrPage.UPDATE;
+                             END;
+                           END;
+                         END;
+                          }
+
+    { 1140030;3;Field     ;
+                SourceExpr=Potenzial }
+
+    { 1140031;3;Field     ;
+                SourceExpr="Anzahl pro System" }
+
+    { 1000000009;3;Field  ;
+                SourceExpr=Vorserienstart }
+
+    { 1140032;3;Field     ;
+                SourceExpr=Serienstart }
+
+    { 1900001;1;Group     ;
+                CaptionML=DEU=Intern;
+                GroupType=Group }
+
+    { 1000000016;2;Group  ;
+                CaptionML=DEU=Remarks;
+                GroupType=Group }
+
+    { 25  ;3   ;Field     ;
+                CaptionML=DEU=Datum;
+                SourceExpr=Nachverf_Datum }
+
+    { 22  ;3   ;Field     ;
+                CaptionML=DEU=Nachverfolgung;
+                SourceExpr=Nachverfolgung }
+
+    { 26  ;2   ;Field     ;
+                CaptionML=DEU=Intern Erledigt;
+                SourceExpr="Intern Erledigt" }
+
+    { 28  ;2   ;Field     ;
+                CaptionML=DEU=Intern WV;
+                SourceExpr="Intern WV" }
+
+    { 30  ;2   ;Field     ;
+                CaptionML=DEU=Stock;
+                SourceExpr="Stock Topas" }
+
+    { 1900002;1;Group     ;
+                CaptionML=DEU=Aufgaben Details;
+                GroupType=Group }
+
+    { 1140040;2;Field     ;
+                CaptionML=DEU=Bearbeiter Aufgabe;
+                SourceExpr=vbearbeiter;
+                Importance=Promoted;
+                Editable=FALSE }
+
+    { 1140041;2;Field     ;
+                CaptionML=DEU=Startdatum;
+                SourceExpr=vstartdatum;
+                Importance=Promoted;
+                Editable=FALSE }
+
+    { 1140042;2;Field     ;
+                CaptionML=DEU=Follow Up;
+                SourceExpr=vfollowup;
+                Editable=FALSE }
+
+    { 1140043;2;Field     ;
+                CaptionML=DEU=Status;
+                SourceExpr=vstatus;
+                Editable=FALSE }
+
+    { 1140045;2;Field     ;
+                CaptionML=DEU=Beschreibung;
+                SourceExpr=vbeschreibung;
+                Editable=FALSE }
+
+    { 1140052;2;Field     ;
+                CaptionML=DEU=Projektnr.;
+                SourceExpr="vprojektnr.";
+                Editable=FALSE }
+
+    { 1140053;2;Field     ;
+                CaptionML=DEU=Aufgabenart;
+                SourceExpr=vaufgabenart;
+                Editable=FALSE }
+
+    { 1140056;2;Field     ;
+                CaptionML=DEU=Ersteller;
+                SourceExpr=versteller;
+                Editable=FALSE }
+
+    { 1140054;2;Field     ;
+                CaptionML=DEU=Abgeschlossen am;
+                SourceExpr=vabgeschlossenam;
+                Editable=FALSE }
+
+    { 1140057;2;Field     ;
+                CaptionML=DEU=Abgeschlossen;
+                SourceExpr=vabgeschlossen;
+                Editable=FALSE }
+
+    { 1000000012;1;Group  ;
+                CaptionML=DEU=Bemerkungen;
+                GroupType=Group }
+
+    { 1000000015;2;Group  ;
+                CaptionML=DEU=Vorschau;
+                GroupType=FixedLayout }
+
+    { 1000000017;3;Group  ;
+                GroupType=Group }
+
+    { 1000000018;4;Field  ;
+                SourceExpr=bemerkung[1];
+                Style=StrongAccent;
+                StyleExpr=TRUE }
+
+    { 1000000019;4;Field  ;
+                SourceExpr=bemerkung[2];
+                Style=StrongAccent;
+                StyleExpr=TRUE }
+
+    { 1000000020;4;Field  ;
+                SourceExpr=bemerkung[3];
+                Style=StrongAccent;
+                StyleExpr=TRUE }
+
+    { 1000000021;4;Field  ;
+                SourceExpr=bemerkung[4];
+                Style=StrongAccent;
+                StyleExpr=TRUE }
+
+    { 1000000022;4;Field  ;
+                SourceExpr=bemerkung[5];
+                Style=StrongAccent;
+                StyleExpr=TRUE }
+
+    { 1000000023;4;Field  ;
+                SourceExpr=bemerkung[6];
+                Style=StrongAccent;
+                StyleExpr=TRUE }
+
+    { 1000000024;4;Field  ;
+                SourceExpr=bemerkung[7];
+                Style=StrongAccent;
+                StyleExpr=TRUE }
+
+    { 1000000025;4;Field  ;
+                SourceExpr=bemerkung[8];
+                Style=StrongAccent;
+                StyleExpr=TRUE }
+
+  }
+  CODE
+  {
+    VAR
+      ToDo@1140012 : Record 5080;
+      ContBemerkung@1140016 : Record 5061;
+      Aufgabe@1140017 : Record 5080;
+      SalesHeader@1140019 : Record 36;
+      SalesLine@1140023 : Record 37;
+      ArchSalesHeader@1140020 : Record 5107;
+      SalesLineArchive@1140024 : Record 5108;
+      Beleghistorie@1000000003 : Record 50008;
+      Posfilter@1140018 : Text[250];
+      vbearbeiter@1140002 : Code[20];
+      vstartdatum@1140003 : Date;
+      vfollowup@1140004 : Date;
+      vstatus@1140005 : 'Nicht begonnen,In Bearbeitung,Erledigt,Warten,Zurckgestellt';
+      vbeschreibung@1140006 : Text[50];
+      "vprojektnr."@1140007 : Code[20];
+      vaufgabenart@1140008 : Code[15];
+      vabgeschlossenam@1140009 : Date;
+      vabgeschlossen@1140010 : Boolean;
+      versteller@1140011 : Code[20];
+      bemerkung@1140013 : ARRAY [10] OF Text;
+      artikeltext@1140021 : Text[250];
+      k@1140022 : Integer;
+      i@1140015 : Integer;
+      test@1000000000 : Integer;
+      Text000@1000000001 : TextConst 'DEU=Sie haben noch keine Aufgabe zu dieser Musterberwachung hinterlegt.';
+      Text001@1000000002 : TextConst 'DEU=Bitte hinterlegen Sie zun„chst eine Aufgabe, damit Sie Bemerkungen eintragen k”nnen.';
+      Text002@1000000004 : TextConst 'DEU=Beleg konnte nicht gefunden werden, vermutlich handelt es sich hierbei um Altdaten.';
+
+    PROCEDURE EnableFields@1140004();
+    BEGIN
+      {
+      CurrPAGE.Auftragsnummer.ENABLED("Arch. Belegnr."='');
+      CurrPAGE."Arch. Belegnr.".ENABLED(Auftragsnummer='');
+      }
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
