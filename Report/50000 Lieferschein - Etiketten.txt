@@ -2,15 +2,15 @@ OBJECT Report 50000 Lieferschein - Etiketten
 {
   OBJECT-PROPERTIES
   {
-    Date=18.11.19;
-    Time=09:12:10;
+    Date=18.10.21;
+    Time=09:35:57;
     Modified=Yes;
-    Version List=Version: 1, Status: Fertig,FORNAV3.1.0.1460/1460;
+    Version List=Version: 1, Status: Fertig,FORNAV6.1.0.2145/2145;
   }
   PROPERTIES
   {
     OnInitReport=BEGIN
-                   ;ReportForNav:= ReportForNav.Report(CurrReport.OBJECTID,CurrReport.LANGUAGE,SERIALNUMBER,USERID,COMPANYNAME);ReportForNav.Init;
+                   {;ReportForNav};ReportsForNavInit();
                  END;
 
     OnPreReport=BEGIN
@@ -165,11 +165,22 @@ OBJECT Report 50000 Lieferschein - Etiketten
       text1@1140010 : Text[30];
       date_or_sn@1140011 : Text[60];
       Cross_ReferenceNo@1000000001 : Code[40];
-      ReportForNav@5000 : DotNet "'ForNav.Reports.3.1.0.1460, Version=3.1.0.1460, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
-      ReportForNavClient@5003 : DotNet "'ForNav.Reports.3.1.0.1460, Version=3.1.0.1460, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
+      ReportForNav@5000 : DotNet "'ForNav.Reports.6.1.0.2145, Version=6.1.0.2145, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
+      ReportForNavClient@5003 : DotNet "'ForNav.Reports.6.1.0.2145, Version=6.1.0.2145, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
       ReportForNavDialog@5001 : Dialog;
       ReportForNavOpenDesigner@5002 : Boolean;
       ReportForNavAllowDesign@5004 : Boolean INDATASET;
+
+    LOCAL PROCEDURE ReportsForNavInit@5005();
+    VAR
+      fn@1000000000 : Text;
+    BEGIN
+      fn := APPLICATIONPATH() + 'Add-ins\ReportsForNAV_6_1_0_2145\ForNav.Reports.6.1.0.2145.dll';
+      IF NOT FILE.EXISTS(APPLICATIONPATH + 'Add-ins\ReportsForNAV_6_1_0_2145\ForNav.Reports.6.1.0.2145.dll') THEN
+        ERROR('Please install the ForNAV DLL version 6.1.0.2145 in your service tier Add-ins folder under the file name "%1"', fn);
+      ReportForNav := ReportForNav.Report(CurrReport.OBJECTID(), CurrReport.LANGUAGE() ,SERIALNUMBER(), USERID(), COMPANYNAME());
+      ReportForNav.Init();
+    END;
 
     LOCAL PROCEDURE OnPreSectionItemLedgerEntry_Body3@5010(VAR "Item Ledger Entry"@1000000000 : Record 32);
     BEGIN
@@ -241,7 +252,6 @@ OBJECT Report 50000 Lieferschein - Etiketten
       ReportLayoutSelection@1000 : Record 9651;
       CustomReportLayout@1001 : Record 9650;
       CustomLayoutID@1002 : Variant;
-      InStream@1004 : InStream;
       EmptyLayout@1003 : Text;
     BEGIN
       // This code is created automatically every time Reports ForNAV saves the report.
@@ -257,13 +267,9 @@ OBJECT Report 50000 Lieferschein - Etiketten
 
       IF (FORMAT(CustomLayoutID) <> EmptyLayout) AND CustomReportLayout.GET(CustomLayoutID) THEN BEGIN
         CustomReportLayout.TESTFIELD(Type,CustomReportLayout.Type::RDLC);
-        CustomReportLayout.CALCFIELDS(Layout);
-        CustomReportLayout.Layout.CREATEINSTREAM(InStream,TEXTENCODING::UTF8);
         ReportForNav.IsCustomLayout := TRUE;
-      END ELSE
-        REPORT.RDLCLAYOUT(ReportForNav.ReportID,InStream);
+      END;
 
-      ReportForNav.LoadRdlc(InStream);
       IF ReportForNav.IsWindowsClient THEN BEGIN
         ReportForNav.CheckClientAddIn();
         ReportForNavClient := ReportForNavClient.Report(ReportForNav.Definition);
@@ -280,21 +286,21 @@ OBJECT Report 50000 Lieferschein - Etiketten
       OutStream@1006 : OutStream;
       Bstr@1005 : BigText;
       EmptyLayout@1001 : Text;
+      ReportID@1008 : Integer;
     BEGIN
       // This code is created automatically every time Reports ForNAV saves the report.
       // Do not modify this code.
       EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
       LayoutId := ReportLayoutSelection."Custom Report Layout ID";
-      IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN BEGIN
+      EVALUATE(ReportID, FORMAT(ReportForNav.ReportID));
+      IF ReportLayoutSelection.HasCustomLayout(ReportID) = 1 THEN BEGIN
         IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN BEGIN
           LayoutId := ReportLayoutSelection.GetTempLayoutSelected;
         END ELSE BEGIN
-          IF ReportLayoutSelection.GET(ReportForNav.ReportID, COMPANYNAME) THEN BEGIN
+          IF ReportLayoutSelection.GET(ReportID, COMPANYNAME) THEN BEGIN
           LayoutId := ReportLayoutSelection."Custom Report Layout ID";
           END;
         END;
-      END ELSE BEGIN
-        IF CONFIRM('Default custom layout not found. Create one?') THEN;
       END;
       IF FORMAT(LayoutId) <> EmptyLayout THEN BEGIN
         TempBlob.Blob.CREATEOUTSTREAM(OutStream);
@@ -325,7 +331,6 @@ OBJECT Report 50000 Lieferschein - Etiketten
       PdfFile.CREATEOUTSTREAM(OutStream);
       REPORT.SAVEAS(ReportForNav.ReportID, Parameters, REPORTFORMAT::Pdf, OutStream);
       PdfFile.CREATEINSTREAM(InStream);
-      ReportForNavClient.ShowDesigner;
       IF ReportForNav.IsValidPdf(PdfFile.NAME) THEN DOWNLOADFROMSTREAM(InStream, '', '', '', FileName);
       PdfFile.CLOSE;
     END;
@@ -343,41 +348,6 @@ OBJECT Report 50000 Lieferschein - Etiketten
 
     EVENT ReportForNav@5000::OnPostSection@5013(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
     BEGIN
-    END;
-
-    EVENT ReportForNav@5000::OnClientOperation@5014(Args@1000 : DotNet "'mscorlib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Array");
-    VAR
-      op@1001 : Text;
-      FileMgmt@1002 : Codeunit 419;
-      Process@1006 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.Process" RUNONCLIENT;
-      PathObj@1005 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Path" RUNONCLIENT;
-      FileVersionInfo@1003 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.FileVersionInfo" RUNONCLIENT;
-      DirectoryHelper@1004 : DotNet "'mscorlib'.System.IO.Directory" RUNONCLIENT;
-    BEGIN
-      // This code is created automatically every time Reports ForNAV saves the report.
-      // Do not modify this code.
-      op := Args.GetValue(0);
-      CASE op OF
-        'TempPath': ReportForNav.Result := PathObj.GetTempPath();
-        'FileExists': ReportForNav.Result := FileMgmt.ClientFileExists(Args.GetValue(1));
-        'DirectoryExists': ReportForNav.Result := FileMgmt.ClientDirectoryExists(Args.GetValue(1));
-        'ProcessLocation': ReportForNav.Result := Process.GetCurrentProcess().MainModule.FileName;
-        'FileVersion': ReportForNav.Result := FileVersionInfo.GetVersionInfo(Args.GetValue(1)).FileVersion;
-        'DeleteFile': FileMgmt.DeleteClientFile(Args.GetValue(1));
-        'DeleteDirectory': IF STRLEN(Args.GetValue(1)) > 20 THEN
-          IF FileMgmt.ClientDirectoryExists(Args.GetValue(1)) THEN
-            DirectoryHelper.Delete(FORMAT(Args.GetValue(1)), TRUE);
-      END;
-    END;
-
-    EVENT ReportForNav@5000::OnCheckForNavClientVersion@5015();
-    BEGIN
-      // This code is created automatically every time Reports ForNAV saves the report.
-      // Do not modify this code.
-      ReportForNavClient := ReportForNavClient.Report();
-      IF ReportForNav.MyFileVersion <> ReportForNavClient.MyFileVersion THEN
-        ERROR('You have version %1 of the Reports ForNAV assembly here:\\%2\\Please close your NAV client and update it to version %3.',
-              ReportForNavClient.MyFileVersion, ReportForNavClient.MyFileName, ReportForNav.MyFileVersion);
     END;
 
     EVENT ReportForNav@5000::OnSelectPrinter@5006();
@@ -445,10 +415,7 @@ OBJECT Report 50000 Lieferschein - Etiketten
       // Do not modify this code.
       CurrReport.LANGUAGE := SYSTEM.GLOBALLANGUAGE;
       DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
-      WHILE ReportForNavClient.PrintPreviewDialog(ClientFileName,ReportForNav.PrinterSettings.PrinterName,Preview) DO BEGIN
-        ReportForNav.HandlePrintPreviewRequest(ReportForNavClient.GetPrintPreviewRequest());
-        SLEEP(100);
-      END;
+      ReportForNavClient.PrintPreviewDialog(ClientFileName,ReportForNav.PrinterSettings.PrinterName,Preview);
     END;
 
     BEGIN
@@ -458,7 +425,51 @@ OBJECT Report 50000 Lieferschein - Etiketten
   {
     <?xml version="1.0" encoding="utf-8"?>
 <Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
-  <Description>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</Description>
+  <Description>gjQAAMVb23LbOBJ936r5BxYfJvaWTJHg3bFmyhc5cY0taSwn2doXFy3BEjcUoSUhx8rXb4MX8SKQ
+FGU5O5mqiCDYaJxunEY3kLM/Xxee8IKD0CV+T1QkWRSwPyFT15/1xBV9PrHEP//47R9n/6KBc4+X
+JKDhrbMmKzrGget47k8cCNnPrxtBmoQknUkrNInCwFngnnjr4mdon8yx6wsnQp+63zGl2BeFS+LT
+gHgP6yV0u8Iv/ddlgMNQyo0vfbnJPaKOUNHthY3YSRUQekKqVEe4XHl0FWBo8/EKPvE6wmj15LmT
+v/D6gXzHrPfUnDgWtpBsPmtYk2EqV2649Jx10xSS8a9JMHBeNtNXJQBXUjQDBA2f/oMndEB6oi7L
+ctbQIPjaxd70G34CvF/cCf4SeD1xTunytNsdnH8d9++/niBZMaQf6LtEydIJpSk+NWXN6l6tfWfh
+TkLoZsvd4ZVDne4lWSwdf3304WE4Oh9/OBaFkTPDn7E7m9OeaOly3PDNndI5WC/Sc+QscfCX6097
+4uUqpGQhCndOMHP9sCfaHQGQVfSOgOQUhC++C7IesE/n4fD5/M71PHeBKQ4AzKXbE5GuwbTA5D3x
+nPlQRzCXVAR/E4SzC8efhtFPeLiheKEkzjN2PByO5+5yAXI/Y2fKxBX8JoaezZJ9xwSB4+EfbDoj
+HNzjCQlgBjRY4Xz7p4Cslmlz+vGD8+SBxOgvRYGJ3cCXipjoVVKzXtVb18eHV3QUuD4d+t765vkK
+U8cFn3h2vLByCkrpxVcX/+iJ3z737/tHkVKXw8H44Yi9Pz7O+oLy32FBksmKTUUYEKl3fdO/vTqC
+X8cxKoj5RwBv029YI89YObQ4AG6BGA2PpzMc9AG69f8bQhVxERwP7x9uBp+OIh0ZPsdCDOoGsxy6
+ESpCCstOOOebjoHz0kfmVblu6eOxEBtFbTRK5JYl/CvMkjPNPX4G9uLa4oJM14kdIvuxZyW/4MfA
+dcCJhbcx71xDD0WV1G19oqGTwXhqlVUzNqM7wSWZYoWvavwSVILoBYOrSJZ0rWPC17dk4jAtrz3i
+UKaWhAykK8BwqgkK5qYzcqZxuER6B/6X4U/Ufr6i5I5MV8xzMlIZYxrxeKxd/xXI0He81JwD8sil
+twf8CkqATH8yJ8FnErg/YTYOeOotfqag/5z8iPsknpsODOHO4qMZITZeL56IR2brGDUzRS2CDFkA
+2twJnAkoCXpDMzyFmF6IQrdGJl17GNYUKEkTuSDoS4g3QCU6Vsk460aGrLMyiuXaXKuO3AmL7hfk
+NZ1OuV1RIKCb8paVdU2WINCBleWCw8beoWm2ZNu2pZgdBUU/bUtPbZMIf7x2AzDc1IkiNnwYTfjf
+hCxuFkA9PB/gflmJDZu9Gs+ehSPO9G+dJ+wVZx41RZNm/J9Ox9DZZGVD6WhIUtlPVdmGBFxaiCJf
+IU4r8pJ2hJCZundBvGkerktnyQTc3QKR9b/0sAfrPSC+OxHOP8FKJ8HPc8+dwZ7onq35GMCohXl8
+T7xzp1MP5971xKKIVq7HJgy+Fyu/k+OpddBriVTEhZ5pu+V2SWMEv2xv4FeQXIe7JkeMo1mwhYVu
+iDmbaZWsYMFuKQd8DtqYFmL0UnIB18PV9LJlgVjEtr82imtnH7WtfbQ6++iJVG1P+1iZfVS9zj6K
+eTD71JH+zlapENLOFnpbW+h1tjASqcaetjCzuKzpkgHkpdudPNZlk9iyZECQVk1AXpN06Gbqxl4m
+aROXdzbRjkLbmcxsazKjzmRmItVqH1lkY2Muu3blqLLReuWUQgpgu1qcfuwPop/4dMN00UM7AO22
+AJp1AFqxVLRHaJbVjHvMWgTlvYHLFxcS/LDnvmBIWXySB7LY2gpR1DriWnWI2olUfsStRxRliNqa
+pAJghlrHIPLuxFEC9gKHFHueH0gxrMMAlrLgrxZPONigWmxsB2rrMGnXZklyInbfOClvkNWVeB/D
+A7O8a7SLGMaoMPp7pIQNxSfZbSZt+qQdtK2jniLz89NubYJ6drfyqHtJvNXCT0Y2+CNVJ0D55AeZ
+O6ffKI/6LX7BHitibSfiKJeIK0iNCMi0356Ns0yykI7zF3M5HYeQz83FISPRzEg5S0WHSsXPA1Zp
+hRWMHjllu1+UgCP7nTJwVX6nFFzlV1aaGSRLRC22u+NziKJqktYR9HoeqdjENVt0561brah2hkBt
+2QbtUApQ1T1KAbnoGMFcxeIN6JciYQLVqRDFwZET0BOfSJsYmDW0g007TBrfmqNVvY6jebYp2IWf
++/A4WuVwNONjJxz6owAnXJ3y1xZ1q3nqVqyIHQ3t7dStmiXq5nvaNnWrktlQSU12uAZEmANx+GVA
+wvDxnu1xsT/BA5IR94EIWrW2CPoAHMqvYzZyqJLVJk1ZrlrByLSBXpv2YhUcWoHozsS5/X2rZa/J
+78GWGj9m1bNllp3FgO655y2x5c08wMIF/pmkDfGpKiQJW7zJedMOydZx50AEqql1BMobJF9o1fgJ
+Co9ANQ6BqrsTqFbY+2qS8Xbu1PQSd1ZMpsSdSIVtL+Jse6NyvWwa70Gdf68cn4K3PCqPFBzul+14
+NePNO97diVbjp0zNRJuVIhHE1gqiVTRjf6LN8G/JsLkP2xGC9S7UumcoQ1n1ULMMCfER1iHKGawm
+Zu5YW/CwM30OMGYurfDQK3ZoBaDeOjbtcrKk75lPsSpGCqAZM4WqdCzGY1tHS3Z8eGnYQCRbB3tW
+E46oCUfUcHyZnNHoe1T0lMxN2GrTDxSF77A/w0nGkq6n0/LKbBlw9dYVO/5hSuuAy+ZXHXB5p2cF
+q+x+qUPnBFxt94Crv1PGopfvflTMqHz3w9Ari00Hj7bslP+RBI+h/8sCrf72yx27B1qdf4DUHGhz
+5+Owy64IA83ruyLIJmGgVXzdJzK0PlPaJbQa/DOl5siQ1epNrQJRxWRkuieqZWfeGdrch63wNQ50
+p6M1tRoVoa2Kv8+6/Gt0Z7HQmvt1Y7IKJphdawaTZheDpOSyUHIPVU7/e9O9omTh5of8/b8rQj8W
+rykK8eFK/EqK/9pcQ2Qnr3FTrJq+182RavXUvdQbECmvlNHi4kS1KtpeqqSH/0L+ImdeOfMt9wMr
+ldX3Upa9O6EkopS8jtY+h3HVyhnNyrECe0G1TSVeElBeNYW7BuqPACoVMwuKcWpg0YjcjTCnc+Uw
+lnCFJ+7C8UaeM8EhBLZTxtW5odO95z+PTpTkmjUrRNVmgdXj2UVaGd7fnT8cFYaAPcyH3z368can
+eAZOMaMfPxyXyIabR22VDyqVUGSO1Vn6ILD8QYjCbcGwWnPeVjOa0jha0Y24xLVDdhOPVmTRRLlI
+Lnd5N2pfpL18oI2E2k17y23JLObxYg9vb7cdvsq9ij3yb7M3Z92afzz0x/8A</Description>
   <DataSources>
     <DataSource Name="DataSource">
       <ConnectionProperties>
@@ -476,60 +487,6 @@ OBJECT Report 50000 Lieferschein - Etiketten
       <Page></Page>
     </ReportSection>
   </ReportSections>
-  <DataSets>
-    <DataSet Name="DataSet_Result">
-      <Fields>
-        <Field Name="Picture_Firmendaten">
-          <DataField>Picture_Firmendaten</DataField>
-        </Field>
-        <Field Name="DocumentDate_SalesShipmentHeader">
-          <DataField>DocumentDate_SalesShipmentHeader</DataField>
-        </Field>
-        <Field Name="No_SalesShipmentHeader">
-          <DataField>No_SalesShipmentHeader</DataField>
-        </Field>
-        <Field Name="ExternalDocumentNo_SalesShipmentHeader">
-          <DataField>ExternalDocumentNo_SalesShipmentHeader</DataField>
-        </Field>
-        <Field Name="Ship_toName_SalesShipmentHeader">
-          <DataField>Ship_toName_SalesShipmentHeader</DataField>
-        </Field>
-        <Field Name="Artikelnr2_SalesShipmentLine">
-          <DataField>Artikelnr2_SalesShipmentLine</DataField>
-        </Field>
-        <Field Name="Cross_ReferenceNo">
-          <DataField>Cross_ReferenceNo</DataField>
-        </Field>
-        <Field Name="Quantity_1">
-          <DataField>Quantity_1</DataField>
-        </Field>
-        <Field Name="Quantity_1Format">
-          <DataField>Quantity_1Format</DataField>
-        </Field>
-        <Field Name="leadfreetext1">
-          <DataField>leadfreetext1</DataField>
-        </Field>
-        <Field Name="leadfreetext2">
-          <DataField>leadfreetext2</DataField>
-        </Field>
-        <Field Name="text1">
-          <DataField>text1</DataField>
-        </Field>
-        <Field Name="date_or_sn">
-          <DataField>date_or_sn</DataField>
-        </Field>
-      </Fields>
-      <Query>
-        <DataSourceName>DataSource</DataSourceName>
-        <CommandText />
-      </Query>
-      <rd:DataSetInfo>
-        <rd:DataSetName>DataSet</rd:DataSetName>
-        <rd:SchemaPath>Report.xsd</rd:SchemaPath>
-        <rd:TableName>Result</rd:TableName>
-      </rd:DataSetInfo>
-    </DataSet>
-  </DataSets>
 </Report>
     END_OF_RDLDATA
   }
