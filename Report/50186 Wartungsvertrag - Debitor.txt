@@ -2,15 +2,15 @@ OBJECT Report 50186 Wartungsvertrag - Debitor
 {
   OBJECT-PROPERTIES
   {
-    Date=04.06.18;
-    Time=17:07:27;
+    Date=18.10.21;
+    Time=09:36:02;
     Modified=Yes;
-    Version List=FORNAV3.1.0.1460/1460;
+    Version List=FORNAV6.1.0.2145/2145;
   }
   PROPERTIES
   {
     OnInitReport=BEGIN
-                                                                                                                               ;ReportForNav:= ReportForNav.Report(CurrReport.OBJECTID,CurrReport.LANGUAGE,SERIALNUMBER,USERID,COMPANYNAME);ReportForNav.Init;
+                   {;ReportForNav};ReportsForNavInit();
                  END;
 
     OnPreReport=BEGIN
@@ -547,11 +547,22 @@ OBJECT Report 50186 Wartungsvertrag - Debitor
       Text037@1000000034 : TextConst 'DEU=Passwort;ENU=Password';
       Text038@1000000037 : TextConst 'DEU=myTOPAS Zugangsdaten;ENU=myTOPAS Authorization';
       ExcelFileExtensionTok@1000000013 : TextConst '@@@={Locked};DEU=.xlsx;ENU=.xlsx';
-      ReportForNav@5000 : DotNet "'ForNav.Reports.3.1.0.1460, Version=3.1.0.1460, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
-      ReportForNavClient@5003 : DotNet "'ForNav.Reports.3.1.0.1460, Version=3.1.0.1460, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
+      ReportForNav@5000 : DotNet "'ForNav.Reports.6.1.0.2145, Version=6.1.0.2145, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
+      ReportForNavClient@5003 : DotNet "'ForNav.Reports.6.1.0.2145, Version=6.1.0.2145, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
       ReportForNavDialog@5001 : Dialog;
       ReportForNavOpenDesigner@5002 : Boolean;
       ReportForNavAllowDesign@5004 : Boolean INDATASET;
+
+    LOCAL PROCEDURE ReportsForNavInit@5005();
+    VAR
+      fn@1000000000 : Text;
+    BEGIN
+      fn := APPLICATIONPATH() + 'Add-ins\ReportsForNAV_6_1_0_2145\ForNav.Reports.6.1.0.2145.dll';
+      IF NOT FILE.EXISTS(APPLICATIONPATH + 'Add-ins\ReportsForNAV_6_1_0_2145\ForNav.Reports.6.1.0.2145.dll') THEN
+        ERROR('Please install the ForNAV DLL version 6.1.0.2145 in your service tier Add-ins folder under the file name "%1"', fn);
+      ReportForNav := ReportForNav.Report(CurrReport.OBJECTID(), CurrReport.LANGUAGE() ,SERIALNUMBER(), USERID(), COMPANYNAME());
+      ReportForNav.Init();
+    END;
 
     LOCAL PROCEDURE OnPreSectionServiceleist_Leihstellungen_Body6@5010(VAR "Serviceleist. & Leihstellungen"@1000000000 : Record 50024);
     BEGIN
@@ -675,7 +686,6 @@ OBJECT Report 50186 Wartungsvertrag - Debitor
       ReportLayoutSelection@1000 : Record 9651;
       CustomReportLayout@1001 : Record 9650;
       CustomLayoutID@1002 : Variant;
-      InStream@1004 : InStream;
       EmptyLayout@1003 : Text;
     BEGIN
       // This code is created automatically every time Reports ForNAV saves the report.
@@ -691,13 +701,9 @@ OBJECT Report 50186 Wartungsvertrag - Debitor
 
       IF (FORMAT(CustomLayoutID) <> EmptyLayout) AND CustomReportLayout.GET(CustomLayoutID) THEN BEGIN
         CustomReportLayout.TESTFIELD(Type,CustomReportLayout.Type::RDLC);
-        CustomReportLayout.CALCFIELDS(Layout);
-        CustomReportLayout.Layout.CREATEINSTREAM(InStream,TEXTENCODING::UTF8);
         ReportForNav.IsCustomLayout := TRUE;
-      END ELSE
-        REPORT.RDLCLAYOUT(ReportForNav.ReportID,InStream);
+      END;
 
-      ReportForNav.LoadRdlc(InStream);
       IF ReportForNav.IsWindowsClient THEN BEGIN
         ReportForNav.CheckClientAddIn();
         ReportForNavClient := ReportForNavClient.Report(ReportForNav.Definition);
@@ -714,21 +720,21 @@ OBJECT Report 50186 Wartungsvertrag - Debitor
       OutStream@1006 : OutStream;
       Bstr@1005 : BigText;
       EmptyLayout@1001 : Text;
+      ReportID@1008 : Integer;
     BEGIN
       // This code is created automatically every time Reports ForNAV saves the report.
       // Do not modify this code.
       EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
       LayoutId := ReportLayoutSelection."Custom Report Layout ID";
-      IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN BEGIN
+      EVALUATE(ReportID, FORMAT(ReportForNav.ReportID));
+      IF ReportLayoutSelection.HasCustomLayout(ReportID) = 1 THEN BEGIN
         IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN BEGIN
           LayoutId := ReportLayoutSelection.GetTempLayoutSelected;
         END ELSE BEGIN
-          IF ReportLayoutSelection.GET(ReportForNav.ReportID, COMPANYNAME) THEN BEGIN
+          IF ReportLayoutSelection.GET(ReportID, COMPANYNAME) THEN BEGIN
           LayoutId := ReportLayoutSelection."Custom Report Layout ID";
           END;
         END;
-      END ELSE BEGIN
-        IF CONFIRM('Default custom layout not found. Create one?') THEN;
       END;
       IF FORMAT(LayoutId) <> EmptyLayout THEN BEGIN
         TempBlob.Blob.CREATEOUTSTREAM(OutStream);
@@ -759,7 +765,6 @@ OBJECT Report 50186 Wartungsvertrag - Debitor
       PdfFile.CREATEOUTSTREAM(OutStream);
       REPORT.SAVEAS(ReportForNav.ReportID, Parameters, REPORTFORMAT::Pdf, OutStream);
       PdfFile.CREATEINSTREAM(InStream);
-      ReportForNavClient.ShowDesigner;
       IF ReportForNav.IsValidPdf(PdfFile.NAME) THEN DOWNLOADFROMSTREAM(InStream, '', '', '', FileName);
       PdfFile.CLOSE;
     END;
@@ -777,41 +782,6 @@ OBJECT Report 50186 Wartungsvertrag - Debitor
 
     EVENT ReportForNav@5000::OnPostSection@5013(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
     BEGIN
-    END;
-
-    EVENT ReportForNav@5000::OnClientOperation@5014(Args@1000 : DotNet "'mscorlib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Array");
-    VAR
-      op@1001 : Text;
-      FileMgmt@1002 : Codeunit 419;
-      Process@1006 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.Process" RUNONCLIENT;
-      PathObj@1005 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Path" RUNONCLIENT;
-      FileVersionInfo@1003 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.FileVersionInfo" RUNONCLIENT;
-      DirectoryHelper@1004 : DotNet "'mscorlib'.System.IO.Directory" RUNONCLIENT;
-    BEGIN
-      // This code is created automatically every time Reports ForNAV saves the report.
-      // Do not modify this code.
-      op := Args.GetValue(0);
-      CASE op OF
-        'TempPath': ReportForNav.Result := PathObj.GetTempPath();
-        'FileExists': ReportForNav.Result := FileMgmt.ClientFileExists(Args.GetValue(1));
-        'DirectoryExists': ReportForNav.Result := FileMgmt.ClientDirectoryExists(Args.GetValue(1));
-        'ProcessLocation': ReportForNav.Result := Process.GetCurrentProcess().MainModule.FileName;
-        'FileVersion': ReportForNav.Result := FileVersionInfo.GetVersionInfo(Args.GetValue(1)).FileVersion;
-        'DeleteFile': FileMgmt.DeleteClientFile(Args.GetValue(1));
-        'DeleteDirectory': IF STRLEN(Args.GetValue(1)) > 20 THEN
-          IF FileMgmt.ClientDirectoryExists(Args.GetValue(1)) THEN
-            DirectoryHelper.Delete(FORMAT(Args.GetValue(1)), TRUE);
-      END;
-    END;
-
-    EVENT ReportForNav@5000::OnCheckForNavClientVersion@5015();
-    BEGIN
-      // This code is created automatically every time Reports ForNAV saves the report.
-      // Do not modify this code.
-      ReportForNavClient := ReportForNavClient.Report();
-      IF ReportForNav.MyFileVersion <> ReportForNavClient.MyFileVersion THEN
-        ERROR('You have version %1 of the Reports ForNAV assembly here:\\%2\\Please close your NAV client and update it to version %3.',
-              ReportForNavClient.MyFileVersion, ReportForNavClient.MyFileName, ReportForNav.MyFileVersion);
     END;
 
     EVENT ReportForNav@5000::OnSelectPrinter@5006();
@@ -879,10 +849,7 @@ OBJECT Report 50186 Wartungsvertrag - Debitor
       // Do not modify this code.
       CurrReport.LANGUAGE := SYSTEM.GLOBALLANGUAGE;
       DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
-      WHILE ReportForNavClient.PrintPreviewDialog(ClientFileName,ReportForNav.PrinterSettings.PrinterName,Preview) DO BEGIN
-        ReportForNav.HandlePrintPreviewRequest(ReportForNavClient.GetPrintPreviewRequest());
-        SLEEP(100);
-      END;
+      ReportForNavClient.PrintPreviewDialog(ClientFileName,ReportForNav.PrinterSettings.PrinterName,Preview);
     END;
 
     BEGIN
@@ -892,7 +859,65 @@ OBJECT Report 50186 Wartungsvertrag - Debitor
   {
     <?xml version="1.0" encoding="utf-8"?>
 <Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
-  <Description>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</Description>
+  <Description>lVAAAM1cW3OjyBV+T1X+A6WH7EyVBnO/TKzdkm+xE1l2WfZMal9cWGrbxAi0gLzjqf0pecw/2T+W
+bmhEA6ehwfYmD3MBmu7TX5/7OWj/p2/rQHpGceJH4WSkyspIQuEyWvnhw2S0Te8/OaOffvzzn/b/
+mcbeFdpEcZrMvJdomy5Q7HuB/x3FUvnfL7uJDFmTTTJb5dZImntrNBl99eJ0Gz4keGE874P0STpC
+d34axSPpMArTOAquXzZ43BF6Pv62iVGSyAwB8s0Zc6mNJc6wZ7LkuKBAmkgFVWPpcBuk2xjheyHa
+4leCsXS5vQv85T/Qy3X0hMjolb30HORoin1vIEPBeznyk03gvXTugRJwEsVz73kHgC5jeGXVsPBM
+F3f/Qst0Hk1GpqI61u5G18wnPgpWX9EdhvzZX6KbOJiMHtN083lvbz79sji++vJJU1RL/lV7ktNo
+4yXyCn22FcPZO3oJvbW/TPAwV9m7OPJSb+8wWm+88OXDD9cXl9PFDx9H0rkXP/hhgk/LxCip+I+R
+/RlJl94DOkX+w2M6GWmuTe989VfpI76hEnhO8NFNRlPCDGPJ3qQYsI2PH5pGAclN6OMR1yhMH5OL
+++m5HwT+GqUoHmEek6T9Ay9cJdl/8cVZitYqZZjDbZJGa1TnjxxhshcymLyN16RX195dgIdk/6gO
+oeCXEz/Aa2UY4i3OI3k8PbxdRME2xQe0waiHZIWzFd7+iFJRI4oh7Ard4zMFCTpF3grFOTk5/fkd
+lUXkMvbD9Nz7dhEu0SWKCZqT0b0XJAjP6YWLR/z8aXdngbkDE1mbLT+QE0yvZsnuiCESk0kJSyp3
+q+QbIPnX6Ft6EH0raK/cVFUsCTpeeoHlnSzs6MrY0GQMxCxaeoTGkyDyUsJBY8kxZIvdM5kEbyk7
+hvykFijNziNfqniyB9Gs5TSbIM0z7w4FVYqzWxm9qraj17WUcU4VQK7C0lrhZtUi7Hzobcgb5zOs
+mY5vJr//+47I9vIxlfBxSBWx/f0/D+hzseHugbX94h0v0pcAYR6JYj99yXeOib5JUE4XZYsGUHsZ
+UlVG2AM4IR+o1tmaYmyDGB9EqxeWqcm1xkI2Q88oIMLzGuams76WtZ0qMywevQ3KmEFRwc1lAxi2
+tk2YrZUamxxEMT5TrE6mAea/bJZ82tMo/j7zQ1QwQXm9SGOULrHaTOMtvpyGD0RRuQrEBWS+fEMu
+nT3fVT4TfPxqi/SoyjCRV4wSG5Mj8cRSZPd5QqRs0rGUEMaeHETBKkdmGvgP4RqRcef+ahWgGbrH
+skbgyh7hvWY3chTn0W1pC5oKhH0sJFOqOkyoKKo6nUUbiCqjmLh61AIUqQCuGAy8qtYOV3WEGGK6
+KGI6hJhBZxloeoifIYTYAE7M8egErC9epiheRrfaxrfPsevqH2KnZR3SBazqhE12pawKepcDPSoT
+61G19uiLj36djBYXV9dn8799oD5rGMvjL/lSCR7kbe9XXrpdj2tkJHjcR+nr6fHV8YdFikckk5Oz
+2fXx1Yfp9p4M+G16eL3Af51Or387fPTWmwQ7oJnH9vFjSccsMyvl0niS49nRB+zqfQQ8QLxQnObk
+QCSehd5T6j/nHqFFHN4Yq6liKXIT5oSGx7g7A2qbiDvaw23U39Rt1BnbmglJk4s55rWxDXeYDKul
+DKsux8zqet3Q1qOLVktyEKX4YP6Oj8e/f8mC0JQak/wJjnSIGBErWpjhXAPU2DJjn8Pp5fXZxfyW
+ciJmVUg1CL4JYArrDU3p1huluNdt/u6sqN3XYK+nW986u7PSTM5ZWf9/R9XULn2PDJhB/Oi0PkdX
+dyy4ql/Ev9PgiBRy3Y13cd0NRr1omll33TN6BfWLZnB9eEvIh7f4juof58PnTFL68Zop4MjzD7tx
+4DAUrfGwVgq1qnOE2iX5H8uVNXHBbshpLV4+DleZYQWFHNQKV4SRCvDL15nYIB8hLpn26ySz6vZr
+sB3vVKqEikKpahz8NQM6gBwJwFmp6ytI3Qm9BqLBOO7aQKNP+FSI57Jw/3XGhLINwGUNzuEZl9I1
+rEN0O7sLIHQ73hBmUb2X3Td4x2XS2Qba/UxLCbFo/by68OuHXQtDWnSHA2NvjcloKC0M2Rp6v5tz
+k8dAPXiPN1qc7wTi+pLvLN6p2HS2gfE98V/oqei8FFzGd3BqGQZCHLIWdnPoxuD8c/fGypy5wUug
+qSp2sWGl3y9Lhk3l0zZcoRl2+UTAaB/PhcSlkMAuSHcc6O4gMXk6RtUVk6NkhkFyEad9EAGHcwFR
+FYoInEDvRsTuzrJSJnk7RC5nP98eRivUBxb+O3xsipLZQKdJLS2SxdMMOTaQahgGzXRFisq9kOG+
+wgeGevL60HRKach0hcM0jtGVnBezZDlI7Y5VPoZj1wqYRC1b63hh22b0y6Vw/X6VOv7GQK9K1UV5
+uH5Ww3m4D/P24VoaDxhDSx+uYBIQQgJz7S6jJrK/ttH8HVIX2oBTKt07FIjyXO4Gm/knkY2KvNXc
+MDffBJUbDKNnhYz6W3nHSoD8JL2dIf8xSVEQYMJQOLwEQXz4lhLE7H4lS/NYHk/jdDwvCwz4sqgu
+ULKaNQSgPkGLCVDlIq8RkLxfs0hQP4AmxlC9oGRDCjvsZEGJPfON6gV0ro5qQUZoS0avsRGbl9XT
+YUGrZfUMg+cYufUWjnfP62V7Y3J7hiOY2yuFBsrvtUpk9rgple5rkogm3BUAMVfFsyqzxqdechFe
+xogyUIHfK7nPenPuM4dabqblSXUtmaPPDb3OgzmDIWpgvyM/QJDirg3g8gx7aLDlbc/8llZXE5ej
+16V9L+PoX+gp9cP7KF5nC+0ao6BHLYLWdOxMwaRFKQqQbzdA3kzACrYvwiaOTTiJAMmbDcib9l7y
+Zr+9vA3MDehMiUIzDNngeIhua+3R2ezcYfzXbYzuEbbO30EBZJ/340HBmkLJHrDOr0k3HCa3SrfO
+pA+cP0i6zx7jzPhlwO0Eu3a3H57u/0imSWM2X6br3Uy7A6OBkAVbFkimHUCm9VcLr8MIb5YCebXw
+WgMsjM7UeTQOD7pQ2NPsHq/bkSjxyfXOeBTXvbjL6m0xRKTVgtPd7UiZjLTassNproBi4E6sTr9K
+M5+IHw48dk4ue68fZgItbFXMYImsGkFrqGnQugs3ZOBbJFFu4mQT56gly0fkh5l/FuKwujWebZqX
+gRO1+oGF4hmYbNaZNizTlF1O5lC1ZJWXpGjs6g2AeRUkNGVjDcwxK2V+zrA4rOXYdZcjxwJH+f4T
+CjRok+WzVuppRdMamAjWjW7Vq5qNDx1oQq1sCmDhx6D3PdGhM7VCQ8uK9sD2dU0RgEY34ZOd4RfD
+73l5uicWwq+2bp6WHu2htfxSYWqqgaUZNjRGq2PIuNLke78hOlDovV6GyRZstMvezwyT04YzrWfa
+cB6q/ROjMl7hdZ2ZTjfANTO+mO88avLfftgYfbFxW11CWtq0B9a/VYsp7HNjE1uQBae5Qg1jrbd2
+EnuzH9QCX2ZVoVaVVqyp/20PtOxK6Vma3NBZOHI+RxiRvjB3v9QPYac3wm+UWLVbE6td7VeOeGLV
+BYJC470SPe6bJ3qcgcbJEPgYwNZVQV69i7x4deuHPsST5cNevOf0NjIiEaMzwMjoTM3U0HkRo+l0
+a9GanTkgyEgYmZ25Ye70A6u31Xmj5I1jtsmp2dFE6MCx6EkUpdUvcvI7agXeinSVA5pi2Ca0VOLZ
+ehuYjtrfg6uF+zkYLWXERbSNl4j8UEKj3JAVL/WBdQnK1ez0f/llG6V/xYz0qUip5nfoSkZnApa/
+kA4slMWQsgSF13JlYfOdQ3MalgtRWKfNerfomBoklqoyIM3WtvsHrVR6mltlwj+pFv9V9uu8d+xI
+40aWQiYco1S4bx610YitCUwR/lSOnSRhBkZKbX2ZwLEUfq8saRUC1Fd4ya2dkEdo6a+94DLwlijB
+2uwzsfQMXZmLSIkAsyYCjmdbtyG7FuMXZOuBuo4ZBPfIQAoWKg5AOpqjnwHdXOsXkdnP0j7Qw9z1
+M1Fmog0ooByLftLI+dGNnqQB3TEVEkGx7/spH0hq1TIAH7vkBIASP+jTGEDbtwJUfuVAsVBh4e/4
+9AQko6reyynoQqCQ9/nqAlD3XXtNt0mxT1C82z5xAJe363vEr9MFQHkWbfHnauyiLVIiffGs0lRB
+D6ZfFz1XU+9WvYjTyqKg99KrUb1QzS2LXs5+/kQ6uysrg75J/15wSDPXlqft05XVQa3Wu9+66LUW
+ZuFihYKJQc3V3s8M01BVVMUMdBVQPYn35xa9uYADULcZ1AMCdVCfhtmiWba5JNcW0KVBrdS/hRUy
+zXWzXDfJgDkGTHHxe1QZtaI/WMWNh+ZR1fXr+gGb5qxQ8EPeq7p0oHKq/xhMY+4qz5Dh+Wyg1qn9
+UMoeg3MVWDYhUp7B/l7L7wn++F8=</Description>
   <DataSources>
     <DataSource Name="DataSource">
       <ConnectionProperties>
