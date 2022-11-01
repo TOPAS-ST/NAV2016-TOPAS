@@ -2,8 +2,8 @@ OBJECT Page 50103 Preislisten Importe Excel
 {
   OBJECT-PROPERTIES
   {
-    Date=24.05.22;
-    Time=12:28:14;
+    Date=01.11.22;
+    Time=12:15:15;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -139,6 +139,7 @@ OBJECT Page 50103 Preislisten Importe Excel
       aenderung@1140036 : Boolean;
       chr@1140021 : Char;
       sheet_anzahl@1000000002 : Integer;
+      sheet_name@1000000008 : Text;
       decstr@1000000007 : Integer;
       i@1000000003 : Integer;
       Warnung_GSI@1000000006 : TextConst 'DEU=Vor dem Preislisten Abgleich ist zu prfen, ob neue Reiter hinzugefgt worden sind und ob die Disti Cost Spalte auf allen Reitern immer die gleiche ist.';
@@ -534,11 +535,11 @@ OBJECT Page 50103 Preislisten Importe Excel
       //                              šberprfung Syntax Quelldatei
       //********************************************************************************************
 
-      IF FORMAT(Quelle_Sheet.Range(Spalte_Part + '1').Value) <> 'Art-Nr' THEN BEGIN
+      IF FORMAT(Quelle_Sheet.Range(Spalte_Part + '1').Value) <> 'Produkt-ID' THEN BEGIN
         Quelle_Book.Close;
         ERROR(Text000,Spalte_Part);
       END;
-      IF FORMAT(Quelle_Sheet.Range(Spalte_DC + '1').Value) <> 'DistiEK' THEN BEGIN
+      IF FORMAT(Quelle_Sheet.Range(Spalte_DC + '1').Value) <> 'Betrag' THEN BEGIN
         Quelle_Book.Close;
         ERROR(Text000,Spalte_DC);
       END;
@@ -728,6 +729,23 @@ OBJECT Page 50103 Preislisten Importe Excel
 
       UNTIL (Max_Datens„tze = Quelle_j) OR (leere_zeilen = 15);  // Nach 15 Zeilen ohne Artikel ist Schluss
 
+      //Ferrari Artikel sperren, die nicht in der Preisliste stehen
+      Artikel.RESET;
+      Artikel.SETRANGE("Update letzte Preisliste",FALSE);
+      Artikel.SETRANGE(Blocked,FALSE);
+      Artikel.SETRANGE("Manufacturer Code",'85');
+      IF Artikel.FIND('-') THEN
+        REPEAT
+          IF testlauf = FALSE THEN BEGIN
+            Artikel.Blocked := TRUE;
+            Artikel.MODIFY(TRUE);
+            Protokoll_Sheet.Range('A'+Protokoll_j).Value := Artikel."No. 2";
+            Protokoll_Sheet.Range('B'+Protokoll_j).Value := 'Kein Preisupdate - gesperrt';
+            Protokoll_j := INCSTR(Protokoll_j);
+          END;
+          gesperrte += 1;
+        UNTIL Artikel.NEXT = 0;
+
       Quelle_Excel.Visible(TRUE);
       Protokoll_Excel.Visible(TRUE);
 
@@ -744,20 +762,6 @@ OBJECT Page 50103 Preislisten Importe Excel
 
       REPEAT
       UNTIL ISCLEAR(Protokoll_Excel) AND ISCLEAR(Protokoll_Book) AND ISCLEAR(Protokoll_Sheet);
-
-      //Ferrari Artikel sperren, die nicht in der Preisliste stehen
-      Artikel.RESET;
-      Artikel.SETRANGE("Update letzte Preisliste",FALSE);
-      Artikel.SETRANGE(Blocked,FALSE);
-      Artikel.SETRANGE("Manufacturer Code",'85');
-      IF Artikel.FIND('-') THEN
-        REPEAT
-          IF testlauf = FALSE THEN BEGIN
-            Artikel.Blocked := TRUE;
-            Artikel.MODIFY;
-          END;
-          gesperrte += 1;
-        UNTIL Artikel.NEXT = 0;
 
       MESSAGE('Abgleich der Artikel abgeschlossen.' + '\\' + 'Neue Preise: %1\Sonstige Žnderungen: %2\\' +
               'Excel Datens„tze: %3 (Ausgewerte Tabs: 1)\\Neu gesperrte Artikel: %4',neuer_preis,sonstige_aenderungen,excel_datens„tze,gesperrte);
@@ -4261,12 +4265,12 @@ OBJECT Page 50103 Preislisten Importe Excel
       Spalte_Rohs_Chips@1000000002 : TextConst 'DEU=I';
       Spalte_Rohs_Exemp_Chips@1000000005 : TextConst 'DEU=K';
       Spalte_Status_Chips@1140015 : TextConst 'DEU=L';
-      Spalte_Qty_Chips@1000000001 : TextConst 'DEU=N';
-      Spalte_MOQ_Chips@1000000003 : TextConst 'DEU=O';
-      Spalte_DC_Chips@1000000004 : TextConst 'DEU=P';
+      Spalte_Qty_Chips@1000000001 : TextConst 'DEU=O';
+      Spalte_MOQ_Chips@1000000003 : TextConst 'DEU=P';
+      Spalte_DC_Chips@1000000004 : TextConst 'DEU=Q';
       Max_Datens„tze@1140002 : TextConst 'DEU=5000';
-      Text000@1140001 : TextConst 'DEU=Fehler in der Syntax der Quelldatei.\Spalte: %1';
       PL_ROHS_EXEMP@1000000006 : Text;
+      Text_SyntaxSheet@1000000007 : TextConst 'DEU=Fehler in der Syntax der Quelldatei.\Sheet: %1\Spalte: %2';
     BEGIN
       //HALO Preislisten Abgleich 09.09.21 /ST
 
@@ -4296,34 +4300,35 @@ OBJECT Page 50103 Preislisten Importe Excel
       //                          šberprfung Syntax Quelldatei - Chips
       //********************************************************************************************
 
+      sheet_name := Quelle_Sheet.Name;
+
       IF STRPOS(FORMAT(Quelle_Sheet.Range(Spalte_Part_Chips + '2').Value),'HALO P/N') = 0 THEN BEGIN
         Quelle_Book.Close;
-        ERROR(Text000,Spalte_Part_Chips);
+        ERROR(Text_SyntaxSheet,sheet_name,Spalte_Part_Chips);
       END;
       IF STRPOS(UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte_Descr_Chips + '2').Value)),'DESCRIPTION') = 0 THEN BEGIN
         Quelle_Book.Close;
-        ERROR(Text000,Spalte_Descr_Chips);
+        ERROR(Text_SyntaxSheet,sheet_name,Spalte_Descr_Chips);
       END;
       IF STRPOS(UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte_Qty_Chips + '2').Value)),'PKG QTY') = 0 THEN BEGIN
-        MESSAGE(FORMAT(Quelle_Sheet.Range(Spalte_Qty_Chips + '2').Value));
         Quelle_Book.Close;
-        ERROR(Text000,Spalte_Qty_Chips);
+        ERROR(Text_SyntaxSheet,sheet_name,Spalte_Qty_Chips);
       END;
       IF STRPOS(UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte_Rohs_Chips + '2').Value)),'ROHS') = 0 THEN BEGIN
         Quelle_Book.Close;
-        ERROR(Text000,Spalte_Rohs_Chips);
+        ERROR(Text_SyntaxSheet,sheet_name,Spalte_Rohs_Chips);
       END;
       IF STRPOS(UPPERCASE(FORMAT(Quelle_Sheet.Range(Spalte_MOQ_Chips + '2').Value)),'MOQ') = 0 THEN BEGIN
         Quelle_Book.Close;
-        ERROR(Text000,Spalte_MOQ_Chips);
+        ERROR(Text_SyntaxSheet,sheet_name,Spalte_MOQ_Chips);
       END;
       IF FORMAT(Quelle_Sheet.Range(Spalte_DC_Chips + '2').Value) <> 'DISTI COST' THEN BEGIN
         Quelle_Book.Close;
-        ERROR(Text000,Spalte_DC_Chips);
+        ERROR(Text_SyntaxSheet,sheet_name,Spalte_DC_Chips);
       END;
       IF FORMAT(Quelle_Sheet.Range(Spalte_Status_Chips + '2').Value) <> 'PROD. STATUS' THEN BEGIN
         Quelle_Book.Close;
-        ERROR(Text000,Spalte_Status_Chips);
+        ERROR(Text_SyntaxSheet,sheet_name,Spalte_Status_Chips);
       END;
 
       //********************************************************************************************
@@ -4432,17 +4437,18 @@ OBJECT Page 50103 Preislisten Importe Excel
         END ELSE
           PL_DC := 0;
 
-        Artikel.RESET;
-        Artikel.SETFILTER("No. 2",'%1',Artikelname);
-        IF NOT Artikel.FINDFIRST THEN BEGIN
-          IF COPYSTR(Artikelname,STRLEN(Artikelname)-1,2) = 'TR' THEN BEGIN
-          //IF (STRPOS(Artikelname,'TR') = STRLEN(Artikelname)-1) AND (COPYSTR(Artikelname,STRLEN(Artikelname)-1,2) = 'TR') THEN BEGIN
-            //Artikelname := TOPAS_API.replace_text(Artikelname,'TR','-TR'); //fhrt zu Fehlern wenn TR auch zus„tzlich mittendrin z.B. bei TRLTR
-            Artikelname := COPYSTR(Artikelname,1,STRLEN(Artikelname) -2) + '-TR';
-          END;
-        END;
-
         IF Artikelname <> '' THEN BEGIN
+
+          Artikel.RESET;
+          Artikel.SETFILTER("No. 2",'%1',Artikelname);
+          IF NOT Artikel.FINDFIRST THEN BEGIN
+            IF COPYSTR(Artikelname,STRLEN(Artikelname)-1,2) = 'TR' THEN BEGIN
+            //IF (STRPOS(Artikelname,'TR') = STRLEN(Artikelname)-1) AND (COPYSTR(Artikelname,STRLEN(Artikelname)-1,2) = 'TR') THEN BEGIN
+              //Artikelname := TOPAS_API.replace_text(Artikelname,'TR','-TR'); //fhrt zu Fehlern wenn TR auch zus„tzlich mittendrin z.B. bei TRLTR
+              Artikelname := COPYSTR(Artikelname,1,STRLEN(Artikelname) -2) + '-TR';
+            END;
+          END;
+
           Artikel.RESET;
           Artikel.SETFILTER("No. 2",'%1',Artikelname);
           IF Artikel.FINDFIRST THEN BEGIN
