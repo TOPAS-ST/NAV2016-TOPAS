@@ -2,8 +2,8 @@ OBJECT Codeunit 50051 Event Subscriber
 {
   OBJECT-PROPERTIES
   {
-    Date=09.12.20;
-    Time=17:12:41;
+    Date=17.11.22;
+    Time=09:02:35;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -18,6 +18,9 @@ OBJECT Codeunit 50051 Event Subscriber
     VAR
       ArchSalesLine@1000000001 : Record 5108;
       Kalkulation@1000000000 : Record 50027;
+      Text36_1@1000000012 : TextConst 'DEU=Sie mssen zuerst den Anredecode fr diese Kontaktperson ausfllen.';
+      Text36_2@1000000011 : TextConst 'DEU=Sie k”nnen hier keinen Mandanten ausw„hlen.';
+      Text36_3@1000000010 : TextConst 'DEU=Es konnte keine Beziehung zur Tabelle %1 aufgebaut werden.';
       Text37_1@1000000004 : TextConst 'DEU=Warnung !!\Die aktuelle Marge von %1 Prozent unterschreitet den Wert von %2 Prozent!';
       Text37_2@1000000003 : TextConst 'DEU=Es konnte eine Kalkulation zu diesem Artikel und dieser Belegzeile gefunden werden. Sie wurde gel”scht.';
       Text37_3@1000000002 : TextConst 'DEU=Diese Position wird in der Champ Kalkulation in Zeile %1 verwendet. Bitte korrigieren Sie die Champ Kalkulation manuell.';
@@ -138,6 +141,151 @@ OBJECT Codeunit 50051 Event Subscriber
         END;
       END;
       }
+    END;
+
+    [EventSubscriber(Codeunit,414,OnAfterReleaseSalesDoc)]
+    LOCAL PROCEDURE DocuwarePrintEvent@1000000005(VAR SalesHeader@1000000000 : Record 36);
+    VAR
+      RecRef@1000000001 : RecordRef;
+      DB_Table@1000000002 : Integer;
+    BEGIN
+      {
+      // Test
+      IF (USERID <> 'W2K\MAASS') AND (USERID <> 'W2K\UBERGERSTOCK') THEN EXIT;
+
+      //verursacht noch Fehler, wenn gleichzeitig im beleg was ge„ndert wird, evtl. fehlt noch ein COMMIT
+      //COMMIT;
+
+      WITH SalesHeader DO BEGIN
+        CASE "Document Type" OF
+          "Document Type"::Quote :
+            BEGIN
+              DB_Table := DATABASE::"Sales Header";
+            END;
+        END;
+      END;
+
+      RecRef.OPEN(DB_Table);
+      RecRef.GETTABLE(SalesHeader);
+      DocuwarePrintSalesDoc3(RecRef);
+      }
+    END;
+
+    LOCAL PROCEDURE DocuwarePrintSalesDoc3@1000000043(RecRef@1000000000 : RecordRef);
+    VAR
+      SalesHeader@1000000014 : Record 36;
+      SalesHeader2@1000000009 : Record 36;
+      FieldRef@1000000001 : FieldRef;
+      baseFolder@1000000008 : Text[250];
+      statusFolder@1000000004 : Text[250];
+      statusFileName@1000000007 : Text[250];
+      pdfFileName@1000000006 : Text[250];
+      pdfSettings@1000000003 : Automation "{A3F69B34-EAD8-4A3B-8DD5-C1C3FD300D67} 4.0:{F6C83BBD-F620-4F13-8320-9C51D1996EC4}:'Bullzip - PDF Writer Automation'.ComPdfSettings";
+      pdfUtil@1000000002 : Automation "{A3F69B34-EAD8-4A3B-8DD5-C1C3FD300D67} 4.0:{F9444F96-C32A-4745-9FF3-9059B92CDAB0}:'Bullzip - PDF Writer Automation'.ComPdfUtil";
+      wshShell@1000000005 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{72C24DD5-D70A-438B-8A42-98424B88AFB8}:'Windows Script Host Object Model'.WshShell";
+      wshFile@1000000012 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{0D43FE01-F093-11CF-8940-00A0C9054228}:'Windows Script Host Object Model'.FileSystemObject";
+      SalesQuotePrint@1000000010 : Report 50052;
+      ServerTempFileName@1000000011 : Text;
+      FileNameClient@1000000013 : Text;
+    BEGIN
+      //Test
+      baseFolder := 'F:\Daten NEU\Gemeinsame Ordner\DocuWare\Test\';
+      ServerTempFileName := FileMgt.ServerTempFileName('pdf');
+
+      CASE RecRef.NAME OF
+        'Sales Header' :
+          BEGIN
+            //FieldRef := RecRef.FIELDINDEX(1);
+            SalesHeader.GET(RecRef.FIELDINDEX(1), RecRef.FIELDINDEX(2));
+            pdfFileName := SalesHeader."No." + '.pdf';
+            SalesHeader2.COPY(SalesHeader);
+            SalesHeader2.SETRECFILTER;
+
+            REPORT.SAVEASPDF(50075,ServerTempFileName,SalesHeader2);
+
+            // rename the Temporary filename into a more UI friendly name in a new subdirectory
+            FileNameClient := FileMgt.DownloadTempFile(ServerTempFileName);
+            FileNameClient := FileMgt.MoveAndRenameClientFile(FileNameClient,pdfFileName,baseFolder);
+
+          END;
+      END;
+    END;
+
+    [EventSubscriber(Table,36,OnLookupKontaktperson)]
+    LOCAL PROCEDURE SalesHeaderLookupKontakt@1000000006(VAR Sender@1000000000 : Record 36);
+    VAR
+      ContactBusinessRelation@1000000001 : Record 5054;
+      Contact@1000000002 : Record 5050;
+      Salutation@1000000003 : Record 5068;
+    BEGIN
+      //16.11.22 ST - Subscriber Event in Tabelle 36 Sales Header beim Lookup auf Kontaktperson
+      ContactBusinessRelation.RESET;
+      ContactBusinessRelation.SETRANGE("Business Relation Code",'DEB');
+      ContactBusinessRelation.SETRANGE("No.",Sender."Sell-to Customer No.");
+      IF ContactBusinessRelation.FINDFIRST THEN BEGIN
+        Contact.SETCURRENTKEY(Name);
+        Contact.SETFILTER("Company No.",ContactBusinessRelation."Contact No.");
+        IF Contact.FINDFIRST THEN BEGIN
+          IF PAGE.RUNMODAL(5052,Contact) = ACTION::LookupOK THEN BEGIN
+            IF Contact."Salutation Code" = '' THEN
+              ERROR(Text36_1);
+            Sender."Kontaktnr." := Contact."No.";
+            Salutation.GET(Contact."Salutation Code");
+            IF (Contact."Salutation Code" = 'HERR') OR (STRPOS(LOWERCASE(Salutation.Description),'m„nnlich') <> 0) THEN BEGIN
+              IF ((Sender."Language Code" = 'DEU') OR (Sender."Language Code" = 'DEA')
+              OR (Sender."Language Code" = 'DES') OR (Sender."Language Code" = '')) THEN
+                Sender.Kontaktperson := 'Herr' + ' ' + Contact.Surname
+              ELSE
+                Sender.Kontaktperson := 'Mr.' + ' ' + Contact.Surname;
+            END;
+            IF (Contact."Salutation Code" = 'FRAU') OR (STRPOS(LOWERCASE(Salutation.Description),'weiblich') <> 0) THEN BEGIN
+              IF ((Sender."Language Code" = 'DEU') OR (Sender."Language Code" = 'DEA')
+              OR (Sender."Language Code" = 'DES') OR (Sender."Language Code"='')) THEN
+                Sender.Kontaktperson := 'Frau' + ' ' + Contact.Surname
+              ELSE
+                Sender.Kontaktperson := 'Ms.' + ' ' + Contact.Surname;
+            END;
+            IF (Contact."Salutation Code" = 'MANDANT') THEN BEGIN
+              Sender.Kontaktperson := Contact.Surname;
+            END;
+            IF Contact.Type = Contact.Type::Company THEN
+              MESSAGE(Text36_2);
+          END;
+        END;
+      END ELSE MESSAGE(Text36_3,Contact.TABLECAPTION);
+    END;
+
+    [EventSubscriber(Table,36,OnUpdateKontaktpersonFromNewQuote)]
+    LOCAL PROCEDURE SalesHeaderUpdateKontakt@1000000008(VAR Sender@1000000000 : Record 36);
+    VAR
+      Contact@1000000001 : Record 5050;
+      Salutation@1000000002 : Record 5068;
+    BEGIN
+      //16.11.22 ST - Subsriber Event in Tabelle 36 Sales Header
+      //Damit die Funktion "Neues Verkaufsangebot" aus Kontakt heraus auch das Feld Kontaktperson fllt und nicht Sell-to Contact
+      IF Contact.GET(Sender."Sell-to Contact No.") THEN BEGIN
+        Sender."Kontaktnr." := Contact."No.";
+        IF Salutation.GET(Contact."Salutation Code") THEN BEGIN
+          IF (Contact."Salutation Code" = 'HERR') OR (STRPOS(LOWERCASE(Salutation.Description),'m„nnlich') <> 0) THEN BEGIN
+            IF ((Sender."Language Code" = 'DEU') OR (Sender."Language Code" = 'DEA')
+            OR (Sender."Language Code" = 'DES') OR (Sender."Language Code" = '')) THEN
+              Sender.Kontaktperson := 'Herr' + ' ' + Contact.Surname
+            ELSE
+              Sender.Kontaktperson := 'Mr.' + ' ' + Contact.Surname;
+          END;
+          IF (Contact."Salutation Code" = 'FRAU') OR (STRPOS(LOWERCASE(Salutation.Description),'weiblich') <> 0) THEN BEGIN
+            IF ((Sender."Language Code" = 'DEU') OR (Sender."Language Code" = 'DEA')
+            OR (Sender."Language Code" = 'DES') OR (Sender."Language Code"='')) THEN
+              Sender.Kontaktperson := 'Frau' + ' ' + Contact.Surname
+            ELSE
+              Sender.Kontaktperson := 'Ms.' + ' ' + Contact.Surname;
+          END;
+          IF (Contact."Salutation Code" = 'MANDANT') THEN BEGIN
+            Sender.Kontaktperson := Contact.Surname;
+          END;
+          Sender."Sell-to Contact" := '';
+        END;
+      END;
     END;
 
     BEGIN
