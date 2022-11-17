@@ -2,10 +2,10 @@ OBJECT Table 36 Sales Header
 {
   OBJECT-PROPERTIES
   {
-    Date=09.02.22;
-    Time=23:30:00;
+    Date=16.11.22;
+    Time=17:00:00;
     Modified=Yes;
-    Version List=NAVW19.00.00.50682,NAVDACH9.00.00.50682,TOP1.13;
+    Version List=NAVW19.00.00.50682,NAVDACH9.00.00.50682,TOP1.14;
   }
   PROPERTIES
   {
@@ -2284,43 +2284,8 @@ OBJECT Table 36 Sales Header
                                                               Kontakt@1140001 : Record 5050;
                                                               "Mandantennr."@1140002 : Code[20];
                                                             BEGIN
-                                                              //TOPAS 16.05.08 ST +
-                                                              KontBez.RESET;
-                                                              KontBez.SETRANGE(KontBez."Business Relation Code",'DEB');
-                                                              KontBez.SETRANGE(KontBez."No.","Sell-to Customer No.");
-                                                              IF KontBez.FINDFIRST THEN BEGIN
-                                                                "Mandantennr." := KontBez."Contact No.";
-                                                                Kontakt.SETCURRENTKEY(Name);
-                                                                Kontakt.SETFILTER(Kontakt."Company No.","Mandantennr.");
-                                                                IF Kontakt.FINDFIRST THEN BEGIN
-                                                                  IF PAGE.RUNMODAL(5052,Kontakt) = ACTION::LookupOK THEN BEGIN
-                                                                    IF Kontakt."Salutation Code" = '' THEN
-                                                                      ERROR(Text101);
-                                                                    "Kontaktnr." := Kontakt."No.";
-                                                                    Anrede.GET(Kontakt."Salutation Code");
-                                                                    IF (Kontakt."Salutation Code" = 'HERR') OR (STRPOS(LOWERCASE(Anrede.Description),'m„nnlich') <> 0) THEN BEGIN
-                                                                      // IF ((Kontakt."Language Code"='DEU') OR (Kontakt."Language Code"='DEA')
-                                                                      // OR (Kontakt."Language Code"='DES') OR(Kontakt."Language Code"='')) THEN
-                                                                      IF (("Language Code" = 'DEU') OR ("Language Code" = 'DEA')
-                                                                      OR ("Language Code" = 'DES') OR ("Language Code" = '')) THEN
-                                                                        Kontaktperson := 'Herr' + ' ' + Kontakt.Surname
-                                                                      ELSE
-                                                                        Kontaktperson := 'Mr.' + ' ' + Kontakt.Surname;
-                                                                    END;
-                                                                    IF (Kontakt."Salutation Code" = 'FRAU') OR (STRPOS(LOWERCASE(Anrede.Description),'weiblich') <> 0) THEN BEGIN
-                                                                      // IF ((Kontakt."Language Code"='DEU') OR (Kontakt."Language Code"='DEA')
-                                                                      // OR (Kontakt."Language Code"='DES')OR(Kontakt."Language Code"='')) THEN
-                                                                      IF (("Language Code" = 'DEU') OR ("Language Code" = 'DEA')
-                                                                      OR ("Language Code" = 'DES') OR ("Language Code"='')) THEN
-                                                                        Kontaktperson := 'Frau' + ' ' + Kontakt.Surname
-                                                                      ELSE
-                                                                        Kontaktperson := 'Ms.' + ' ' + Kontakt.Surname;
-                                                                    END;
-                                                                    IF Kontakt.Type = Kontakt.Type::Company THEN
-                                                                      MESSAGE(Text102);
-                                                                  END;
-                                                                END;
-                                                              END ELSE MESSAGE(Text103,Kontakt.TABLECAPTION);
+                                                              //TOPAS 16.05.08 ST , 16.11.22 ST - Neu ber Event Publish +
+                                                              OnLookupKontaktperson;
                                                               //TOPAS -
                                                             END;
                                                              }
@@ -2559,9 +2524,6 @@ OBJECT Table 36 Sales Header
       TempServicepositionen@1000000037 : Record 50024;
       Endkunde_Staat@1000000001 : Text[30];
       Text100@1000000006 : TextConst 'DEU=Soll die dazugeh”rige Aufgabe %1 (offen) auf erledigt gesetzt werden?';
-      Text101@1000000002 : TextConst 'DEU=Sie mssen zuerst den Anredecode fr diese Kontaktperson ausfllen.';
-      Text102@1000000003 : TextConst 'DEU=Sie k”nnen hier keinen Mandanten ausw„hlen.';
-      Text103@1000000004 : TextConst 'DEU=Es konnte keine Beziehung zur Tabelle %1 aufgebaut werden.';
       Text104@1000000038 : TextConst 'DEU=Der Wechselkurs wurde nicht angepasst, da die Option %1 gesetzt ist.';
       Text110@1000000013 : TextConst 'DEU=Bitte hinterlegen Sie fr Artikelnr. %1%2 eine Serviceklassifizierung im Artikelstamm.';
       Text111@1000000012 : TextConst 'DEU="Sie drfen nicht mehr als 1 %1 pro Basisger„t gleichzeitig ausliefern. Fr Artikelnr. %2, in Zeilennr. %3, muss %4 = 1 sein."';
@@ -3446,8 +3408,8 @@ OBJECT Table 36 Sales Header
       THEN
         VALIDATE("Bill-to Contact No.","Sell-to Contact No.");
 
-      //TOPAS 03.02.21 ST - Verk. an Kontakt soll nicht mehr gefllt werden, sondern das Feld Kontaktperson +
-      UpdateKontaktperson(ContactNo);
+      //TOPAS 03.02.21 ST - Verk. an Kontakt soll nicht mehr gefllt werden, sondern das Feld Kontaktperson, 16.11.22 ST - Neu ber Event Publish Fkt. +
+      OnUpdateKontaktpersonFromNewQuote;
       //TOPAS -
     END;
 
@@ -4783,33 +4745,14 @@ OBJECT Table 36 Sales Header
         MESSAGE('Alles OK.');
     END;
 
-    LOCAL PROCEDURE UpdateKontaktperson@1000000001(ContactNo@1000000000 : Code[20]);
-    VAR
-      Cust@1000000001 : Record 18;
-      ContBusRel@1000000002 : Record 5054;
-      Contact@1000000003 : Record 5050;
+    [Integration(TRUE)]
+    PROCEDURE OnLookupKontaktperson@1000000002();
     BEGIN
-      //Damit die Funktion "Neues Verkaufsangebot" aus Kontakt heraus auch das Feld Kontaktperson fllt und nicht Sell-to Contact
-      IF Contact.GET(ContactNo) THEN BEGIN
-        "Kontaktnr." := Contact."No.";
-        IF Anrede.GET(Contact."Salutation Code") THEN BEGIN
-          IF (Contact."Salutation Code" = 'HERR') OR (STRPOS(LOWERCASE(Anrede.Description),'m„nnlich') <> 0) THEN BEGIN
-            IF (("Language Code" = 'DEU') OR ("Language Code" = 'DEA')
-            OR ("Language Code" = 'DES') OR ("Language Code" = '')) THEN
-              Kontaktperson := 'Herr' + ' ' + Contact.Surname
-            ELSE
-              Kontaktperson := 'Mr.' + ' ' + Contact.Surname;
-          END;
-          IF (Contact."Salutation Code" = 'FRAU') OR (STRPOS(LOWERCASE(Anrede.Description),'weiblich') <> 0) THEN BEGIN
-            IF (("Language Code" = 'DEU') OR ("Language Code" = 'DEA')
-            OR ("Language Code" = 'DES') OR ("Language Code"='')) THEN
-              Kontaktperson := 'Frau' + ' ' + Contact.Surname
-            ELSE
-              Kontaktperson := 'Ms.' + ' ' + Contact.Surname;
-          END;
-          "Sell-to Contact" := '';
-        END;
-      END;
+    END;
+
+    [Integration(TRUE)]
+    PROCEDURE OnUpdateKontaktpersonFromNewQuote@1000000003();
+    BEGIN
     END;
 
     BEGIN
@@ -4832,6 +4775,7 @@ OBJECT Table 36 Sales Header
       14      TOP1.11   28.04.21    ST    Neues Feld 50344 Tracking EMail wie AB
       15      TOP1.12   22.06.21    ST    "Nicht rechnen" Korrektur - bei EURO Belegen rechnen
       16      TOP1.13   09.02.22    ST    Neues Feld 50312 Docuware Sendedatum
+      17      TOP1.14   16.11.22    ST    Verlagerung von Kontaktperson Funktionen in die CU 50051 Event Subscriber, 2 neue Publish Event Funktionen
     }
     END.
   }
