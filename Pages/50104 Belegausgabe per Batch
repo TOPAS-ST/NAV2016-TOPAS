@@ -2,8 +2,8 @@ OBJECT Page 50104 Belegausgabe per Batch
 {
   OBJECT-PROPERTIES
   {
-    Date=07.04.22;
-    Time=15:47:11;
+    Date=20.10.22;
+    Time=15:22:38;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -219,6 +219,7 @@ OBJECT Page 50104 Belegausgabe per Batch
       sales_arch_header@1140023 : Record 5107;
       inv_header@1140003 : Record 112;
       purch_header@1140028 : Record 38;
+      purch_line@1000000047 : Record 39;
       ship_header@1000000008 : Record 110;
       ship_line@1000000022 : Record 111;
       ShippingAgent@1000000037 : Record 291;
@@ -286,6 +287,7 @@ OBJECT Page 50104 Belegausgabe per Batch
       DocuwareServiceEnable@1000000030 : Boolean;
       counter_mails@1000000040 : Integer;
       v_nr@1000000046 : Code[20];
+      purch_order_batch_ok@1000000048 : Boolean;
 
     PROCEDURE Run_Batch@1140010();
     VAR
@@ -513,13 +515,12 @@ OBJECT Page 50104 Belegausgabe per Batch
         purch_header.RESET;
         purch_header.SETFILTER("Document Type",'%1',purch_header."Document Type"::Order);
         purch_header.SETFILTER("Location Code",'<>%1','MUST');
-        purch_header.SETFILTER("Buy-from Vendor No.",'<>%1&<>%2&<>%3&<>%4','600055','880045','880072','610008');
+        //purch_header.SETFILTER("Buy-from Vendor No.",'<>%1&<>%2&<>%3&<>%4','600055','880045','880072','610008');
         purch_header.SETFILTER("Order Date",'%1',Tagesdatum);
         purch_header.SETFILTER("No.",belegnr);
         //purch_header.SETFILTER("AB via EMail",'%1',TRUE);
-        IF purch_header.FINDFIRST THEN BEGIN
+        IF purch_header.FINDFIRST THEN
           Bullzip_PDF.BullzipPDF_PurchaseOrder(purch_header,AttachmentPath,50019);
-        END;
       END;
 
 
@@ -852,25 +853,41 @@ OBJECT Page 50104 Belegausgabe per Batch
       IF Bestellung_PDF THEN BEGIN
         purch_header.RESET;
         purch_header.SETFILTER("Document Type",'%1',purch_header."Document Type"::Order);
-        purch_header.SETFILTER("Buy-from Vendor No.",'<>%1&<>%2&<>%3&<>%4','600055','880045','880072','610008');
+        //purch_header.SETFILTER("Buy-from Vendor No.",'<>%1&<>%2&<>%3&<>%4','600055','880045','880072','610008');
         purch_header.SETFILTER("Location Code",'<>%1','MUST');
         purch_header.SETFILTER("Order Date",'%1',Tagesdatum);
         purch_header.SETFILTER("No.",belegnr);
         IF purch_header.FINDFIRST THEN BEGIN
           REPEAT
-            subject := '';
-            body := '';
-            Vendor.GET(purch_header."Buy-from Vendor No.");
-            IF purch_header."Language Code" <> 'ENU' THEN BEGIN
-              body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
-                      'anbei erhalten Sie unsere Bestellung.' + FORMAT(chr);
-              subject := 'Bestellung: ';
-            END ELSE BEGIN
-              body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
-                      'attached you will find our purchase order.' + FORMAT(chr);
-              subject := 'Purchase Order: ';
+            purch_order_batch_ok := TRUE;
+            CASE purch_header."Buy-from Vendor No." OF
+            '600055', '610008' : purch_order_batch_ok := FALSE;
+            '880045', '880072' :
+              BEGIN
+                purch_order_batch_ok := FALSE;
+                purch_line.RESET;
+                purch_line.SETRANGE("Document Type",purch_header."Document Type"::Order);
+                purch_line.SETRANGE("Document No.",purch_header."No.");
+                purch_line.SETFILTER("Manufacturer Code",'%1','58');
+                IF purch_line.FINDFIRST THEN
+                  purch_order_batch_ok := TRUE;
+              END;
             END;
-            TOPAS_API.NewMail(Vendor."E-Mail",'','',subject + purch_header."No.",body,AttachmentPath,purch_header."No." + '.pdf');
+            IF purch_order_batch_ok THEN BEGIN
+              subject := '';
+              body := '';
+              Vendor.GET(purch_header."Buy-from Vendor No.");
+              IF purch_header."Language Code" <> 'ENU' THEN BEGIN
+                body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
+                        'anbei erhalten Sie unsere Bestellung.' + FORMAT(chr);
+                subject := 'Bestellung: ';
+              END ELSE BEGIN
+                body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
+                        'attached you will find our purchase order.' + FORMAT(chr);
+                subject := 'Purchase Order: ';
+              END;
+              TOPAS_API.NewMail(Vendor."E-Mail",'','',subject + purch_header."No.",body,AttachmentPath,purch_header."No." + '.pdf');
+            END;
           UNTIL purch_header.NEXT = 0
         END;
       END;
