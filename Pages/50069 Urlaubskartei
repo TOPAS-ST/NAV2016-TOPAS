@@ -1,0 +1,720 @@
+OBJECT Page 50069 Urlaubskartei
+{
+  OBJECT-PROPERTIES
+  {
+    Date=04.01.22;
+    Time=11:46:24;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    SourceTable=Table50015;
+    DataCaptionExpr='Urlaubskartei';
+    PromotedActionCategoriesML=DEU=Neu,Vorgang,Bericht,Abg„nge,Zug„nge,Excel-Listen,Brckentage,Sicherung,Urlaubstage Jahr,Ansicht w„hlen;
+    OnOpenPage=BEGIN
+                 v_jahr := FORMAT(DATE2DMY(WORKDATE,3));
+                 v_buchdatum := WORKDATE;
+                 v_bemerkung := 'Urlaub';
+
+                 hinweis[1] := '1. ) In Tabelle 13 im Feld Brckentage jeweils die entsprechenden Tage eintragen.';
+                 hinweis[2] := '2. ) Felder ausfllen.';
+                 hinweis[3] := '3. ) Button "Brckentage buchen" ausfhren.';
+
+                 abgaenge_zeigen := TRUE;
+                 zugaenge_zeigen := FALSE;
+                 alle_zeigen     := FALSE;
+               END;
+
+    ActionList=ACTIONS
+    {
+      { 1900000000;  ;ActionContainer;
+                      ActionContainerType=ActionItems }
+      { 1000000037;1 ;ActionGroup;
+                      CaptionML=DEU=Abg„nge }
+      { 1140013 ;2   ;Action    ;
+                      Name=Abgang_hinzubuchen;
+                      CaptionML=DEU=Abgang hinzubuchen;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=WIPEntries;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 IF v_ma = '' THEN
+                                   ERROR('Kein Mitarbeiter ausgew„hlt!');
+                                 IF v_jahr = '' THEN
+                                   ERROR('Kein Jahr eingetragen!');
+                                 IF v_datum_von = 0D THEN
+                                   ERROR('Kein  genommen von  eingetragen!');
+                                 IF v_datum_bis = 0D THEN
+                                   ERROR('Kein  genommen bis  eingetragen!');
+                                 IF v_buchdatum = 0D THEN
+                                   ERROR('Kein  Buchungsdatum  eingetragen!');
+                                 IF v_urlaubstage = 0 THEN
+                                   ERROR('Keine Urlaubstage eingetragen!');
+                                 IF v_datum_von > v_datum_bis THEN
+                                   ERROR('Datum genommen von ist gr”áer als Datum genommen bis !');
+
+                                 IF v_urlaubstage > 30 THEN BEGIN
+                                   IF NOT CONFIRM('M”chten Sie wirklich %1 Urlaubstage buchen?',FALSE,v_urlaubstage) THEN
+                                     EXIT;
+                                 END;
+
+                                 Urlaubskartei.INIT;
+                                 Urlaubskartei.Mitarbeiter := v_ma;
+                                 Urlaubskartei.Jahr := v_jahr;
+                                 Urlaubskartei.Art := Art :: Abgang;
+                                 Urlaubskartei.Datum := v_buchdatum;
+                                 Urlaubskartei."genommen von" := v_datum_von;
+                                 Urlaubskartei."genommen bis" := v_datum_bis;
+                                 Urlaubskartei.Urlaubstage := v_urlaubstage;
+                                 Urlaubskartei.Bemerkung := v_bemerkung;
+                                 Urlaubskartei.INSERT(TRUE);
+                                 CurrPage.UPDATE;
+
+                                 //TOPAS_API.NewGWCalEntryWithWSHScript('Urlaub','',v_ma,v_datum_von,v_datum_bis,'',v_urlaubstage);
+                                 TOPAS_API.NewHolidayApptointment('Urlaub','Urlaub','','',v_ma,'',v_datum_von,v_datum_bis,v_urlaubstage,'','');
+                               END;
+                                }
+      { 1000000038;1 ;ActionGroup;
+                      CaptionML=DEU=Zug„nge }
+      { 1140076 ;2   ;Action    ;
+                      Name=Urlaubstage_neues_KJ_anlegen;
+                      CaptionML=DEU=Urlaubstage fr neues Kalenderjahr anlegen!  (Vorherige šberprfung: Reiter 'Urlaubstage Jahr');
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=Holiday;
+                      PromotedCategory=Category5;
+                      OnAction=BEGIN
+                                 Urlaubskartei.RESET;
+                                 Urlaubskartei.SETFILTER(Urlaubskartei.Jahr,'%1',v_jahr);
+                                 Urlaubskartei.SETFILTER(Urlaubskartei.Art,'%1',Urlaubskartei.Art::Zugang);
+                                 IF Urlaubskartei.FINDFIRST THEN
+                                   ERROR ('Fr dieses Jahr sind bereits Datens„tze vorhanden');
+
+                                 Urlaubskartei.RESET;
+                                 Mitarb.RESET;
+                                 Mitarb.SETFILTER(Mitarb.Urlaubskarteitage,'<>%1',0);
+                                 IF Mitarb.FINDFIRST THEN
+                                   REPEAT
+                                     v_ma_urlaub := Mitarb.Urlaubskarteitage;
+                                     v_ma_code := Mitarb.Code;
+                                     Urlaubskartei.INIT;
+                                     Urlaubskartei.Mitarbeiter    := v_ma_code;
+                                     Urlaubskartei.Jahr           := v_jahr;
+                                     Urlaubskartei.Art            := Urlaubskartei.Art::Zugang;
+                                     Urlaubskartei.Urlaubstage    := v_ma_urlaub;
+                                     Urlaubskartei.Datum          := v_zu_dat;
+                                     Urlaubskartei."genommen von" := v_zu_dat;
+                                     Urlaubskartei."genommen bis" := v_zu_dat;
+                                     Urlaubskartei.Bemerkung      := 'Urlaubstage ' + v_jahr;
+                                     Urlaubskartei.INSERT;
+                                   UNTIL Mitarb.NEXT = 0;
+                                 CurrPage.UPDATE;
+                               END;
+                                }
+      { 1000000039;1 ;ActionGroup;
+                      CaptionML=DEU=Excel-Listen }
+      { 1140073 ;2   ;Action    ;
+                      Name=Nach_Excel_exportieren;
+                      CaptionML=DEU=Nach Excel exportieren ...;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=ExportToExcel;
+                      PromotedCategory=Category6;
+                      OnAction=BEGIN
+                                 IF v_abgr_kj = TRUE       THEN Abgrenzung_Kalenderjahr;
+                                 IF v_abgr_gj = TRUE       THEN Abgrenzung_Gesch„ftsjahr;
+                                 IF v_urlaubskartei = TRUE THEN Urlaubskarteikarte;
+                               END;
+                                }
+      { 1000000040;1 ;ActionGroup;
+                      CaptionML=DEU=Brckentage }
+      { 1140071 ;2   ;Action    ;
+                      Name=Brueckentage_buchen;
+                      CaptionML=DEU=Brckentage buchen;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=Workdays;
+                      PromotedCategory=Category7;
+                      OnAction=BEGIN
+                                 Urlaubskartei.RESET;
+                                 Urlaubskartei.SETFILTER(Urlaubskartei.Bemerkung,'%1',v_bemerkung);
+                                 Urlaubskartei.SETFILTER(Urlaubskartei.Art,'%1',Urlaubskartei.Art::Abgang);
+                                 IF Urlaubskartei.FINDFIRST THEN
+                                   ERROR ('Es sind bereits Datens„tze vorhanden mit dieser Bemerkung vorhanden');
+
+                                 Urlaubskartei.RESET;
+                                 Mitarb.RESET;
+                                 Mitarb.SETFILTER(Mitarb.Brckentage,'<>%1',0);
+                                 IF Mitarb.FINDFIRST THEN
+                                   REPEAT
+                                     v_ma_urlaub:=Mitarb.Brckentage;
+                                     v_ma_code:=Mitarb.Code;
+                                     Urlaubskartei.INIT;
+                                     Urlaubskartei.Mitarbeiter    := v_ma_code;
+                                     Urlaubskartei.Jahr           := v_jahr;
+                                     Urlaubskartei.Art            := Urlaubskartei.Art::Abgang;
+                                     Urlaubskartei.Urlaubstage    := v_ma_urlaub;
+                                     Urlaubskartei.Datum          := v_buchdatum;
+                                     Urlaubskartei."genommen von" := v_datum_von;
+                                     Urlaubskartei."genommen bis" := v_datum_bis;
+                                     Urlaubskartei.Bemerkung      := v_bemerkung;
+                                     Urlaubskartei.INSERT;
+                                   UNTIL Mitarb.NEXT = 0;
+                                 CurrPage.UPDATE;
+                               END;
+                                }
+      { 1000000041;1 ;ActionGroup;
+                      CaptionML=DEU=Sicherung }
+      { 1140019 ;2   ;Action    ;
+                      Name=Sicherung_Urlaubseintraege;
+                      CaptionML=DEU=Sicherung Urlaubseintr„ge;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=ExportToExcel;
+                      PromotedCategory=Category8;
+                      OnAction=BEGIN
+                                 CLEAR(Excel);
+                                 REPEAT
+                                 UNTIL ISCLEAR(Excel);
+
+                                 CREATE(Excel,FALSE,TRUE);                                    //erzeugt excel
+                                 Book := Excel.Workbooks.Add(-4167);                          //legt neue datei in excel an
+                                 Sheet := Excel.ActiveSheet;                                  //definiert aktives worksheet
+
+                                 Sheet.Range('A1').Value := 'Art';
+                                 Sheet.Range('B1').Value := 'Mitarbeiter';
+                                 Sheet.Range('C1').Value := 'Jahr';
+                                 Sheet.Range('D1').Value := 'Datum';
+                                 Sheet.Range('E1').Value := 'genommen von';
+                                 Sheet.Range('F1').Value := 'genommen bis';
+                                 Sheet.Range('G1').Value := 'Urlaubstage';
+                                 Sheet.Range('H1').Value := 'Bemerkung';
+
+                                 j := '2';                                                    // <- Import in excel ab Zeile 2
+
+                                 Urlaubskartei.RESET;
+                                 Urlaubskartei.SETCURRENTKEY(Mitarbeiter,"genommen von");
+                                 Urlaubskartei.SETFILTER(Urlaubskartei.Mitarbeiter,'<>%1','');
+                                 IF Urlaubskartei.FINDFIRST THEN
+                                   REPEAT
+                                     Sheet.Range('A'+j).Value := Urlaubskartei.Art;
+                                     Sheet.Range('B'+j).Value := Urlaubskartei.Mitarbeiter;
+                                     Sheet.Range('C'+j).Value := Urlaubskartei.Jahr;
+                                     Sheet.Range('D'+j).Value := Urlaubskartei.Datum;
+                                     Sheet.Range('E'+j).Value := Urlaubskartei."genommen von";
+                                     Sheet.Range('F'+j).Value := Urlaubskartei."genommen bis";
+                                     Sheet.Range('G'+j).Value := Urlaubskartei.Urlaubstage;
+                                     Sheet.Range('H'+j).Value := Urlaubskartei.Bemerkung;
+                                     j := INCSTR(j);
+                                   UNTIL Urlaubskartei.NEXT = 0;
+
+                                 IF ERASE('F:\Daten Neu\User\Joachim\Sicherung\Urlaubskartei_sich.xlsx')THEN BEGIN
+                                   Book._SaveAs('F:\Daten Neu\User\Joachim\Sicherung\Urlaubskartei_sich.xlsx');
+                                   Book.Close;
+                                   MESSAGE('Sicherung wurde erstellt!');
+                                 END ELSE BEGIN
+                                   MESSAGE('ACHTUNG FEHLER: Sicherung wurde NICHT erstellt!');
+                                 END;
+
+                                 //Excel.Visible(TRUE);
+                               END;
+                                }
+      { 1000000042;1 ;ActionGroup;
+                      CaptionML=DEU=Urlaubstage Jahr }
+      { 1140020 ;2   ;Action    ;
+                      Name=Liste_vorgemerkten_Urlaubstage_in_Verkaeufertab;
+                      CaptionML=DEU=šbernahme in Urlaubskartei;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=AdministrationSalesPurchases;
+                      PromotedCategory=Category9;
+                      OnAction=BEGIN
+                                 //Liste der Urlaubstage fr automatische šbernahme in Urlaubskartei
+
+                                 CLEAR(Excel);
+                                 REPEAT
+                                 UNTIL ISCLEAR(Excel);
+
+                                 CREATE(Excel,FALSE,TRUE);                                    //erzeugt excel
+                                 Book := Excel.Workbooks.Add(-4167);                          //legt neue datei in excel an
+                                 Sheet := Excel.ActiveSheet;                                  //definiert aktives worksheet
+
+                                 Sheet.Range('A1').Value := 'Vorgemerkte Anzahl Urlaubstage fr autom. Einspielen in Urlaubskartei aus Tab: Verk„ufercode'+
+                                 ' Feld: Urlaubskarteitage! ';
+                                 Sheet.Range('A2').Value := 'Krzel';
+                                 Sheet.Range('B2').Value := 'Anzahl';
+                                 Sheet.Range('C2').Value := 'Mitarbeiter';
+
+                                 j := '4';                                                    // <- Import in excel ab Zeile 2
+
+                                 Mitarb.RESET;
+                                 Mitarb.SETFILTER(Mitarb.Urlaubskarteitage,'<>%1',0);
+                                 IF Mitarb.FINDFIRST THEN
+                                   REPEAT
+                                     Sheet.Range('A'+j).Value := Mitarb.Code;
+                                     Sheet.Range('B'+j).Value := Mitarb.Urlaubskarteitage;
+                                     Sheet.Range('C'+j).Value := Mitarb."First name" + ' ' + Mitarb.Name;
+                                     j := INCSTR(j);
+                                   UNTIL Mitarb.NEXT=0;
+
+                                 Excel.Visible(TRUE);
+                               END;
+                                }
+      { 1000000024;1 ;ActionGroup;
+                      CaptionML=DEU=Ansichten }
+      { 1000000043;2 ;Action    ;
+                      Name=Abgaenge;
+                      CaptionML=DEU=Abg„nge;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=WIPEntries;
+                      PromotedCategory=Category10;
+                      OnAction=BEGIN
+                                 abgaenge_zeigen := TRUE;
+                                 zugaenge_zeigen := FALSE;
+                                 alle_zeigen     := FALSE;
+                               END;
+                                }
+      { 1000000044;2 ;Action    ;
+                      Name=Zugaenge;
+                      CaptionML=DEU=Zug„nge;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=WarrantyLedger;
+                      PromotedCategory=Category10;
+                      OnAction=BEGIN
+                                 abgaenge_zeigen := FALSE;
+                                 zugaenge_zeigen := TRUE;
+                                 alle_zeigen     := FALSE;
+                               END;
+                                }
+      { 1000000045;2 ;Action    ;
+                      Name=Alle;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=ExpandAll;
+                      PromotedCategory=Category10;
+                      OnAction=BEGIN
+                                 abgaenge_zeigen := FALSE;
+                                 zugaenge_zeigen := FALSE;
+                                 alle_zeigen     := TRUE;
+                               END;
+                                }
+    }
+  }
+  CONTROLS
+  {
+    { 1900000;0;Container ;
+                ContainerType=ContentArea }
+
+    { 1000000025;1;Group  ;
+                CaptionML=DEU=Abg„nge;
+                GroupType=Group }
+
+    { 1000000023;2;Group  ;
+                CaptionML=DEU=Abg„nge buchen;
+                GroupType=Group }
+
+    { 1000000022;3;Field  ;
+                Name=v_jahr;
+                CaptionML=DEU=Jahr;
+                SourceExpr=v_jahr }
+
+    { 1000000017;3;Field  ;
+                Name=v_buchdatum;
+                CaptionML=DEU=Buchungsdatum;
+                SourceExpr=v_buchdatum }
+
+    { 1000000021;3;Field  ;
+                Name=Mitarbeiter;
+                CaptionML=DEU=Mitarbeiter;
+                SourceExpr=v_ma;
+                TableRelation=Salesperson/Purchaser }
+
+    { 1000000033;2;Group  ;
+                GroupType=Group }
+
+    { 1000000020;3;Field  ;
+                Name=genommen von;
+                CaptionML=DEU=genommen von;
+                SourceExpr=v_datum_von;
+                OnValidate=BEGIN
+                             v_urlaubstage := TOPAS_API.CalcWorkdays(v_datum_von,v_datum_bis);
+                           END;
+                            }
+
+    { 1000000019;3;Field  ;
+                Name=genommen bis;
+                CaptionML=DEU=genommen bis;
+                SourceExpr=v_datum_bis;
+                OnValidate=BEGIN
+                             v_urlaubstage := TOPAS_API.CalcWorkdays(v_datum_von,v_datum_bis);
+                           END;
+                            }
+
+    { 1000000018;3;Field  ;
+                Name=Urlaubstage;
+                CaptionML=DEU=Urlaubstage;
+                SourceExpr=v_urlaubstage }
+
+    { 1000000016;3;Field  ;
+                Name=Bemerkung;
+                CaptionML=DEU=Bemerkung;
+                SourceExpr=v_bemerkung }
+
+    { 1000000015;1;Group  ;
+                CaptionML=DEU=Zug„nge }
+
+    { 1000000032;2;Group  ;
+                CaptionML=DEU=Zug„nge buchen;
+                GroupType=Group }
+
+    { 1000000013;3;Field  ;
+                Name=v_jahr_;
+                CaptionML=DEU=Jahr fr das Urlaubstage automatisch angelegt werden;
+                SourceExpr=v_jahr }
+
+    { 1000000014;3;Field  ;
+                Name=v_zu_dat;
+                CaptionML=DEU=Tag eingeben (z.B.: 01.01.2013);
+                SourceExpr=v_zu_dat }
+
+    { 1000000012;1;Group  ;
+                CaptionML=DEU=Excel-Listen }
+
+    { 1000000027;2;Group  ;
+                CaptionML=DEU=Abgrenzung nach;
+                GroupType=Group }
+
+    { 1000000007;3;Field  ;
+                Name=v_abgr_kj;
+                CaptionML=DEU=Kalenderjahr;
+                SourceExpr=v_abgr_kj }
+
+    { 1000000006;3;Field  ;
+                Name=v_abgr_gj;
+                CaptionML=DEU=Gesch„ftsjahr;
+                SourceExpr=v_abgr_gj }
+
+    { 1000000011;3;Field  ;
+                Name=v_abgr_datum;
+                CaptionML=DEU=Datum fr das die Abgrenzung vorgenommen werden soll;
+                SourceExpr=v_abgr_datum }
+
+    { 1000000026;2;Group  ;
+                CaptionML=DEU=Urlaubskartei;
+                GroupType=Group }
+
+    { 1000000010;3;Field  ;
+                Name=v_urlaubskartei;
+                CaptionML=DEU=Urlaubskarteikarte;
+                SourceExpr=v_urlaubskartei }
+
+    { 1000000008;3;Field  ;
+                Name=v_jahr__;
+                CaptionML=DEU=Jahr;
+                SourceExpr=v_jahr }
+
+    { 1000000009;3;Field  ;
+                Name=v_ma_;
+                CaptionML=DEU=Mitarbeiter;
+                SourceExpr=v_ma;
+                TableRelation=Salesperson/Purchaser }
+
+    { 1000000005;1;Group  ;
+                CaptionML=DEU=Brckentage }
+
+    { 1000000036;2;Group  ;
+                CaptionML=DEU=Eingabe;
+                GroupType=Group }
+
+    { 1000000004;3;Field  ;
+                Name=v_jahr___;
+                CaptionML=DEU=Jahr;
+                SourceExpr=v_jahr }
+
+    { 1000000003;3;Field  ;
+                Name=v_buchdatum_;
+                CaptionML=DEU=Buchungsdatum;
+                SourceExpr=v_buchdatum }
+
+    { 1000000002;3;Field  ;
+                Name=v_datum_von_;
+                CaptionML=DEU=genommen von;
+                SourceExpr=v_datum_von }
+
+    { 1000000001;3;Field  ;
+                Name=v_datum_bis_;
+                CaptionML=DEU=genommen bis;
+                SourceExpr=v_datum_bis }
+
+    { 1000000000;3;Field  ;
+                Name=v_bemerkung_;
+                CaptionML=DEU=Bemerkung;
+                SourceExpr=v_bemerkung }
+
+    { 1000000034;2;Group  ;
+                GroupType=Group }
+
+    { 1000000031;3;Group  ;
+                CaptionML=DEU=Hinweise;
+                GroupType=FixedLayout }
+
+    { 1000000035;4;Group  ;
+                GroupType=Group }
+
+    { 1000000028;5;Field  ;
+                SourceExpr=hinweis[1];
+                Enabled=FALSE;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=TRUE }
+
+    { 1000000029;5;Field  ;
+                SourceExpr=hinweis[2];
+                Enabled=FALSE;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=TRUE }
+
+    { 1000000030;5;Field  ;
+                SourceExpr=hinweis[3];
+                Enabled=FALSE;
+                Editable=FALSE;
+                Style=Strong;
+                StyleExpr=TRUE }
+
+    { 1900001;1;Group     ;
+                CaptionML=DEU=Abg„nge }
+
+    { 1140003;1;Part      ;
+                CaptionML=DEU=Abg„nge;
+                SubPageView=SORTING(Mitarbeiter,Jahr,Art,genommen von,Datum)
+                            ORDER(Ascending)
+                            WHERE(Art=FILTER(Abgang));
+                PagePartID=Page50095;
+                Visible=abgaenge_zeigen;
+                PartType=Page }
+
+    { 1900002;1;Group     ;
+                CaptionML=DEU=Zug„nge }
+
+    { 1140018;1;Part      ;
+                CaptionML=DEU=Zug„nge;
+                SubPageView=SORTING(Mitarbeiter,Jahr,Art,genommen von,Datum)
+                            ORDER(Ascending)
+                            WHERE(Art=FILTER(Zugang));
+                PagePartID=Page50095;
+                Visible=zugaenge_zeigen;
+                PartType=Page }
+
+    { 1900003;1;Group     ;
+                CaptionML=DEU=Alle }
+
+    { 1140061;1;Part      ;
+                CaptionML=DEU=Alle;
+                SubPageView=SORTING(Mitarbeiter,genommen von)
+                            ORDER(Ascending);
+                PagePartID=Page50095;
+                Visible=alle_zeigen;
+                PartType=Page }
+
+  }
+  CODE
+  {
+    VAR
+      TOPAS_API@1140024 : Codeunit 50001;
+      Excel@1140013 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00024500-0000-0000-C000-000000000046}:Unknown Automation Server.Application";
+      Book@1140012 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";
+      Range@1140011 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";
+      Sheet@1140010 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020820-0000-0000-C000-000000000046}:Unknown Automation Server.Worksheet";
+      j@1140014 : Text[30];
+      Urlaubskartei@1140006 : Record 50015;
+      Mitarb@1140018 : Record 13;
+      v_jahr@1140000 : Text[4];
+      v_ma@1140001 : Code[10];
+      v_urlaubstage@1140002 : Decimal;
+      v_buchdatum@1140005 : Date;
+      v_datum_von@1140003 : Date;
+      v_datum_bis@1140004 : Date;
+      v_abgr_kj@1140007 : Boolean;
+      v_abgr_gj@1140008 : Boolean;
+      v_urlaubskartei@1140023 : Boolean;
+      v_resturlaub@1140009 : Decimal;
+      v_abgr_urlaub@1140015 : Decimal;
+      v_art@1140016 : Text[30];
+      v_zu_dat@1140017 : Date;
+      v_ma_urlaub@1140019 : Decimal;
+      v_ma_code@1140020 : Code[10];
+      v_bemerkung@1140021 : Text[30];
+      v_abgr_datum@1140022 : Date;
+      hinweis@1000000000 : ARRAY [10] OF Text;
+      abgaenge_zeigen@1000000001 : Boolean;
+      zugaenge_zeigen@1000000002 : Boolean;
+      alle_zeigen@1000000003 : Boolean;
+
+    PROCEDURE Abgrenzung_Kalenderjahr@1140003();
+    BEGIN
+      CLEAR(Excel);
+      REPEAT
+      UNTIL ISCLEAR(Excel);
+
+      CREATE (Excel,FALSE,TRUE);                                   //erzeugt excel
+      Book := Excel.Workbooks.Add(-4167);                          //legt neue datei in excel an
+      Sheet := Excel.ActiveSheet;                                  //definiert aktives worksheet
+
+      Sheet.Range('A1').Value := 'Abgrenzung der Urlaubstage per ' + FORMAT(v_abgr_datum);
+      Sheet.Range('A2').Value := 'MA';
+      Sheet.Range('B2').Value := 'offene Urlaubstage Stichtag';
+      Sheet.PageSetup.Orientation := 2; // 1 = Hochformat,  2 = Querformat
+
+      j := '4';                                                    // <- Import in excel ab Zeile 2
+
+      Urlaubskartei.RESET;
+      Urlaubskartei.SETCURRENTKEY(Mitarbeiter,"genommen von");
+
+      Mitarb.RESET;
+      Mitarb.SETFILTER(Mitarb.Urlaubskarteitage,'<>%1',0);
+      IF Mitarb.FINDFIRST THEN
+        REPEAT
+          v_ma_code := Mitarb.Code;
+          v_abgr_urlaub := 0;
+          Urlaubskartei.SETFILTER(Urlaubskartei.Mitarbeiter,'%1',Mitarb.Code);
+          Urlaubskartei.SETFILTER(Urlaubskartei."genommen von",'<=%1',v_abgr_datum);
+          IF Urlaubskartei.FINDFIRST THEN
+            REPEAT
+              IF Urlaubskartei.Art = Urlaubskartei.Art::Zugang THEN BEGIN
+                v_abgr_urlaub := v_abgr_urlaub + Urlaubskartei.Urlaubstage;
+              END ELSE BEGIN
+                v_abgr_urlaub := v_abgr_urlaub - Urlaubskartei.Urlaubstage;
+              END;
+            UNTIL Urlaubskartei.NEXT = 0;
+          Sheet.Range('A'+j).Value := v_ma_code;
+          Sheet.Range('B'+j).Value := FORMAT(v_abgr_urlaub);
+          j := INCSTR(j);
+        UNTIL Mitarb.NEXT = 0;
+
+      Excel.Visible(TRUE);
+      //Excel.Quit;
+    END;
+
+    PROCEDURE Abgrenzung_Gesch„ftsjahr@1140000();
+    BEGIN
+      CLEAR(Excel);
+      REPEAT
+      UNTIL ISCLEAR(Excel);
+
+      CREATE (Excel,FALSE,TRUE);                                   //erzeugt excel
+      Book := Excel.Workbooks.Add(-4167);                          //legt neue datei in excel an
+      Sheet := Excel.ActiveSheet;                                  //definiert aktives worksheet
+
+      Sheet.Range('A1').Value := 'Abgrenzung der Urlaubstage per ' + FORMAT(v_abgr_datum);
+      Sheet.Range('A2').Value := 'MA';
+      Sheet.Range('B2').Value := 'offene Urlaubstage Stichtag';
+      Sheet.PageSetup.Orientation := 2; // 1 = Hochformat,  2 = Querformat
+
+      j := '4';                                                    // <- Import in excel ab Zeile 2
+
+      Urlaubskartei.RESET;
+      Urlaubskartei.SETCURRENTKEY(Mitarbeiter,"genommen von");
+
+      Mitarb.RESET;
+      Mitarb.SETFILTER(Mitarb.Urlaubskarteitage,'<>%1',0);
+      IF Mitarb.FINDFIRST THEN
+        REPEAT
+          v_ma_code:=Mitarb.Code;
+          v_abgr_urlaub:=0;
+          Urlaubskartei.SETFILTER(Urlaubskartei.Mitarbeiter,'%1',Mitarb.Code);
+          Urlaubskartei.SETFILTER(Urlaubskartei."genommen von",'<=%1',v_abgr_datum);
+          IF Urlaubskartei.FINDFIRST THEN
+          REPEAT
+            IF Urlaubskartei.Art = Urlaubskartei.Art::Zugang THEN BEGIN
+              v_abgr_urlaub := v_abgr_urlaub + Urlaubskartei.Urlaubstage;
+            END ELSE BEGIN
+              v_abgr_urlaub := v_abgr_urlaub - Urlaubskartei.Urlaubstage;
+            END;
+          UNTIL Urlaubskartei.NEXT = 0;
+          Sheet.Range('A'+j).Value := v_ma_code;
+          Sheet.Range('B'+j).Value := FORMAT(v_abgr_urlaub - (Mitarb.Urlaubskarteitage / 2));
+          j := INCSTR(j);
+        UNTIL Mitarb.NEXT=0;
+
+      Excel.Visible(TRUE);
+      //Excel.Quit;
+    END;
+
+    PROCEDURE Urlaubskarteikarte@1140015();
+    BEGIN
+      CLEAR(Excel);
+      REPEAT
+      UNTIL ISCLEAR(Excel);
+
+      CREATE (Excel,FALSE,TRUE);                                   //erzeugt excel
+      Book := Excel.Workbooks.Add(-4167);                          //legt neue datei in excel an
+      Sheet := Excel.ActiveSheet;                                  //definiert aktives worksheet
+
+      Sheet.Range('A1').Value := 'Urlaubstage per 31.12.'+v_jahr;
+      Sheet.Range('A2').Value := 'Art';
+      Sheet.Range('B2').Value := 'Buchungsdatum';
+      Sheet.Range('C2').Value := 'MA';
+      Sheet.Range('D2').Value := 'Resturlaub';
+      Sheet.Range('E2').Value := 'genommen von';
+      Sheet.Range('F2').Value := 'genommen bis';
+      Sheet.Range('G2').Value := 'Anzahl Urlaubstage';
+      Sheet.Range('H2').Value := 'offene Urlaubstage Stichtag';
+      Sheet.Range('I2').Value := 'Bemerkung';
+      Sheet.PageSetup.Orientation := 2; // 1 = Hochformat,  2 = Querformat
+
+      j := '4';                                                    // <- Import in excel ab Zeile 2
+
+      v_resturlaub := 0;
+      Urlaubskartei.RESET;
+      Urlaubskartei.SETCURRENTKEY(Mitarbeiter,"genommen von");
+      Urlaubskartei.SETFILTER(Urlaubskartei.Mitarbeiter,'%1',v_ma);
+      Urlaubskartei.SETFILTER(Urlaubskartei.Jahr,'<=%1',v_jahr);
+      //Urlaubskartei.SETFILTER(Urlaubskartei.Jahr,'%1|<%2',v_jahr,v_jahr);
+      //Urlaubskartei.SETFILTER(Urlaubskartei.Art,'%1',Urlaubskartei.Art::Abgang);
+      IF Urlaubskartei.FINDFIRST THEN BEGIN
+        v_abgr_urlaub := 0;
+        REPEAT
+          IF Urlaubskartei.Jahr < v_jahr THEN BEGIN
+            IF Urlaubskartei.Art = Urlaubskartei.Art::Zugang THEN BEGIN
+              v_resturlaub := v_resturlaub + Urlaubskartei.Urlaubstage;
+              v_abgr_urlaub := v_abgr_urlaub + Urlaubskartei.Urlaubstage;
+            END ELSE BEGIN
+              v_resturlaub := v_resturlaub - Urlaubskartei.Urlaubstage;
+              v_abgr_urlaub := v_abgr_urlaub - Urlaubskartei.Urlaubstage;
+            END;
+          END ELSE BEGIN
+            IF Urlaubskartei.Art = Urlaubskartei.Art::Zugang THEN BEGIN
+              v_abgr_urlaub := v_abgr_urlaub + Urlaubskartei.Urlaubstage;
+              v_art := 'Zugang';
+            END ELSE BEGIN
+              v_abgr_urlaub := v_abgr_urlaub - Urlaubskartei.Urlaubstage;
+              v_art := 'Abgang';
+            END;
+            Sheet.Range('A'+j).Value := v_art;
+            Sheet.Range('B'+j).Value := Urlaubskartei.Datum;
+            Sheet.Range('C'+j).Value := Urlaubskartei.Mitarbeiter;
+            Sheet.Range('D'+j).Value := FORMAT(v_resturlaub);
+            Sheet.Range('E'+j).Value := Urlaubskartei."genommen von";
+            Sheet.Range('F'+j).Value := Urlaubskartei."genommen bis";
+            Sheet.Range('G'+j).Value := FORMAT(Urlaubskartei.Urlaubstage);
+            Sheet.Range('H'+j).Value := FORMAT(v_abgr_urlaub);
+            Sheet.Range('I'+j).Value := Urlaubskartei.Bemerkung;
+            j := INCSTR(j);
+          END;
+        UNTIL Urlaubskartei.NEXT = 0;
+
+      END;
+
+      Excel.Visible(TRUE);
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
