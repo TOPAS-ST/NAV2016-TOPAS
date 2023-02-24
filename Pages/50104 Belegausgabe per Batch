@@ -2,8 +2,8 @@ OBJECT Page 50104 Belegausgabe per Batch
 {
   OBJECT-PROPERTIES
   {
-    Date=13.01.23;
-    Time=16:04:21;
+    Date=24.02.23;
+    Time=12:38:57;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -35,6 +35,8 @@ OBJECT Page 50104 Belegausgabe per Batch
              END ELSE BEGIN
                Tagesdatum := WORKDATE - 1;
              END;
+
+             chr := 10;
            END;
 
     ActionList=ACTIONS
@@ -61,6 +63,7 @@ OBJECT Page 50104 Belegausgabe per Batch
                                  IF (Servicevertr„ge_PDF) THEN selected += 1;
                                  IF (Certificates_PDF) THEN selected += 1;
                                  IF (Tracking_PDF) THEN selected += 1;
+                                 IF (Mahnungslauf_PDF_aktion) THEN selected += 1;
 
                                  IF selected = 0 THEN MESSAGE(Text001);
                                  IF selected > 1 THEN ERROR(Text000);
@@ -168,6 +171,14 @@ OBJECT Page 50104 Belegausgabe per Batch
                 SourceExpr=OriginalRE_Lauf;
                 Enabled=Rechnung_PDF }
 
+    { 1000000021;2;Group  ;
+                CaptionML=DEU=Mahnungen;
+                GroupType=Group }
+
+    { 1000000022;3;Field  ;
+                CaptionML=DEU=Mahnungen als PDF;
+                SourceExpr=Mahnungslauf_PDF_aktion }
+
     { 1000000017;2;Group  ;
                 CaptionML=DEU=Andere;
                 GroupType=Group }
@@ -243,6 +254,7 @@ OBJECT Page 50104 Belegausgabe per Batch
       Servicevertr„ge_PDF@1140025 : Boolean;
       Certificates_PDF@1000000011 : Boolean;
       Tracking_PDF@1000000032 : Boolean;
+      Mahnungslauf_PDF_aktion@1000000050 : Boolean;
       TOPAS_API@1140002 : Codeunit 50001;
       Bullzip_PDF@1140016 : Codeunit 50005;
       DocuWare@1000000029 : Codeunit 50016;
@@ -533,6 +545,10 @@ OBJECT Page 50104 Belegausgabe per Batch
           Bullzip_PDF.BullzipPDF_ServiceContract(ship_header,AttachmentPath,50178);
       END;
 
+      //Registriere Mahnungen als PDF
+      IF Mahnungslauf_PDF_aktion THEN BEGIN
+        Mahnungslauf_PDF_MAIL;
+      END;
 
 
       //COMMIT;
@@ -595,8 +611,7 @@ OBJECT Page 50104 Belegausgabe per Batch
                   body := body + FORMAT(chr) + CHAMPS_Agreement_enu;
                 END;
 
-              TOPAS_API.NewMail(sales_header."AB EMail-Adresse",'','',subject+
-              sales_header."External Document No.",body,AttachmentPath,belege);
+              TOPAS_API.NewMail(sales_header."AB EMail-Adresse",'','',subject+sales_header."External Document No.",body,AttachmentPath,belege);
               counter_mails += 1;
               IF counter_mails = 25 THEN BEGIN
                 SLEEP(1000);
@@ -1154,6 +1169,72 @@ OBJECT Page 50104 Belegausgabe per Batch
         UNTIL SalesLine.NEXT = 0;
       END;
       EXIT(FALSE);
+    END;
+
+    LOCAL PROCEDURE Mahnungslauf_PDF_MAIL@1000000005();
+    VAR
+      ReminderHeader@1000000000 : Record 297;
+      ReminderLine@1000000001 : Record 298;
+    BEGIN
+      //IF USERID <> 'W2K\STHEUERKAUF' THEN ERROR('BAUSTELLE - kommen Sie sp„ter wieder!');
+      counter_mails := 0;
+      ReminderHeader.RESET;
+      ReminderHeader.SETFILTER("Posting Date",'%1',Tagesdatum);
+      ReminderHeader.SETFILTER("No.",belegnr);
+      IF ReminderHeader.FINDFIRST THEN BEGIN
+        //ReportID 50079
+        Bullzip_PDF.BullzipPDF_Reminders(ReminderHeader,AttachmentPath,50079);
+        ReminderHeader.FINDFIRST;
+
+        REPEAT
+          subject := '';
+          body := '';
+          email_addr := '';
+          attach_files := '';
+          shipments := 0;
+
+          Customer.GET(ReminderHeader."Customer No.");
+          IF (Customer."Rech via EMail" = TRUE) THEN BEGIN
+            IF ReminderHeader."Language Code" <> 'ENU' THEN BEGIN
+              subject := 'šberf„llige Rechnung ' + ReminderHeader."Your Reference";
+              body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
+                      '%1' + FORMAT(chr);
+              body := STRSUBSTNO(body,'anbei erhalten Sie Ihre %1. Mahnung.' + FORMAT(chr) + 'Bitte teilen Sie uns mit, wann wir mit dem Zahlungseingang rechnen k”nnen.');
+            END ELSE BEGIN
+              subject := 'Overdue Bill ' + ReminderHeader."Your Reference";
+              body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
+                      '%1' + FORMAT(chr);
+              IF (Customer."Rech via EMail" = TRUE) THEN
+                body := STRSUBSTNO(body,'attached you will find your %1. reminder.' + FORMAT(chr) + 'Please let us know, when we can expect receipt of payment.')
+            END;
+            body := STRSUBSTNO(body,ReminderHeader."Reminder Level");
+          END;
+
+          //Email-Adresse wird ausfindig gemacht, wird keine gefunden, wird dennoch eine E-Mail generiert
+          ReminderLine.RESET;
+          ReminderLine.SETRANGE("Document No.",ReminderHeader."No.");
+          IF ReminderLine.FINDFIRST THEN BEGIN
+            inv_header.RESET;
+            inv_header.SETRANGE("No.",ReminderLine."Document No.");
+            IF inv_header.FINDFIRST THEN
+              email_addr := inv_header."Rech EMail-Adresse";
+          END;
+          IF email_addr = '' THEN BEGIN
+            IF Customer.GET(ReminderHeader."Customer No.") THEN
+              email_addr := Customer."Rech EMail-Adresse";
+          END;
+          attach_files := ReminderHeader."No." + '.pdf';
+
+          TOPAS_API.NewMail(email_addr,'','',subject,body,AttachmentPath,attach_files);
+          counter_mails += 1;
+          IF counter_mails = 20 THEN BEGIN
+            SLEEP(1000);
+            IF CONFIRM(Warning_MailProcess_Cue,TRUE,counter_mails) THEN BEGIN END;
+            counter_mails := 0;
+          END;
+
+        UNTIL ReminderHeader.NEXT = 0;
+      END;
     END;
 
     BEGIN
