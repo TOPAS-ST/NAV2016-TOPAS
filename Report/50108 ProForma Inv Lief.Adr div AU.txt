@@ -2,15 +2,15 @@ OBJECT Report 50108 ProForma Inv Lief.Adr div AU
 {
   OBJECT-PROPERTIES
   {
-    Date=05.06.19;
-    Time=10:18:08;
+    Date=18.10.21;
+    Time=09:36:00;
     Modified=Yes;
-    Version List=FORNAV3.1.0.1460/1460;
+    Version List=FORNAV6.1.0.2145/2145;
   }
   PROPERTIES
   {
     OnInitReport=BEGIN
-                   ;ReportForNav:= ReportForNav.Report(CurrReport.OBJECTID,CurrReport.LANGUAGE,SERIALNUMBER,USERID,COMPANYNAME);ReportForNav.Init;
+                   {;ReportForNav};ReportsForNavInit();
                  END;
 
     OnPreReport=BEGIN
@@ -262,11 +262,22 @@ OBJECT Report 50108 ProForma Inv Lief.Adr div AU
       sprachcode@1140023 : Decimal;
       DebAdr@1140026 : ARRAY [8] OF Text[50];
       LieferAnAdr@1140027 : ARRAY [8] OF Text[50];
-      ReportForNav@5000 : DotNet "'ForNav.Reports.3.1.0.1460, Version=3.1.0.1460, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
-      ReportForNavClient@5003 : DotNet "'ForNav.Reports.3.1.0.1460, Version=3.1.0.1460, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
+      ReportForNav@5000 : DotNet "'ForNav.Reports.6.1.0.2145, Version=6.1.0.2145, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" WITHEVENTS;
+      ReportForNavClient@5003 : DotNet "'ForNav.Reports.6.1.0.2145, Version=6.1.0.2145, Culture=neutral, PublicKeyToken=5284c1af2984feb0'.ForNav.Report" RUNONCLIENT;
       ReportForNavDialog@5001 : Dialog;
       ReportForNavOpenDesigner@5002 : Boolean;
       ReportForNavAllowDesign@5004 : Boolean INDATASET;
+
+    LOCAL PROCEDURE ReportsForNavInit@5005();
+    VAR
+      fn@1000000000 : Text;
+    BEGIN
+      fn := APPLICATIONPATH() + 'Add-ins\ReportsForNAV_6_1_0_2145\ForNav.Reports.6.1.0.2145.dll';
+      IF NOT FILE.EXISTS(APPLICATIONPATH + 'Add-ins\ReportsForNAV_6_1_0_2145\ForNav.Reports.6.1.0.2145.dll') THEN
+        ERROR('Please install the ForNAV DLL version 6.1.0.2145 in your service tier Add-ins folder under the file name "%1"', fn);
+      ReportForNav := ReportForNav.Report(CurrReport.OBJECTID(), CurrReport.LANGUAGE() ,SERIALNUMBER(), USERID(), COMPANYNAME());
+      ReportForNav.Init();
+    END;
 
     LOCAL PROCEDURE OnPreSectionSalesHeader_Header1@5010(VAR "Sales Header"@1000000000 : Record 36);
     BEGIN
@@ -305,7 +316,6 @@ OBJECT Report 50108 ProForma Inv Lief.Adr div AU
       ReportLayoutSelection@1000 : Record 9651;
       CustomReportLayout@1001 : Record 9650;
       CustomLayoutID@1002 : Variant;
-      InStream@1004 : InStream;
       EmptyLayout@1003 : Text;
     BEGIN
       // This code is created automatically every time Reports ForNAV saves the report.
@@ -321,13 +331,9 @@ OBJECT Report 50108 ProForma Inv Lief.Adr div AU
 
       IF (FORMAT(CustomLayoutID) <> EmptyLayout) AND CustomReportLayout.GET(CustomLayoutID) THEN BEGIN
         CustomReportLayout.TESTFIELD(Type,CustomReportLayout.Type::RDLC);
-        CustomReportLayout.CALCFIELDS(Layout);
-        CustomReportLayout.Layout.CREATEINSTREAM(InStream,TEXTENCODING::UTF8);
         ReportForNav.IsCustomLayout := TRUE;
-      END ELSE
-        REPORT.RDLCLAYOUT(ReportForNav.ReportID,InStream);
+      END;
 
-      ReportForNav.LoadRdlc(InStream);
       IF ReportForNav.IsWindowsClient THEN BEGIN
         ReportForNav.CheckClientAddIn();
         ReportForNavClient := ReportForNavClient.Report(ReportForNav.Definition);
@@ -344,21 +350,21 @@ OBJECT Report 50108 ProForma Inv Lief.Adr div AU
       OutStream@1006 : OutStream;
       Bstr@1005 : BigText;
       EmptyLayout@1001 : Text;
+      ReportID@1008 : Integer;
     BEGIN
       // This code is created automatically every time Reports ForNAV saves the report.
       // Do not modify this code.
       EmptyLayout := FORMAT(ReportLayoutSelection."Custom Report Layout ID");
       LayoutId := ReportLayoutSelection."Custom Report Layout ID";
-      IF ReportLayoutSelection.HasCustomLayout(ReportForNav.ReportID) = 1 THEN BEGIN
+      EVALUATE(ReportID, FORMAT(ReportForNav.ReportID));
+      IF ReportLayoutSelection.HasCustomLayout(ReportID) = 1 THEN BEGIN
         IF FORMAT(ReportLayoutSelection.GetTempLayoutSelected) <> EmptyLayout THEN BEGIN
           LayoutId := ReportLayoutSelection.GetTempLayoutSelected;
         END ELSE BEGIN
-          IF ReportLayoutSelection.GET(ReportForNav.ReportID, COMPANYNAME) THEN BEGIN
+          IF ReportLayoutSelection.GET(ReportID, COMPANYNAME) THEN BEGIN
           LayoutId := ReportLayoutSelection."Custom Report Layout ID";
           END;
         END;
-      END ELSE BEGIN
-        IF CONFIRM('Default custom layout not found. Create one?') THEN;
       END;
       IF FORMAT(LayoutId) <> EmptyLayout THEN BEGIN
         TempBlob.Blob.CREATEOUTSTREAM(OutStream);
@@ -389,7 +395,6 @@ OBJECT Report 50108 ProForma Inv Lief.Adr div AU
       PdfFile.CREATEOUTSTREAM(OutStream);
       REPORT.SAVEAS(ReportForNav.ReportID, Parameters, REPORTFORMAT::Pdf, OutStream);
       PdfFile.CREATEINSTREAM(InStream);
-      ReportForNavClient.ShowDesigner;
       IF ReportForNav.IsValidPdf(PdfFile.NAME) THEN DOWNLOADFROMSTREAM(InStream, '', '', '', FileName);
       PdfFile.CLOSE;
     END;
@@ -410,41 +415,6 @@ OBJECT Report 50108 ProForma Inv Lief.Adr div AU
 
     EVENT ReportForNav@5000::OnPostSection@5013(DataItemId@1000000000 : Text;SectionId@1000000001 : Text);
     BEGIN
-    END;
-
-    EVENT ReportForNav@5000::OnClientOperation@5014(Args@1000 : DotNet "'mscorlib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Array");
-    VAR
-      op@1001 : Text;
-      FileMgmt@1002 : Codeunit 419;
-      Process@1006 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.Process" RUNONCLIENT;
-      PathObj@1005 : DotNet "'mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.IO.Path" RUNONCLIENT;
-      FileVersionInfo@1003 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.FileVersionInfo" RUNONCLIENT;
-      DirectoryHelper@1004 : DotNet "'mscorlib'.System.IO.Directory" RUNONCLIENT;
-    BEGIN
-      // This code is created automatically every time Reports ForNAV saves the report.
-      // Do not modify this code.
-      op := Args.GetValue(0);
-      CASE op OF
-        'TempPath': ReportForNav.Result := PathObj.GetTempPath();
-        'FileExists': ReportForNav.Result := FileMgmt.ClientFileExists(Args.GetValue(1));
-        'DirectoryExists': ReportForNav.Result := FileMgmt.ClientDirectoryExists(Args.GetValue(1));
-        'ProcessLocation': ReportForNav.Result := Process.GetCurrentProcess().MainModule.FileName;
-        'FileVersion': ReportForNav.Result := FileVersionInfo.GetVersionInfo(Args.GetValue(1)).FileVersion;
-        'DeleteFile': FileMgmt.DeleteClientFile(Args.GetValue(1));
-        'DeleteDirectory': IF STRLEN(Args.GetValue(1)) > 20 THEN
-          IF FileMgmt.ClientDirectoryExists(Args.GetValue(1)) THEN
-            DirectoryHelper.Delete(FORMAT(Args.GetValue(1)), TRUE);
-      END;
-    END;
-
-    EVENT ReportForNav@5000::OnCheckForNavClientVersion@5015();
-    BEGIN
-      // This code is created automatically every time Reports ForNAV saves the report.
-      // Do not modify this code.
-      ReportForNavClient := ReportForNavClient.Report();
-      IF ReportForNav.MyFileVersion <> ReportForNavClient.MyFileVersion THEN
-        ERROR('You have version %1 of the Reports ForNAV assembly here:\\%2\\Please close your NAV client and update it to version %3.',
-              ReportForNavClient.MyFileVersion, ReportForNavClient.MyFileName, ReportForNav.MyFileVersion);
     END;
 
     EVENT ReportForNav@5000::OnSelectPrinter@5006();
@@ -512,10 +482,7 @@ OBJECT Report 50108 ProForma Inv Lief.Adr div AU
       // Do not modify this code.
       CurrReport.LANGUAGE := SYSTEM.GLOBALLANGUAGE;
       DOWNLOADFROMSTREAM(InStream, '', '<TEMP>', '', ClientFileName);
-      WHILE ReportForNavClient.PrintPreviewDialog(ClientFileName,ReportForNav.PrinterSettings.PrinterName,Preview) DO BEGIN
-        ReportForNav.HandlePrintPreviewRequest(ReportForNavClient.GetPrintPreviewRequest());
-        SLEEP(100);
-      END;
+      ReportForNavClient.PrintPreviewDialog(ClientFileName,ReportForNav.PrinterSettings.PrinterName,Preview);
     END;
 
     BEGIN
@@ -525,7 +492,106 @@ OBJECT Report 50108 ProForma Inv Lief.Adr div AU
   {
     <?xml version="1.0" encoding="utf-8"?>
 <Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
-  <Description>qIwAANVdW3PkNnZ+T1X+A6u3KuuNJQ4BErzYo92SRpJHsUZSdJmZ3dTWFNUNqRlTpEyyNaN5yF/Ji39DXrJVeZgflL8QAATYJPuQDXBcTmKXreYNlw8H53wHl4P//s//evmnTw+p9USLMsmzvRmynZlFs3m+SLL7vdmqutsNZ3/649//3cv3VRFf0se8qMrT+DlfVVe0SOI0+UwLa/3zbZOQZ2Ob8NQu6R27nFmv8qwq8vT6+ZHuzQ7p09Gnx4KWpd1K2L45aV3uWANvPfHEdyyVl8pqx3q1SqtVQfcyumKvpzvWxeo2TeY/0ufr/Cea7UW3BMX41r/z8O3dLZnPrLP4gZVGJnycF2fx08y6iO/pa5rcL6u9GY4Cp77zLllUS3YDOeLGIy1+TLLF3mzfm1lv4uI+yUpWz5AVA4n/2P88UX2e9k2WsMSuaVYty/O7/TdJmiYPtKLFzOpANrMO4yq+ylfFnJXrdwy7XZbG4WPCMiaeSk2WtPnStVm72cjz2bvHDGZWKN4gO1bwWM2s89t/pfPqLN+bEQc5IUsuKR/T+Lmu+0WRs9QeYuske7JOE3pn7y8Ka5E8Wfs3M9bwlvXyIM4WpfjJLk4q+oDqRsW9Rq1LxSvAX+JfKYCv4pSWr2m84BVe10a9eh3fpvRtQj+yN88vr0/OfvjmMJ+vHhhcFk965yy3/9B7naHJ/7j+zDpZCAG7pD8fJynDlGfExPfN6d5sZp3SJ5ruzZyZrECvPv06uWCd6qK3a1TfQe3aXBRJVp1nR6wzPXOB2ZtVxYrOrNdxeZ5dFPSKtYJorvq2vOwlV8vdMZcG5NrurFVMVlBZtLJzt1sBD6zARTLnPeMg/6Qq0L+PkOc4mJXgNJ/HvGDHaR4zSUI4jGwSRSFh4kRsL3BC0q71Fev2rLgEkx2Eg5l1TT+xr2S6H46TgrXiIq5oJl4VWuUvef5w8sAQktJOq+OEpgspj9CXL6AK47rCBKzwaXxLU1VXcYGbsmLWN11ns6Zu6NiO4yCmW0gQbXalHausnpnkHeTpog3Bq/iRJ8Pl7fDoZu+qoita7J4V9nesqN8fnd3sXe+/t5gMf6fgaa579WI1u+JZMFHKi6R6rmvIRPympHVp7uK0pAAgLwQiEExunUiwHabWLSENXtCDrEYHEpIWdL4TiZ+T8bu5quzdk0O7RlDg93b/mtXi3m5j2LmnhWOoi6ML4ejViUQTcAxNRM93BX6OPx3Bd0dHR7scmxaErXstEHt3tWBEji6OHoQjkan0KUGNGi9WS0vJS38NIMYcHdf3R+WRBIEdRZHvTpHH13nxeT9N7pmqPqV3lcLqVf7wGGfPTO4YYGd5fVu8xw3V3uxNsliktP5iU6/1v9aDGm9Cza57GY+2AYHawJfJw9YOboPga9pggkyPtwIX3K9ohvXneu3gfXU7+FA7BDJ52IbB7YDgdhjF38icjQP/FaCbAA7YPEPAAwjwUCYPW0MY8KgBPGKqJMARhDZ27dBl/2C0Y7nsNcGTfH1YeY7Wt9bvd6zfsz/y5kVeVnfxfDkN7vEk9ZohNIY9hGCPZHIaxrM2mw3kjHIix2OoMg3ChDkKOSnpYc/dLR8LyANAwQwYSm4Uj+NPtvU9N5n8l2oScVcPIKxtCyOQszsyGdgYjrIKTHogId8TMAUMpcjHIEy4hskIpItlntEapWuaNijVtzVhAuwYDBNyQJyUx2lisNwGH8Scdjtk0qOkCMImFNAwP8f7yl67v1jwIQvrV+y1TZJ6aHvGvRYhEHbpYmET+9Tys1yPCSMJ3WDH29SYATdeTGiJv5bL0EBjCvmbhnH9qR6WvjmWoBuGpB+GTUyPNwXLlirUxZJpvGlI8g/1cDS3JAh0w5D0wzBsS2AcScuEE64BgjF74jqeHTFW601Ec//ybavrPlTlPS2S+bKaBvFgalq4u4457qDbhqTf5pr4bWEf91Abd6YRcOAE2AD3t3lRVmKMbpJnpr7WwxWb4wq6Ykj6Yq6WaevcFDTAX+sI3wUHF9rUFDkM12Dc/NeYHtLb/UURQoCpR3pAAa7TAD6gi4Skj+Rq2SAAH9cEnyhi8ICDBUMIBcMIBZoIaY/vIdCnQdKpcbUsC4AQNkKIKUSfdWBigJE/jJGviZH22B0CHRAkPRBXy2oAGCEjjFyjTkaG4SF68HjabggC/RAs/RBPS7kD8DhG8DimncwbRsjTREjbA8GgB4LV9MpENU0iE4TCwLyTucMYuZoYaatqDLoLWLoL3kRVTUIjjDyjToaH4cGa8OjPw4AeAJYegDdRT5PACB5k2snQMEJIEyFtLY1Bbo8lt/cmTLIQv4MOEw53Ex/P9hg8nhsxIHxku2IooINPqD3Jcknny2yV3Zex8M3pd2Ka5YDP7Gf3lvTYm4mWjftagBJtvY5B0o4laScT9TpZO04h0QDVJ4zB9xBFDiRyfKUBLfazIY7Zea6Hlb6GB4k4lkScTNXwniFWyBeekGsMGEg5O8/1ANNX9yAzx5KZk6nq3jUDbHMSYytSIPHsPNdDSl/zgwwdS4ZOpmp+bIiU65t3Q5CFdp7rYaVvA0CmjiVTJxOZOkFmWHm1x+cErilgICntPNdb3aGv40Hu7kru7k/V8Y4hYASZCxdITjvP9bDS1vEuyOJdyeL9iTrei8ywcgPHdvhwo28KGEjGOs/1ANPW8S5I6V1J6f2JOr619EVPuFDNynzj3gjy+85zPcC0Vb0Lr7aSJN+HVb3mOjxgcDSKnB0LE8bwgdV3LnJ2MF+XWsNycnV+mt/n3TV0m+iAr4FL7VxJzP1wwuqnNTH38PDqJ+ayEOzb/Y4yPDXJOfjJwf7Zd9bhketg4oSOwzAIAuYK+FELjLF39GQi0pYJkIW7koXzlcTG6BFd9LzIFL2rdyfH17sHJ69shs/l0dXh0fExJg1wQ4+1MOPzJZqYgWzclWw8gBcZj2PmaWPmm2J2dHO5u2PdXB3uWqtsYf3TxZ93f2Rf542jN/yCHm6uNm4gKXclKQ/gdcDjuLnauLkgbpqe86v84YEWn2/j7Cdr/4cd63WcZfkTXxreTOfAz/UQJNoIgmTdlWSd22xjBLEWgiFjBuHW0asBXedj1gkZY+Wk1WV6DJFNXQe+o4deoI0eSN9dSd+DKZYCaaNHTNHrKLOjm+vDI/z6/fv3oK5rPdbDTN8+gAzekww+nGIfHB3MGGLb5/0ATSdUGNdlmzqu/0hvBba2VfBA/u5J/h5OsApupIcUZnZ0+tLrQ7qqyvmSWgdD2m3kDT0MtS2EB1J6T1L6ELYQWym9u5Y4hIjtw6Qe+b5ri3n8kGy4i3qLT1/RrFrD9jEemNZXr23yW/aJHqLaFsMDOb8nOX8IW4ytiOJIC1EvRP9vENW2Ih6810L6G+EEK4JbLqcDLZYS2/Ow50P6ULOXX+SlLYb7eWEb48t/68GjbTA80KHwpEMRTTAYuLU+jwmSBwsbh8jdWEwbjhqMd0lhpcLhzqwlU3K03ndCrXKZPFpVvoifm20nnZtamEX6pgN0KDzpUEQTTAdaixRhbjjjIN4GYiRkAhU4ER+qIHytXhRtjGH4o/g1OzHVzJLA7+Ly/Pj88s2+dXL29vzk1dFghx7sxnK5bj8dPdQBY2O47MkD/RRP+inRBD8FtbeiwF3cw8R2eVO4RGyqHcL8R8ZiaJatuMMh4H61Kqv8oeWLNNfgwIgnnYVIYxfiRjXaqxLBWvhErxZMUa8eRPHZL9oQDfEbLrZk6dEEHwe1Nn0yizSgQBiXqo3VV+nZ/aJKfqJp3RHiouK71BqBVtd6gqxvkUCOTiRHj2CLtNXGo9ZqdNbaZExmQ9HaY5p3YB0kn2T+UOVKZs/yD52N10arIsfT0sNc28wRkO0TpDYcwnZuO+hrW4dcGPSmi20HXXqKaxTUHnXe0T44H8Ah+7HX9bbgONqGj4B8n2CVEO4idbWMH2mNEzx1JF5YO00eRwpBesqtox6gnpY6yAtW7ZLhmaZQZXnyqmy8e/BrFZBhXsXZfTpcVZCIE1clN8WqrP0ajMIhvRa6vk2EXvO+Qq+9iwsmCHGR3GVFTSSv+cWdJfTbNAPfSkFTsLTdHgKSdOKphCZYEafl8wSw9cOhy8d6BNTTBxvvac1JJR3ltHMqwuJbTWy1zQ2BN0mrXdLOBA/ICbWwjYQv6WyoPX1s39Dsvob151WcVaz6U6FtvteEV9+ygM4AURug0QQPyllPaCEy4GEyZ8D/atG9KcrHgq8w262pab5iBX228rupKLdS0MMZ6dsekOUTtcEZTfC6HG8rzl6ApTb+GpZ5lGSfafpY0KQUQPNgPTyay5xOBbqVgibQ2oN6BJy0IGpjM5pg+ZwuNwU9Eez9CnT+B1rGD9Ua6Ou8itPJ9k58rAmvvqkDZzWI2sCMppg63JVj0F3iGkNIcujZZDLAaZwtBLLnRXKfZFOhlV9rYqtv6kDPyndUQuEQPx3g/11+ikJG8RH2B0azMBaSO4md8n3rJuzU77ozL18AcZvkdoz2nVZQI4ThKh/ki+d2GCp+3eHcMtwV0gs7JT9vgk55oR14fOCqW36NsFNoYAv7Vh8tWmv5iAwOJ4QBEhu4RTALQzft6BMT7SxOlf/FXNm2L/vnfFVccoZIszkYkWpqUnrdx2BrPLhcUiUDr2gb93j81gIiYiMYekIEl9mCen+yellQa391VxXxfcn6CsszqxfIz+WAglUooJppReiRJoj6S5nBSWuVzIRRvLAFopjyGhpPNwMwXpXWKisZDA8KR4sHcxIYMjED4Ovd1UROf70bOJCokpm4stlBLerhM3cPRM8lge1znhJo9v7+yNdmp54ynoWw9tpmb7sBYLffrNIqeZWnq4dM5RB1U9wU2o7AurCVOM7zqhuusL7T2Ut9EM9/YnnnBaNSRZyVj2JMgoe2XNTBP52d+t86uGEaz+lJdpBXrIs2kQ2V3cBMR3gBn1rpmBeVq7k14bvMYS4Q6IxVbeECrk0mMgG+7duECYzq7Klbvt1WWAjHH5wvJgHvLmSDTkZac8WXvGlVf7qlXAENcEf55mYfk1/p9S39feKjKnzqNnG8VuNiaGRgCj6IhC0kG169Hqi/2QQ80t9UPqrXB/aUj88we113EkQSh5gP7pkh2bORwgP8bR1J/X3oGhZgE/8u9vAOmCHl7rWR+pHSx3dJtTwTNZQFBXW4dBjckfi1TUha7pQACt6boOA9rSkd1UNxV7P7IuqgQ9zNaXim3vtBkIVAzZdxwbrSnqPVM2VIkNeMjT6KOLWG3bT/vZ5wecBom2mMkTF74w1OAPmwqAFGFdfhWzxOhTahV8FdBq2rxJcDf5rw8E1XVUGr+VLJ2j43pvXCFpF5XZrm9XHj7HUnkeoMJtgQb8IYmh90cRoPV0dqAUakv0RkfIXI8Ze/8dDc3LMq7778bckHh/l1SUvlJLBf9zStaCa9BytO03v6QBkWmfUDLefLL7/cVeUt5RyPfU6zWoEuqUU/0fmKZ2fld1bdaBbjhFa5EgHErSq3uIshguTExcJisv/A3sgW1jzPFon6smS0evok1q9dDs2ep79mfMxaehNGB30fFJwg2IyoygQnqJ82NvNNMi/yMr+rrCtG4UUg/rttUnSUsFavVg/lU17c0mWcVt9ZJxkTiZLBx0XmI01KJi0fEyZscRGv7qxlku2w32UppI/PXjIpe/jyy5d/l2JWbJcz6zYprc+s4f4SL1MuuElmPeVpyr59/eU/WLuLlCxVOus2pcltJWdHzy/2r6ySlTVlLm4Vs0+rpEopl4X7PF9wX7lKUiuprGVcslfmNHmiC+sxfhZB5Nn7d6s0nS6Wv1r+L3RpgdenBWpGcCB8xGDY/VoNTgi631yd5fYOT8UaCcMf1GH4MVk/Z5/8xCSulcre8cnR6eE3dTK64foFAP2Q/Q0qDZ+A50mh8dKO76c7SkpaPIgw6goolgHas1nUiTubo1bkX2dw5SZz+7AdbLKg4RVEHU+Pz1yJiasP/1w9V/mVmC43c/ugJABMBlSxTsiLdS/p850GbMV5pka+CFtRf10bD2CNUKCBdY3sSs7mQpA1zwxw0hg3XuPU5zsNTorzTI16EQYdoXQHhu8ZYyeaOH1mNuExLyGY1CMDlDRGFdYo9Y17g5Iy8FNDXYStGVaXMCgGhhdch3VrPZjWvayt5Uc64/o1A/g0RhHW8PVXsjTwKdM1Nf5F0Fos5LisxzH4tFw/EDmOgRr+HYJt4x0DzDSGCNaY9ZenNJipFSpT42A4LYckCGrMoHEY7PCzlLSAa9T5OHbQa/rw6YTDWMPXX3XSwKcWnkyNiuGsF2eTcEj9u6F2d90mcBOFTScgxhqt/tKRwZkJ8WhzdoJHZZgw7uDD/jTEzTrxn7fOZYOjXBvUzW9Rt5Cvx5pO3aaGwQjWK/I8n/DO6AEKjB8tYOGgOzmhNg2W8yIRbty4HA28CMpEp40m7l0LAk3VjKONiYj/De3sa6xWWYv1Vto0EBBjO2yuiXbWxe63UdAaay/XCG6lVANBMbYjiE0olS6Cvwmr0omNsUZwK6saCJGxFUGfmPiT2xH8P+tS6sTUWOO9ycjMjCSPvKEz6Pzyxeagxss6pdGRDh7fQgy1gMHtQLDr8yT5UZp7s3/4eZVX368XqNbX/1j/Yd/YfEyLf1bfYXll83S1oHIQcXh4tG1NAnkqIwZDFa494XbB1ndNclSKOFADUGA0ycanbGfY3DTJr1Fbocwv0tUPGq1gVpSm/0d1UfhiEA1bCZRDDe5NKYXyU3jwClEKcBsUaJk2C/K18qdYP48zIQoDRgXbBsdEJNQSbB6cQmQ+EJEZJGjtUrRe0SwB11B9xdHXZn19A+iajp7hYxbiZFVH/gNWBz7os1WZ1gNbvqxVqY4+4bEqRFnA3g3GMRsqQ92y7BOLf2PQzh11E5IeOGDfax3p0y2QfHCS3eX/gv6qn73SPqHfyx7sdN3Dg4ZLgP/aP29I3Pb+ym6wu/37xKDASkeFQa/AYLTR7sk+Q8X1DfJvtFPYyx80nu3TcIZyDwxyb9RR1MsdNIsb50sOFSE0KIJSSpHTKwLYk7pn/A3lHxnk35z8hnr5g3Zz4yCXwU7jGJRBnbKGItwtBBrrtfuXb0fyN+m16vQyFPVUKhrttu2DgwbLgU3KodRp5PXKAZrJzZM2B0vhmpRC6dCop0MRaGA2jkIcLIRnUgilSaO+Jh2DYr0eaLAQJspRHamEIkVehyPwh32KwG8aaQJ10BCKpC4cOTAiAHMzUX3q2B4USd3nDefmg7mZqHl1BI6IgcpzGz1SBcrNqN0ilZtUaiPn23hgbiaiqs5mwY7UXiMnDrlgbia9U51zgh2pq0ZOgMJgbiYaSZ0Ygh2pkUCr0BxPAeRmoofVARzYaTTP1qMHOnm2nhh1PXWuBXaUttkW3jkYztikF6rzH7Cj+Ne2MMn+cMYmHVIdpoAdRby2RQAnwxmb9E11KAF2FOcCFU83jPtQxkbdVKkgpJjWtoD67nDGRj1WaSOkKNa28yHwcMYmnddtDq9VtGrbcQtoOGOTfqyiuGOk+BSoNvjy+nZ2H7/8YpCH0kxIaiYM6ootEXc2xxbEY6t+Xt+RHilPabfKLZWU4XhMJ/g4RmqM0DgmTddv5gHDrr/ZUvJmhRdPpL614+ygPxiUW+lHpMYNQTU1eU+nQTOohK32urX60bfMFf52y+c8Y6vJ2bj9lLpGihCCWnO7lE2RHaWxkRrZBBWn2gnUzlPd25pVf5iqO3fcHvHBvEvXOVb545u4uE8yPnzVn82/bj/sTEY0mxY4JXzRzkJ1Et6jZaXEjojhXA56z8GMvCaf9kjby0NaJvcZLc4FKKXKm/e0Zf5R7LlIsvt3cZGxP+V6Fps9ZOjmRbXxSGZyLlZDX1U5X/Xdrh+y6kd12Q/pE28lWpb2e9ZMl5SnWdp8pXCcJp/FVI/dSYs7MjvWwHdPyOMBY0Qt5MydmMD5N/7S785uTk9nVp3x1XPJCmNzEbKlHK0B6hf+5YtWJqfxc76qVAlp8cf/AQ==</Description>
+  <Description>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</Description>
   <DataSources>
     <DataSource Name="DataSource">
       <ConnectionProperties>
@@ -543,165 +609,6 @@ OBJECT Report 50108 ProForma Inv Lief.Adr div AU
       <Page></Page>
     </ReportSection>
   </ReportSections>
-  <DataSets>
-    <DataSet Name="DataSet_Result">
-      <Fields>
-        <Field Name="Picture_Firmendaten">
-          <DataField>Picture_Firmendaten</DataField>
-        </Field>
-        <Field Name="ISOLogo_Firmendaten">
-          <DataField>ISOLogo_Firmendaten</DataField>
-        </Field>
-        <Field Name="CompanyName">
-          <DataField>CompanyName</DataField>
-        </Field>
-        <Field Name="CompanyAddress">
-          <DataField>CompanyAddress</DataField>
-        </Field>
-        <Field Name="CompanyPhone">
-          <DataField>CompanyPhone</DataField>
-        </Field>
-        <Field Name="CompanyFax">
-          <DataField>CompanyFax</DataField>
-        </Field>
-        <Field Name="CompanyVATRegNo">
-          <DataField>CompanyVATRegNo</DataField>
-        </Field>
-        <Field Name="CompanyRegNo">
-          <DataField>CompanyRegNo</DataField>
-        </Field>
-        <Field Name="CompanyVorstand">
-          <DataField>CompanyVorstand</DataField>
-        </Field>
-        <Field Name="CompanyARV">
-          <DataField>CompanyARV</DataField>
-        </Field>
-        <Field Name="CompanyAmtsgericht">
-          <DataField>CompanyAmtsgericht</DataField>
-        </Field>
-        <Field Name="CompanyWEEERegNo">
-          <DataField>CompanyWEEERegNo</DataField>
-        </Field>
-        <Field Name="CompanyPostfach">
-          <DataField>CompanyPostfach</DataField>
-        </Field>
-        <Field Name="CompanyHomepage">
-          <DataField>CompanyHomepage</DataField>
-        </Field>
-        <Field Name="DebAdr8">
-          <DataField>DebAdr8</DataField>
-        </Field>
-        <Field Name="DebAdr7">
-          <DataField>DebAdr7</DataField>
-        </Field>
-        <Field Name="DebAdr6">
-          <DataField>DebAdr6</DataField>
-        </Field>
-        <Field Name="DebAdr5">
-          <DataField>DebAdr5</DataField>
-        </Field>
-        <Field Name="DebAdr4">
-          <DataField>DebAdr4</DataField>
-        </Field>
-        <Field Name="DebAdr3">
-          <DataField>DebAdr3</DataField>
-        </Field>
-        <Field Name="DebAdr2">
-          <DataField>DebAdr2</DataField>
-        </Field>
-        <Field Name="DebAdr1">
-          <DataField>DebAdr1</DataField>
-        </Field>
-        <Field Name="LieferAnAdr8">
-          <DataField>LieferAnAdr8</DataField>
-        </Field>
-        <Field Name="LieferAnAdr7">
-          <DataField>LieferAnAdr7</DataField>
-        </Field>
-        <Field Name="LieferAnAdr6">
-          <DataField>LieferAnAdr6</DataField>
-        </Field>
-        <Field Name="LieferAnAdr5">
-          <DataField>LieferAnAdr5</DataField>
-        </Field>
-        <Field Name="LieferAnAdr4">
-          <DataField>LieferAnAdr4</DataField>
-        </Field>
-        <Field Name="LieferAnAdr3">
-          <DataField>LieferAnAdr3</DataField>
-        </Field>
-        <Field Name="LieferAnAdr2">
-          <DataField>LieferAnAdr2</DataField>
-        </Field>
-        <Field Name="LieferAnAdr1">
-          <DataField>LieferAnAdr1</DataField>
-        </Field>
-        <Field Name="wa">
-          <DataField>wa</DataField>
-        </Field>
-        <Field Name="Bill_toCustomerNo_SalesHeader">
-          <DataField>Bill_toCustomerNo_SalesHeader</DataField>
-        </Field>
-        <Field Name="SalesHeaderDocumentDate_0_1">
-          <DataField>SalesHeaderDocumentDate_0_1</DataField>
-        </Field>
-        <Field Name="SalesHeaderExternalDocumentNo__SalesHeaderYourReference">
-          <DataField>SalesHeaderExternalDocumentNo__SalesHeaderYourReference</DataField>
-        </Field>
-        <Field Name="No_SalesHeader">
-          <DataField>No_SalesHeader</DataField>
-        </Field>
-        <Field Name="betrag">
-          <DataField>betrag</DataField>
-        </Field>
-        <Field Name="betragFormat">
-          <DataField>betragFormat</DataField>
-        </Field>
-        <Field Name="UnitPrice_QtytoShip">
-          <DataField>UnitPrice_QtytoShip</DataField>
-        </Field>
-        <Field Name="UnitPrice_QtytoShipFormat">
-          <DataField>UnitPrice_QtytoShipFormat</DataField>
-        </Field>
-        <Field Name="ursprung">
-          <DataField>ursprung</DataField>
-        </Field>
-        <Field Name="zollpos">
-          <DataField>zollpos</DataField>
-        </Field>
-        <Field Name="UnitPrice_SalesLine">
-          <DataField>UnitPrice_SalesLine</DataField>
-        </Field>
-        <Field Name="UnitPrice_SalesLineFormat">
-          <DataField>UnitPrice_SalesLineFormat</DataField>
-        </Field>
-        <Field Name="LineNo_SalesLine">
-          <DataField>LineNo_SalesLine</DataField>
-        </Field>
-        <Field Name="QtytoShip_SalesLine">
-          <DataField>QtytoShip_SalesLine</DataField>
-        </Field>
-        <Field Name="QtytoShip_SalesLineFormat">
-          <DataField>QtytoShip_SalesLineFormat</DataField>
-        </Field>
-        <Field Name="No_SalesLine">
-          <DataField>No_SalesLine</DataField>
-        </Field>
-        <Field Name="Description_SalesLine">
-          <DataField>Description_SalesLine</DataField>
-        </Field>
-      </Fields>
-      <Query>
-        <DataSourceName>DataSource</DataSourceName>
-        <CommandText />
-      </Query>
-      <rd:DataSetInfo>
-        <rd:DataSetName>DataSet</rd:DataSetName>
-        <rd:SchemaPath>Report.xsd</rd:SchemaPath>
-        <rd:TableName>Result</rd:TableName>
-      </rd:DataSetInfo>
-    </DataSet>
-  </DataSets>
 </Report>
     END_OF_RDLDATA
   }
