@@ -2,8 +2,8 @@ OBJECT Page 50104 Belegausgabe per Batch
 {
   OBJECT-PROPERTIES
   {
-    Date=24.02.23;
-    Time=12:38:57;
+    Date=07.03.23;
+    Time=17:00:20;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -258,6 +258,7 @@ OBJECT Page 50104 Belegausgabe per Batch
       TOPAS_API@1140002 : Codeunit 50001;
       Bullzip_PDF@1140016 : Codeunit 50005;
       DocuWare@1000000029 : Codeunit 50016;
+      FileMgt@1000000057 : Codeunit 419;
       WshShell@1000000017 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{72C24DD5-D70A-438B-8A42-98424B88AFB8}:'Windows Script Host Object Model'.WshShell";
       AttachmentPath@1140001 : Text;
       AttachmentPath_Original@1000000041 : Text;
@@ -301,6 +302,12 @@ OBJECT Page 50104 Belegausgabe per Batch
       v_nr@1000000046 : Code[20];
       purch_order_batch_ok@1000000048 : Boolean;
       Warning_MailProcess_Cue@1000000049 : TextConst 'DEU=Es wurde eine Verarbeitungsgrenze von %1 berschritten.\Die Erstellung wurde pausiert.\\Um Probleme mit GroupWise und somit mit dir Zustellung zu verhindern, versenden Sie bitte zun„chst alle neu erstellten E-Mails, bevor Sie fortfahren.\\Sie haben alles erledigt und wollen jetzt fortfahren? (Hinweis: Wenn dieses Fenster geschlossen wird, egal ob "Ja" oder "Nein", danach wird fortgesetzt.)';
+      Reminder1_Text_DEU@1000000051 : TextConst 'DEU=als Anlage finden Sie unsere 1te Mahnung als Zahlungserinnerung, da wir bisher noch keinen Zahlungseingang verzeichnen konnten.%1Wenn Ihnen die Rechnung nicht vorliegt, wenden Sie sich bitte an uns, damit wir Ihnen eine Kopie bersenden k”nnen.%1%1Sollten Sie zwischenzeitlich die Zahlung geleistet haben, betrachten Sie dieses Schreiben bitte als gegenstandslos.';
+      Reminder2_Text_DEU@1000000052 : TextConst 'DEU=leider haben Sie auf unsere Zahlungserinnerung nicht reagiert.%1Als Anlage finden Sie unsere 2te Mahnung mit der Bitte die berf„lligen Rechnungen unverzglich auf unser Gesch„ftskonto zu berweisen.%1%1Sollten wir innerhalb der n„chsten 10 Tage keinen Zahlungseingang verzeichnen k”nnen, werden wir Verzugszinsen in H”he von 10% berechnen mssen.%1%1Sollten Sie zwischenzeitlich die Zahlung geleistet haben, betrachten Sie dieses Schreiben bitte als gegenstandslos.';
+      Reminder3_Text_DEU@1000000053 : TextConst 'DEU=leider haben Sie auf unsere Zahlungserinnerung sowie die 2te Mahnung nicht reagiert.%1Als Anlage finden Sie unsere letzte Mahnung mit der Bitte die berf„lligen Rechnungen bis zum xx.xx.xx auf unser Gesch„ftskonto zu berweisen.%1Zus„tzlich zu den offenen Forderungen kommen Verzugszinsen in H”he von ° xxx.-- hinzu.%1%1Sollte auch dieser Termin ohne Geldeingang auf unserem Konto verstreichen, sehen wir uns gezwungen, ohne erneute Aufforderung, den Fall an ein Inkassounternehmen zu bergeben.\Beachten Sie bitte, dass dadurch weitere Kosten, die Sie zu tragen haben, entstehen werden.%1%1Sollten Sie zwischenzeitlich die Zahlung geleistet haben, betrachten Sie dieses Schreiben bitte als gegenstandslos.';
+      Reminder1_Text_ENG@1000000054 : TextConst 'DEU=as an attachment you will find our 1st reminder as a payment reminder, as we have not received any payment. Please advise at what time we can expact the payment.%1%1When you get the bill not available, please contact us so that we can send you a copy.%1%1If you have made the payment in the meantime, look at this letter please as irrelevant.';
+      Reminder2_Text_ENG@1000000055 : TextConst 'DEU=unfortunately, you did not respond to our payment reminder.%1Attached you will find our 2nd reminder with the request to transfer the overdue invoices to our business account immediately.%1If we are unable to record payment within the next 10 days, we will have to charge default interest of 10%.%1%1If you have made the payment in the meantime, look at this letter please as irrelevant.';
+      Reminder3_Text_ENG@1000000056 : TextConst 'DEU=unfortunately, you did not respond to our payment reminder and the 2nd reminder.%1Attached you will find our last reminder with the request for the overdue invoices to be transferred to our business account by xx.xx.xx.%1%1In addition to the outstanding claims, interest on arrears will be charged in the amount of ° xxx.--.%1If this deadline also passes without any money being received in our account, we feel compelled to pass the case on to a debt collection agency without being asked again. Please note that this will result in additional costs that you will have to bear.%1%1If you have made the payment in the meantime, look at this letter please as irrelevant.';
 
     PROCEDURE Run_Batch@1140010();
     VAR
@@ -462,52 +469,7 @@ OBJECT Page 50104 Belegausgabe per Batch
 
       // Rechnungen per PDF
       IF Rechnung_PDF THEN BEGIN
-        inv_header.RESET;
-        inv_header.SETFILTER("Posting Date",'%1',Tagesdatum);
-        inv_header.SETFILTER("Location Code",'<>%1','MUST');
-        inv_header.SETFILTER("No.",belegnr);
-        IF inv_header.FINDFIRST THEN BEGIN
-          Bullzip_PDF.BullzipPDF_Invoice(inv_header,AttachmentPath,AttachmentPath_Original,50076);
-          //Fr Ger„te von ACS und FER werden die Lieferscheine erzeugt und zus„tzlich angehangen
-          inv_header.FINDFIRST;
-          REPEAT
-            ship_header.RESET;
-            ship_header.SETRANGE("Order No.",inv_header."Order No.");
-            ship_header.SETRANGE("Posting Date",inv_header."Posting Date");
-            IF ship_header.FINDFIRST THEN BEGIN
-              REPEAT
-                ship_line.RESET;
-                ship_line.SETRANGE("Document No.",ship_header."No.");
-                ship_line.SETFILTER("Manufacturer Code",'59|85');
-                ship_line.SETFILTER(Quantity,'>%1',0);
-                IF ship_line.FINDFIRST THEN
-                  Bullzip_PDF.BullzipPDF_Shipment(ship_header,AttachmentPath,50078);
-              UNTIL ship_header.NEXT = 0;
-            END;
-          UNTIL inv_header.NEXT = 0;
-
-          //Job fr die Ablage der Rechnungskopien in DocuWare wird nun vorbereitet
-          IF (Tagesdatum < WORKDATE) AND (belegnr = '') THEN BEGIN
-            Optionstabelle.RESET;
-            Optionstabelle.SETRANGE("Tabellen ID",112);
-            Optionstabelle.SETRANGE("Feld ID",20);
-            Optionstabelle.SETRANGE(Code,'RE_DATUM');
-            EVALUATE(v_nr,FORMAT(Tagesdatum));
-            Optionstabelle.SETRANGE("Nr.",v_nr);
-            Optionstabelle.SETRANGE(Startdatum,Tagesdatum);
-            IF NOT Optionstabelle.FINDFIRST THEN BEGIN
-              Optionstabelle.INIT;
-              Optionstabelle."Tabellen ID" := 112;
-              Optionstabelle."Feld ID" := 20;
-              Optionstabelle.Code := 'RE_DATUM';
-              Optionstabelle."Nr." := v_nr;
-              Optionstabelle.Startdatum := Tagesdatum;
-              Optionstabelle.Beschreibung := 'Docuware Rechnungen Export';
-              Optionstabelle.INSERT;
-            END;
-          END;
-
-        END;
+        Rechnungslauf_PDF_MAIL;
       END;
 
       // Rahmenauftrag per PDF
@@ -694,139 +656,6 @@ OBJECT Page 50104 Belegausgabe per Batch
             UNTIL sales_header.NEXT = 0;
             MESSAGE('Zusammenfassung des Jobs:' + FORMAT(chr) + 'Anzahl E-Mails: %1',sales_header.COUNT);
           //END;
-        END;
-      END;
-
-
-      // Mail-Job fr Rechnungen
-      IF Rechnung_PDF THEN BEGIN
-        inv_header.RESET;
-        inv_header.SETFILTER("Posting Date",'%1',Tagesdatum);
-        inv_header.SETFILTER("Location Code",'<>%1','MUST');
-        inv_header.SETFILTER("No.",belegnr);
-        IF inv_header.FINDFIRST THEN BEGIN
-          REPEAT
-            subject := '';
-            body := '';
-            email_addr := '';
-            attach_files := '';
-            shipments := 0;
-            Customer.GET(inv_header."Bill-to Customer No.");
-            IF (Customer."Rech via EMail" = TRUE) OR (belegnr <> '') THEN BEGIN
-              IF inv_header."Language Code" <> 'ENU' THEN BEGIN
-                subject := 'Rechnung zu Ihrer Bestellung: ' + inv_header."External Document No.";
-                body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
-                        '%1' + FORMAT(chr);
-                IF (Customer."Rech via EMail" = TRUE) AND (inv_header."No. Printed" > 1) AND (Customer."Original RE nicht drucken" = FALSE) THEN
-                  body := STRSUBSTNO(body,'anbei erhalten Sie eine Kopie Ihrer Rechnung, da das Original per Post oder im Paket an Sie gesendet wurde.')
-                ELSE
-                  body := STRSUBSTNO(body,'anbei erhalten Sie Ihre Rechnung.');
-              END ELSE BEGIN
-                subject := 'Invoice for your order: ' + inv_header."External Document No.";
-                body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
-                        '%1' + FORMAT(chr);
-                IF (Customer."Rech via EMail" = TRUE) AND (inv_header."No. Printed" > 1) AND (Customer."Original RE nicht drucken" = FALSE) THEN
-                  body := STRSUBSTNO(body,'attached you will find your invoice copy.')
-                ELSE
-                  body := STRSUBSTNO(body,'attached you will find your invoice.');
-              END;
-
-              IF OriginalRE_Lauf = FALSE THEN
-                attach_files := inv_header."No." + '.pdf'
-              ELSE BEGIN
-                IF FileMgt.ClientFileExists(AttachmentPath_Original + inv_header."No." + '.pdf') THEN
-                  attach_files := AttachmentPath_Original + inv_header."No." + '.pdf'
-                ELSE
-                  attach_files := inv_header."No." + '.pdf';
-              END;
-
-              ship_header.RESET;
-              ship_header.SETFILTER("Order No.",'%1',inv_header."Order No.");
-              ship_header.SETFILTER("Posting Date",'%1',inv_header."Posting Date");
-              IF ship_header.FINDFIRST THEN BEGIN
-                REPEAT
-                  ship_line.RESET;
-                  ship_line.SETRANGE("Document No.",ship_header."No.");
-                  ship_line.SETFILTER("Manufacturer Code",'59|85');
-                  ship_line.SETFILTER(Quantity,'>%1',0);
-                  IF ship_line.FINDFIRST THEN BEGIN
-                    attach_files := attach_files + ',' + AttachmentPath + ship_header."No." + '.pdf';
-                    shipments += 1;
-                  END;
-                UNTIL ship_header.NEXT = 0;
-                IF inv_header."Language Code" <> 'ENU' THEN BEGIN
-
-                  // Part DEUTSCH
-                  body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
-                          '%1' + FORMAT(chr);
-                  IF (Customer."Rech via EMail" = TRUE) AND (inv_header."No. Printed" > 1) AND (Customer."Original RE nicht drucken" = FALSE) THEN BEGIN
-                    body := STRSUBSTNO(body,'anbei erhalten Sie eine Kopie Ihrer Rechnung, da das Original per Post oder im Paket an Sie gesendet wurde%1.');
-                    IF shipments > 1 THEN
-                    body := STRSUBSTNO(body,' und Ihre Lieferscheine')
-                  ELSE
-                    IF shipments = 1 THEN
-                      body := STRSUBSTNO(body,' und Ihren Lieferschein')
-                    ELSE
-                      body := STRSUBSTNO(body,'');
-                  END ELSE BEGIN
-                    body := STRSUBSTNO(body,'anbei erhalten Sie Ihre Rechnung%1.');
-                    IF shipments > 1 THEN
-                    body := STRSUBSTNO(body,' und Ihre Lieferscheine')
-                  ELSE
-                    IF shipments = 1 THEN
-                      body := STRSUBSTNO(body,' und Ihren Lieferschein')
-                    ELSE
-                      body := STRSUBSTNO(body,'');
-                  END;
-                END ELSE BEGIN
-
-                  //Part ENGLISCH
-                  body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
-                          '%1' + FORMAT(chr);
-                  IF (Customer."Rech via EMail" = TRUE) AND (inv_header."No. Printed" > 1) AND (Customer."Original RE nicht drucken" = FALSE) THEN
-                    body := STRSUBSTNO(body,'attached you will find your invoice copy%1.')
-                  ELSE
-                    body := STRSUBSTNO(body,'attached you will find your invoice%1.');
-                  IF shipments > 1 THEN
-                    body := STRSUBSTNO(body,' and your delivery notes')
-                  ELSE
-                    IF shipments = 1 THEN
-                      body := STRSUBSTNO(body,' and your delivery note')
-                    ELSE
-                      body := STRSUBSTNO(body,'');
-                END;
-
-                shipment_info := ship_header."Shipping Agent Code";
-                IF (STRPOS(shipment_info,'-RG') <> 0) AND (STRLEN(shipment_info) > 3) THEN
-                  shipment_info := COPYSTR(shipment_info,1,STRPOS(shipment_info,'-RG')-1);
-                shipment_info += ': ' + ship_header."Package Tracking No.";
-
-                IF (ship_header."Shipping Agent Code" <> 'EMAIL') AND (ship_header."Package Tracking No." <> '') THEN BEGIN
-                  IF inv_header."Language Code" <> 'ENU' THEN
-                    body += 'Das Paket wurde mit ' + shipment_info + ' verschickt.'
-                  ELSE
-                    body += 'The packet was sent via ' + shipment_info;
-                END;
-              END;
-
-              //Email-Adresse wird ausfindig gemacht, wird keine gefunden, wird dennoch eine E-Mail generiert
-              sales_header.RESET;
-              sales_header.SETFILTER("No.",'%1',inv_header."Order No.");
-              IF sales_header.FINDFIRST THEN
-                email_addr := sales_header."Rech EMail-Adresse";
-              IF email_addr = '' THEN BEGIN
-                sales_arch_header.RESET;
-                sales_arch_header.SETFILTER("No.",'%1',inv_header."Order No.");
-                IF sales_arch_header.FINDFIRST THEN
-                  email_addr := sales_arch_header."Rech EMail-Adresse";
-                IF email_addr = '' THEN
-                  email_addr := Customer."Rech EMail-Adresse";
-              END;
-
-              TOPAS_API.NewMail(email_addr,'','',subject,body,AttachmentPath,attach_files);
-
-            END;
-          UNTIL inv_header.NEXT = 0;
         END;
       END;
 
@@ -1171,6 +1000,179 @@ OBJECT Page 50104 Belegausgabe per Batch
       EXIT(FALSE);
     END;
 
+    LOCAL PROCEDURE Rechnungslauf_PDF_MAIL@1000000000();
+    BEGIN
+      inv_header.RESET;
+      inv_header.SETFILTER("Posting Date",'%1',Tagesdatum);
+      inv_header.SETFILTER("Location Code",'<>%1','MUST');
+      inv_header.SETFILTER("No.",belegnr);
+      IF inv_header.FINDFIRST THEN BEGIN
+        Bullzip_PDF.BullzipPDF_Invoice(inv_header,AttachmentPath+'Rechnungen\',AttachmentPath_Original,50076);
+        //Fr Ger„te von ACS und FER werden die Lieferscheine erzeugt und zus„tzlich angehangen
+        inv_header.FINDFIRST;
+        REPEAT
+          ship_header.RESET;
+          ship_header.SETRANGE("Order No.",inv_header."Order No.");
+          ship_header.SETRANGE("Posting Date",inv_header."Posting Date");
+          IF ship_header.FINDFIRST THEN BEGIN
+            REPEAT
+              ship_line.RESET;
+              ship_line.SETRANGE("Document No.",ship_header."No.");
+              ship_line.SETFILTER("Manufacturer Code",'59|85');
+              ship_line.SETFILTER(Quantity,'>%1',0);
+              IF ship_line.FINDFIRST THEN
+                Bullzip_PDF.BullzipPDF_Shipment(ship_header,AttachmentPath+'Lieferscheine\',50078);
+            UNTIL ship_header.NEXT = 0;
+          END;
+
+          // Mail-Job fr Rechnungen
+          subject := '';
+          body := '';
+          email_addr := '';
+          attach_files := '';
+          shipments := 0;
+          Customer.GET(inv_header."Bill-to Customer No.");
+          IF (Customer."Rech via EMail" = TRUE) OR (belegnr <> '') THEN BEGIN
+            IF inv_header."Language Code" <> 'ENU' THEN BEGIN
+              subject := 'Rechnung zu Ihrer Bestellung: ' + inv_header."External Document No.";
+              body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
+                      '%1' + FORMAT(chr);
+              IF (Customer."Rech via EMail" = TRUE) AND (inv_header."No. Printed" > 1) AND (Customer."Original RE nicht drucken" = FALSE) THEN
+                body := STRSUBSTNO(body,'anbei erhalten Sie eine Kopie Ihrer Rechnung, da das Original per Post oder im Paket an Sie gesendet wurde.')
+              ELSE
+                body := STRSUBSTNO(body,'anbei erhalten Sie Ihre Rechnung.');
+            END ELSE BEGIN
+              subject := 'Invoice for your order: ' + inv_header."External Document No.";
+              body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
+                      '%1' + FORMAT(chr);
+              IF (Customer."Rech via EMail" = TRUE) AND (inv_header."No. Printed" > 1) AND (Customer."Original RE nicht drucken" = FALSE) THEN
+                body := STRSUBSTNO(body,'attached you will find your invoice copy.')
+              ELSE
+                body := STRSUBSTNO(body,'attached you will find your invoice.');
+            END;
+
+            IF OriginalRE_Lauf = FALSE THEN
+              attach_files := inv_header."No." + '.pdf'
+            ELSE BEGIN
+              IF FileMgt.ClientFileExists(AttachmentPath_Original + inv_header."No." + '.pdf') THEN
+                attach_files := AttachmentPath_Original + inv_header."No." + '.pdf'
+              ELSE
+                attach_files := inv_header."No." + '.pdf';
+            END;
+
+            ship_header.RESET;
+            ship_header.SETFILTER("Order No.",'%1',inv_header."Order No.");
+            ship_header.SETFILTER("Posting Date",'%1',inv_header."Posting Date");
+            IF ship_header.FINDFIRST THEN BEGIN
+              REPEAT
+                ship_line.RESET;
+                ship_line.SETRANGE("Document No.",ship_header."No.");
+                ship_line.SETFILTER("Manufacturer Code",'59|85');
+                ship_line.SETFILTER(Quantity,'>%1',0);
+                IF ship_line.FINDFIRST THEN BEGIN
+                  attach_files := attach_files + ',' + AttachmentPath+'Lieferscheine\' + ship_header."No." + '.pdf';
+                  shipments += 1;
+                END;
+              UNTIL ship_header.NEXT = 0;
+              IF inv_header."Language Code" <> 'ENU' THEN BEGIN
+
+                // Part DEUTSCH
+                body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
+                        '%1' + FORMAT(chr);
+                IF (Customer."Rech via EMail" = TRUE) AND (inv_header."No. Printed" > 1) AND (Customer."Original RE nicht drucken" = FALSE) THEN BEGIN
+                  body := STRSUBSTNO(body,'anbei erhalten Sie eine Kopie Ihrer Rechnung, da das Original per Post oder im Paket an Sie gesendet wurde%1.');
+                  IF shipments > 1 THEN
+                  body := STRSUBSTNO(body,' und Ihre Lieferscheine')
+                ELSE
+                  IF shipments = 1 THEN
+                    body := STRSUBSTNO(body,' und Ihren Lieferschein')
+                  ELSE
+                    body := STRSUBSTNO(body,'');
+                END ELSE BEGIN
+                  body := STRSUBSTNO(body,'anbei erhalten Sie Ihre Rechnung%1.');
+                  IF shipments > 1 THEN
+                  body := STRSUBSTNO(body,' und Ihre Lieferscheine')
+                ELSE
+                  IF shipments = 1 THEN
+                    body := STRSUBSTNO(body,' und Ihren Lieferschein')
+                  ELSE
+                    body := STRSUBSTNO(body,'');
+                END;
+              END ELSE BEGIN
+
+                //Part ENGLISCH
+                body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
+                        '%1' + FORMAT(chr);
+                IF (Customer."Rech via EMail" = TRUE) AND (inv_header."No. Printed" > 1) AND (Customer."Original RE nicht drucken" = FALSE) THEN
+                  body := STRSUBSTNO(body,'attached you will find your invoice copy%1.')
+                ELSE
+                  body := STRSUBSTNO(body,'attached you will find your invoice%1.');
+                IF shipments > 1 THEN
+                  body := STRSUBSTNO(body,' and your delivery notes')
+                ELSE
+                  IF shipments = 1 THEN
+                    body := STRSUBSTNO(body,' and your delivery note')
+                  ELSE
+                    body := STRSUBSTNO(body,'');
+              END;
+
+              shipment_info := ship_header."Shipping Agent Code";
+              IF (STRPOS(shipment_info,'-RG') <> 0) AND (STRLEN(shipment_info) > 3) THEN
+                shipment_info := COPYSTR(shipment_info,1,STRPOS(shipment_info,'-RG')-1);
+              shipment_info += ': ' + ship_header."Package Tracking No.";
+
+              IF (ship_header."Shipping Agent Code" <> 'EMAIL') AND (ship_header."Package Tracking No." <> '') THEN BEGIN
+                IF inv_header."Language Code" <> 'ENU' THEN
+                  body += 'Das Paket wurde mit ' + shipment_info + ' verschickt.'
+                ELSE
+                  body += 'The packet was sent via ' + shipment_info;
+              END;
+            END;
+
+            //Email-Adresse wird ausfindig gemacht, wird keine gefunden, wird dennoch eine E-Mail generiert
+            sales_header.RESET;
+            sales_header.SETFILTER("No.",'%1',inv_header."Order No.");
+            IF sales_header.FINDFIRST THEN
+              email_addr := sales_header."Rech EMail-Adresse";
+            IF email_addr = '' THEN BEGIN
+              sales_arch_header.RESET;
+              sales_arch_header.SETFILTER("No.",'%1',inv_header."Order No.");
+              IF sales_arch_header.FINDFIRST THEN
+                email_addr := sales_arch_header."Rech EMail-Adresse";
+              IF email_addr = '' THEN
+                email_addr := Customer."Rech EMail-Adresse";
+            END;
+
+            TOPAS_API.NewMail(email_addr,'','',subject,body,AttachmentPath+'Rechnungen\',attach_files);
+
+          END;
+
+        UNTIL inv_header.NEXT = 0;
+
+        //Job fr die Ablage der Rechnungskopien in DocuWare wird nun vorbereitet
+        IF (Tagesdatum < WORKDATE) AND (belegnr = '') THEN BEGIN
+          Optionstabelle.RESET;
+          Optionstabelle.SETRANGE("Tabellen ID",112);
+          Optionstabelle.SETRANGE("Feld ID",20);
+          Optionstabelle.SETRANGE(Code,'RE_DATUM');
+          EVALUATE(v_nr,FORMAT(Tagesdatum));
+          Optionstabelle.SETRANGE("Nr.",v_nr);
+          Optionstabelle.SETRANGE(Startdatum,Tagesdatum);
+          IF NOT Optionstabelle.FINDFIRST THEN BEGIN
+            Optionstabelle.INIT;
+            Optionstabelle."Tabellen ID" := 112;
+            Optionstabelle."Feld ID" := 20;
+            Optionstabelle.Code := 'RE_DATUM';
+            Optionstabelle."Nr." := v_nr;
+            Optionstabelle.Startdatum := Tagesdatum;
+            Optionstabelle.Beschreibung := 'Docuware Rechnungen Export';
+            Optionstabelle.INSERT;
+          END;
+        END;
+
+      END;
+    END;
+
     LOCAL PROCEDURE Mahnungslauf_PDF_MAIL@1000000005();
     VAR
       ReminderHeader@1000000000 : Record 297;
@@ -1194,21 +1196,31 @@ OBJECT Page 50104 Belegausgabe per Batch
           shipments := 0;
 
           Customer.GET(ReminderHeader."Customer No.");
-          IF (Customer."Rech via EMail" = TRUE) THEN BEGIN
-            IF ReminderHeader."Language Code" <> 'ENU' THEN BEGIN
-              subject := 'šberf„llige Rechnung ' + ReminderHeader."Your Reference";
-              body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
-                      '%1' + FORMAT(chr);
-              body := STRSUBSTNO(body,'anbei erhalten Sie Ihre %1. Mahnung.' + FORMAT(chr) + 'Bitte teilen Sie uns mit, wann wir mit dem Zahlungseingang rechnen k”nnen.');
-            END ELSE BEGIN
-              subject := 'Overdue Bill ' + ReminderHeader."Your Reference";
-              body := 'Dear Sir or Madam,' + FORMAT(chr) + FORMAT(chr) +
-                      '%1' + FORMAT(chr);
-              IF (Customer."Rech via EMail" = TRUE) THEN
-                body := STRSUBSTNO(body,'attached you will find your %1. reminder.' + FORMAT(chr) + 'Please let us know, when we can expect receipt of payment.')
-            END;
-            body := STRSUBSTNO(body,ReminderHeader."Reminder Level");
+          IF ReminderHeader."Language Code" <> 'ENU' THEN BEGIN
+            subject := 'šberf„llige Rechnung ' + ReminderHeader."Your Reference";
+            body := 'Sehr geehrte Damen und Herren,' + FORMAT(chr) + FORMAT(chr) +
+                    '%1' + FORMAT(chr);
+            IF ReminderHeader."Reminder Level" = 1 THEN
+              body := STRSUBSTNO(body,Reminder1_Text_DEU)
+            ELSE
+              IF ReminderHeader."Reminder Level" = 2 THEN
+                body := STRSUBSTNO(body,Reminder2_Text_DEU)
+              ELSE
+                body := STRSUBSTNO(body,Reminder3_Text_DEU);
+          END ELSE BEGIN
+            subject := 'Overdue Bill ' + ReminderHeader."Your Reference";
+            body := 'Ladies and Gentlemen,' + FORMAT(chr) + FORMAT(chr) +
+                    '%1' + FORMAT(chr);
+            IF ReminderHeader."Reminder Level" = 1 THEN
+              body := STRSUBSTNO(body,Reminder1_Text_ENG)
+            ELSE
+              IF ReminderHeader."Reminder Level" = 2 THEN
+                body := STRSUBSTNO(body,Reminder2_Text_ENG)
+              ELSE
+                body := STRSUBSTNO(body,Reminder3_Text_ENG);
           END;
+          body := STRSUBSTNO(body, FORMAT(chr));
+          //body := STRSUBSTNO(body,ReminderHeader."Reminder Level");
 
           //Email-Adresse wird ausfindig gemacht, wird keine gefunden, wird dennoch eine E-Mail generiert
           ReminderLine.RESET;
