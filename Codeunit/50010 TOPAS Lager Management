@@ -2,8 +2,8 @@ OBJECT Codeunit 50010 TOPAS Lager Management
 {
   OBJECT-PROPERTIES
   {
-    Date=16.05.22;
-    Time=14:52:10;
+    Date=09.03.23;
+    Time=13:53:24;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -75,6 +75,9 @@ OBJECT Codeunit 50010 TOPAS Lager Management
       k@1000000000 : Integer;
       neues_datum@1140035 : Date;
       prfsumme@1140037 : Text[1024];
+      Date_CW@1000000003 : Text;
+      Date_Y@1000000004 : Integer;
+      Max_CW@1000000005 : Integer;
     BEGIN
       //**************************************************************************************************
       //           09.08.11 ST - Zusatzfunktion zum fllen spezifischer Kunden Label Daten
@@ -330,21 +333,24 @@ OBJECT Codeunit 50010 TOPAS Lager Management
 
                 // Normale Date Code Betrachtung
 
-                // 2 Datecodes in einem, die in der Regel durch ein '/' getrennt sind, Verwendung des 1. Datecodes
-                IF (STRLEN(AP."Lot No.") > 4)
-                AND (STRLEN(AP."Lot No.") = (STRLEN(DELCHR(AP."Lot No.",'=','ABCDEFGHIJKLMNOPQRSTUVWXYZ'))))
-                AND (STRLEN(AP."Lot No.") <> (STRLEN(DELCHR(AP."Lot No.",'=','/'))))
-                AND (STRPOS(AP."Lot No.",'/') > 4) THEN
-                  EVALUATE(chargendatum,'M' + COPYSTR(AP."Lot No.",3,2) + COPYSTR(AP."Lot No.",1,2));
-
                 // Fr fehlerhaften Eingaben mit dem M + vierstelligen Datecode(z.B Datecode mit Ablaufdatum verwechselt)
-                IF (STRLEN(AP."Lot No.") = 5) AND (STRLEN(DELCHR(COPYSTR(AP."Lot No.",1,1),
-                '=','ABCDEFGHIJKLMNOPQRSTUVWXYZ')) = 0) THEN
+                IF (STRLEN(AP."Lot No.") = 5) AND (STRLEN(DELCHR(COPYSTR(AP."Lot No.",1,1),'=','ABCDEFGHIJKLMNOPQRSTUVWXYZ')) = 0) THEN
                   EVALUATE(chargendatum,'M' + COPYSTR(AP."Lot No.",4,2) + COPYSTR(AP."Lot No.",2,2));
 
                 // šblicher, 4 stelliger Datecode
-                IF STRLEN(AP."Lot No.") = 4 THEN
-                  EVALUATE(chargendatum,'M'+COPYSTR(AP."Lot No.",3,2) + COPYSTR(AP."Lot No.",1,2));
+                IF (STRLEN(AP."Lot No.") = 4)
+                OR ((STRLEN(AP."Lot No.") > 4)  // 2 Datecodes in einem, die in der Regel durch ein '/' getrennt sind, Verwendung des 1. Datecodes
+                  AND (STRLEN(AP."Lot No.") = (STRLEN(DELCHR(AP."Lot No.",'=','ABCDEFGHIJKLMNOPQRSTUVWXYZ'))))
+                  AND (STRLEN(AP."Lot No.") <> (STRLEN(DELCHR(AP."Lot No.",'=','/'))))
+                  AND (STRPOS(AP."Lot No.",'/') > 4)) THEN BEGIN
+                  EVALUATE(Date_CW,COPYSTR(AP."Lot No.",3,2)); //Date_CW in Text ben”tigt, sonst kommt es bei einstelligen Integer Werten zu einem Konvertierungsfehler in Date
+                  EVALUATE(Date_Y,COPYSTR(AP."Lot No.",1,2));
+                  IF FORMAT(Date_CW,0,1) > '52' THEN BEGIN //KW Angabe nochmal prfen, bevor Fehler bei Datumsumwandlung passiert
+                    Max_CW := DATE2DWY(DMY2DATE(31, 12, 2000 + Date_Y),2); //2000 + Jahr Kurzform = Date_Y
+                    Date_CW := FORMAT(Max_CW);
+                  END;
+                  EVALUATE(chargendatum,'M'+ FORMAT(Date_CW) + FORMAT(Date_Y));
+                END;
 
                 // Wenn die Charge mit 7 Stellen eingegeben wurde
                 IF (chargendatum = 0D) AND (DELCHR(COPYSTR(AP."Lot No.",1,4),'=','0123456789') = '') THEN
