@@ -2,8 +2,8 @@ OBJECT Page 50102 Navision Administrations Tools
 {
   OBJECT-PROPERTIES
   {
-    Date=02.01.23;
-    Time=16:49:26;
+    Date=16.03.23;
+    Time=14:28:10;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -88,6 +88,17 @@ OBJECT Page 50102 Navision Administrations Tools
                       PromotedCategory=Process;
                       OnAction=BEGIN
                                  Mailings_einspielen(mailing_betreff,mailing_datum,mailing_adressen_speicherort);
+                               END;
+                                }
+      { 1000000078;2 ;Action    ;
+                      Name=Bounced_UN_verlassen_einspielen;
+                      CaptionML=DEU=Bounced einspielen;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=RemoveContacts;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 Bounced_UN_verlassen_einspielen(bounced_speicherort);
                                END;
                                 }
       { 1000000075;2 ;Action    ;
@@ -417,6 +428,22 @@ OBJECT Page 50102 Navision Administrations Tools
                              END;
                               }
 
+    { 1000000077;2;Group  ;
+                CaptionML=DEU=Bounced UN verlassen einspielen;
+                GroupType=Group }
+
+    { 1000000079;3;Field  ;
+                CaptionML=DEU=Bounced Datei;
+                SourceExpr=bounced_speicherort;
+                OnValidate=BEGIN
+                             TOPAS_API.OpenFile(bounced_speicherort);
+                           END;
+
+                OnAssistEdit=BEGIN
+                               bounced_speicherort := TOPAS_API.Save_FileDialog(bounced_speicherort);
+                             END;
+                              }
+
     { 1000000068;2;Group  ;
                 CaptionML=DEU=Kontakte exportieren;
                 GroupType=Group }
@@ -737,6 +764,9 @@ OBJECT Page 50102 Navision Administrations Tools
       RowNo@1000000021 : Integer;
       ColumnNo@1000000020 : Integer;
       TotalRows@1000000024 : Integer;
+      RowCount@1000000058 : Integer;
+      XlWrkBkReader@1000000060 : DotNet "'Microsoft.Dynamics.Nav.OpenXml, Version=9.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35'.Microsoft.Dynamics.Nav.OpenXml.Spreadsheet.WorkbookReader";
+      XlWrkShtReader@1000000059 : DotNet "'Microsoft.Dynamics.Nav.OpenXml, Version=9.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35'.Microsoft.Dynamics.Nav.OpenXml.Spreadsheet.WorksheetReader";
       XlWrkBkWriter@1000000019 : DotNet "'Microsoft.Dynamics.Nav.OpenXml, Version=9.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35'.Microsoft.Dynamics.Nav.OpenXml.Spreadsheet.WorkbookWriter";
       XlWrkShtWriter@1000000018 : DotNet "'Microsoft.Dynamics.Nav.OpenXml, Version=9.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35'.Microsoft.Dynamics.Nav.OpenXml.Spreadsheet.WorksheetWriter";
       i@1000000029 : Integer;
@@ -750,6 +780,7 @@ OBJECT Page 50102 Navision Administrations Tools
       mailing_betreff@1000000033 : Text[50];
       mailing_datum@1000000032 : Date;
       mailing_adressen_speicherort@1000000017 : Text;
+      bounced_speicherort@1000000057 : Text;
       Window@1140007 : Dialog;
       Text002@1140024 : TextConst 'DEU=Die Eingabedaten sind unvollst„ndig.';
       Text003@1140023 : TextConst 'DEU=Die Seriennr. Umbuchung ist nicht m”glich, da die Seriennr. %1 noch in %2 verwendet wird.';
@@ -792,6 +823,7 @@ OBJECT Page 50102 Navision Administrations Tools
       selection@1000000041 : Integer;
       Text301@1000000047 : TextConst 'DEU=Abgleich erfolgreich abgeschlossen.';
       Text302@1000000054 : TextConst 'DEU=Kundenumstellung erfolgreich abgeschlossen';
+      Text303@1000000056 : TextConst 'DEU=Kontakte erfolgreich aktualisiert.\Es wurden %1 von %2 auf %3 gesetzt.\Nicht betroffen: %4\Nicht gefunden: %5';
       Text400@1000000044 : TextConst 'DEU=Deaktivieren,L”schen';
       ServiceSelection@1000000042 : TextConst 'DEU=Alle,ACTS EURO,ACTS USD,CHAMPS EURO,CHAMPS USD';
       kd_umstellung_speicherort@1000000046 : Text;
@@ -1044,10 +1076,10 @@ OBJECT Page 50102 Navision Administrations Tools
       ServerUploadFile := FileMgt.UploadFileSilent(Speicherort);
 
       TempExcelBuffer.DELETEALL;
-        TempExcelBuffer.OpenBook(ServerUploadFile,'Mailingadressen');
-        TempExcelBuffer.ReadSheet();
-        IF TempExcelBuffer.FINDLAST THEN
-          EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
+      TempExcelBuffer.OpenBook(ServerUploadFile,'Mailingadressen');
+      TempExcelBuffer.ReadSheet();
+      IF TempExcelBuffer.FINDLAST THEN
+        EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
 
       Spalte_Adressen_User1_Nr := 1;
       Spalte_Adressen_EMail_Nr := 20;
@@ -1099,6 +1131,93 @@ OBJECT Page 50102 Navision Administrations Tools
 
       IF TotalRows > 2 THEN
         MESSAGE(Text300);
+    END;
+
+    PROCEDURE Bounced_UN_verlassen_einspielen@1000000015(Speicherort@1000000000 : Text);
+    VAR
+      Contact@1000000010 : Record 5050;
+      ContactxRec@1000000014 : Record 5050;
+      ServerUploadFile@1000000011 : Text;
+      Spalte_Kontakt_Nr@1000000004 : Integer;
+      Spalte_Jobausnahme_Nr@1000000008 : Integer;
+      ContactNo@1000000001 : Code[20];
+      db_change@1000000002 : Boolean;
+      Spalte_Jobausnahme@1000000009 : TextConst 'DEU=F';
+      Spalte_Kontaktnr@1000000003 : TextConst 'DEU=G';
+      SheetNamePriceBook@1000000006 : Text;
+      Jobausnahme@1000000005 : Text;
+      not_found@1000000007 : Integer;
+    BEGIN
+      //Bounced Kontakte werden auf Unternehmen verlassen gesetzt, wenn in Spalte Jobausnahme kein "x" gesetzt ist
+      IF (Speicherort = '') THEN ERROR(Text002);
+
+      ServerUploadFile := FileMgt.UploadFileSilent(Speicherort);
+      SheetNamePriceBook := 'Bounced';
+
+      XlWrkBkReader := XlWrkBkReader.Open(ServerUploadFile);
+      XlWrkShtReader := XlWrkBkReader.GetWorksheetByName(SheetNamePriceBook);
+      RowCount := XlWrkShtReader.RowCount;
+      XlWrkBkReader.Close;
+
+      //+ Das Sheet wird aufbereitet, damit keine Fehlermeldung erzeugt wird, wenn eine Spalte eine L„nge gr”áer 250 Zeichen aufweist
+      XlWrkBkWriter := XlWrkBkWriter.Open(ServerUploadFile);
+      XlWrkShtWriter := XlWrkBkWriter.GetWorksheetByName(SheetNamePriceBook);
+
+      FOR i := 2 TO RowCount DO BEGIN
+        XlWrkShtWriter.SetCellValueText(i, 'C', '', XlWrkShtWriter.DefaultCellDecorator);
+      END;
+      XlWrkBkWriter.Close;
+      //-
+
+      TempExcelBuffer.DELETEALL;
+      TempExcelBuffer.OpenBook(ServerUploadFile,SheetNamePriceBook);
+      TempExcelBuffer.ReadSheet();
+      IF TempExcelBuffer.FINDLAST THEN
+        EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
+
+      zaehler := 0;
+      not_found := 0;
+      Spalte_Jobausnahme_Nr := 6;
+      Spalte_Kontakt_Nr := 7;
+
+      IF UPPERCASE(GetValueAtCell(1,Spalte_Kontakt_Nr)) <> 'KONTAKTNR' THEN
+          ERROR('Fehlerhafte Syntax in der Liste > Spalte ' + Spalte_Kontaktnr + ' muss Kontaktnr sein.');
+
+      IF UPPERCASE(GetValueAtCell(1,Spalte_Jobausnahme_Nr)) <> 'JOBAUSNAHME' THEN
+          ERROR('Fehlerhafte Syntax in der Liste > Spalte ' + Spalte_Jobausnahme + ' muss Jobausnahme sein.');
+
+      //********************************************************************************************
+      //                         Eigentlicher Abgleich des Kundenstamms
+      //********************************************************************************************
+
+      Window.OPEN(
+        Text000 +
+        '@1@@@@@@@@@@@@@@@@@@@@@\');
+
+      FOR i := 2 TO TotalRows DO BEGIN
+
+        EVALUATE(ContactNo,GetValueAtCell(i,Spalte_Kontakt_Nr));
+        Jobausnahme := FORMAT(GetValueAtCell(i,Spalte_Jobausnahme_Nr));
+
+        IF Contact.GET(ContactNo) THEN BEGIN
+          IF UPPERCASE(Jobausnahme) <> 'X' THEN BEGIN
+            IF Contact."Unternehmen verlassen" = FALSE THEN BEGIN
+              Contact.VALIDATE("Unternehmen verlassen",TRUE);
+              Contact.MODIFY(TRUE);
+              zaehler += 1;
+            END;
+          END;
+        END ELSE
+          not_found += 1;
+
+        Window.UPDATE(1,ROUND(i / TotalRows * 10000,1));
+
+      END;
+
+      Window.CLOSE;
+
+      IF TotalRows > 1 THEN
+        MESSAGE(Text303,zaehler,TotalRows - 1,Contact.FIELDCAPTION("Unternehmen verlassen"),(TotalRows - 1)-zaehler-not_found,not_found);
     END;
 
     LOCAL PROCEDURE Kontakte_exportieren@1000000007();
@@ -1700,10 +1819,10 @@ OBJECT Page 50102 Navision Administrations Tools
       ServerUploadFile := FileMgt.UploadFileSilent(Speicherort);
 
       TempExcelBuffer.DELETEALL;
-        TempExcelBuffer.OpenBook(ServerUploadFile,'Kundenumstellung');
-        TempExcelBuffer.ReadSheet();
-        IF TempExcelBuffer.FINDLAST THEN
-          EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
+      TempExcelBuffer.OpenBook(ServerUploadFile,'Kundenumstellung');
+      TempExcelBuffer.ReadSheet();
+      IF TempExcelBuffer.FINDLAST THEN
+        EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
 
       Spalte_Debitornr_Nr := 1;
 
@@ -1808,10 +1927,10 @@ OBJECT Page 50102 Navision Administrations Tools
       ServerUploadFile := FileMgt.UploadFileSilent(Speicherort);
 
       TempExcelBuffer.DELETEALL;
-        TempExcelBuffer.OpenBook(ServerUploadFile,'Kundenumstellung');
-        TempExcelBuffer.ReadSheet();
-        IF TempExcelBuffer.FINDLAST THEN
-          EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
+      TempExcelBuffer.OpenBook(ServerUploadFile,'Kundenumstellung');
+      TempExcelBuffer.ReadSheet();
+      IF TempExcelBuffer.FINDLAST THEN
+        EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
 
       Spalte_Kontakt_Nr := 1;
 
