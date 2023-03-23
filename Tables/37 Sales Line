@@ -2,10 +2,10 @@ OBJECT Table 37 Sales Line
 {
   OBJECT-PROPERTIES
   {
-    Date=28.01.23;
-    Time=14:00:00;
+    Date=22.03.23;
+    Time=17:00:00;
     Modified=Yes;
-    Version List=NAVW19.00.00.50458,TOP1.07;
+    Version List=NAVW19.00.00.50458,TOP1.08;
   }
   PROPERTIES
   {
@@ -689,16 +689,27 @@ OBJECT Table 37 Sales Line
                                                                 SalesHeader.GET("Document Type","Document No.");
                                                                 IF ((Type = Type::Item) AND ("DC-Preis (EKW)" = 0)) THEN BEGIN
                                                                   //TOPAS 19.03.19 ST - neue Berechnung bzgl. alte Preislisten Version
-                                                                  IF SalesHeader."Preislisten Kalkulation" = SalesHeader."Preislisten Kalkulation"::alt THEN BEGIN
+                                                                  IF (SalesHeader.Preisliste <> '') AND (SalesHeader."Territory Code" = 'SYSTEM') THEN BEGIN
                                                                     CLEAR(EKStaffel);
                                                                     EKStaffel.SETRANGE("Item No.","No.");
                                                                     EKStaffel.SETRANGE("Currency Code",Einkaufsw„hrungscode);
                                                                     EKStaffel.SETFILTER("Minimum Quantity",'<=%1',"Quantity (Base)");
-                                                                    EKStaffel.SETFILTER("Ending Date",'>=%1|%2',WORKDATE,0D);
+                                                                    EKStaffel.SETFILTER("Starting Date",'<>%1&<=%2',0D,WORKDATE); //Spezialpreise unterdrcken, die eigentlich zu 0 verkauft werden
+                                                                    EKStaffel.SETFILTER("Ending Date",'%1|>=%2&<>%3',0D,WORKDATE,31122055D);
                                                                     IF EKStaffel.FINDFIRST THEN BEGIN
-                                                                      VALIDATE("DC-Preis (EKW)",EKStaffel."Direct Unit Cost");
+                                                                      BestPrice := EKStaffel."Direct Unit Cost";
+                                                                      BestDate := EKStaffel."Starting Date";
+                                                                      IF SalesHeader."Preislisten Kalkulation" = SalesHeader."Preislisten Kalkulation"::neu THEN
+                                                                        REPEAT
+                                                                          IF EKStaffel."Starting Date" > BestDate THEN BEGIN
+                                                                            BestPrice := EKStaffel."Direct Unit Cost";
+                                                                            BestDate := EKStaffel."Starting Date";
+                                                                          END;
+                                                                        UNTIL EKStaffel.NEXT = 0;
+
+                                                                      VALIDATE("DC-Preis (EKW)",BestPrice);
                                                                       GetItem;
-                                                                      VALIDATE("Unit Cost (LCY)",ROUND(EKStaffel."Direct Unit Cost" / Einkaufsw„hrungsfaktor) * (1 + (Item."Indirect Cost %" / 100)));
+                                                                      VALIDATE("Unit Cost (LCY)",ROUND(BestPrice / Einkaufsw„hrungsfaktor) * (1 + (Item."Indirect Cost %" / 100)));
                                                                       "Unit Cost (LCY)" := ROUND("Unit Cost (LCY)",0.00001);
                                                                     END;
                                                                   END ELSE BEGIN
@@ -2815,23 +2826,35 @@ OBJECT Table 37 Sales Line
                                                                   "Unit Cost (LCY)" := ROUND("Unit Cost (LCY)",0.00001);
 
                                                                   //TOPAS 19.03.19 ST - neue Berechnung bzgl. alte System Preislisten Version
-                                                                  IF SalesHeader."Preislisten Kalkulation" = SalesHeader."Preislisten Kalkulation"::alt THEN BEGIN
+                                                                  IF (SalesHeader.Preisliste <> '') AND (SalesHeader."Territory Code" = 'SYSTEM') THEN BEGIN
                                                                     CLEAR(EKStaffel);
                                                                     EKStaffel.SETRANGE("Item No.","No.");
                                                                     EKStaffel.SETRANGE("Currency Code",Einkaufsw„hrungscode);
                                                                     EKStaffel.SETFILTER("Minimum Quantity",'<=%1',"Quantity (Base)");
-                                                                    EKStaffel.SETFILTER("Ending Date",'>=%1',WORKDATE);
-                                                                    IF EKStaffel.FINDFIRST THEN ;
+                                                                    EKStaffel.SETFILTER("Starting Date",'<>%1&<=%2',0D,WORKDATE); //Spezialpreise unterdrcken, die eigentlich zu 0 verkauft werden
+                                                                    EKStaffel.SETFILTER("Ending Date",'%1|>=%2&<>%3',0D,WORKDATE,31122055D);
+                                                                    IF EKStaffel.FINDFIRST THEN BEGIN
+                                                                      BestPrice := EKStaffel."Direct Unit Cost";
+                                                                      BestDate := EKStaffel."Starting Date";
+                                                                      IF SalesHeader."Preislisten Kalkulation" = SalesHeader."Preislisten Kalkulation"::neu THEN
+                                                                        REPEAT
+                                                                          IF (EKStaffel."Starting Date" > BestDate) THEN BEGIN
+                                                                            BestPrice := EKStaffel."Direct Unit Cost";
+                                                                            BestDate := EKStaffel."Starting Date";
+                                                                          END;
+                                                                        UNTIL EKStaffel.NEXT = 0;
+                                                                    END;
                                                                   END ELSE BEGIN
                                                                   //alte Berechnung
                                                                     CLEAR(EKStaffel);
                                                                     EKStaffel.SETRANGE("Item No.", "No.");
                                                                     EKStaffel.SETRANGE("Currency Code",Einkaufsw„hrungscode);
                                                                     EKStaffel.SETFILTER("Minimum Quantity",'<=%1', "Quantity (Base)");
-                                                                    IF EKStaffel.FINDLAST THEN ;
+                                                                    IF EKStaffel.FINDLAST THEN
+                                                                      BestPrice := EKStaffel."Direct Unit Cost";
                                                                   END;
 
-                                                                  IF ("DC-Preis (EKW)" < EKStaffel."Direct Unit Cost") AND ("DC-Preis (EKW)" <> xRec."DC-Preis (EKW)") AND ("DC-Preis (EKW)" <> 0) THEN BEGIN
+                                                                  IF ("DC-Preis (EKW)" < BestPrice) AND ("DC-Preis (EKW)" <> xRec."DC-Preis (EKW)") AND ("DC-Preis (EKW)" <> 0) THEN BEGIN
                                                                     IF "Quotenr." = '' THEN BEGIN
                                                                       Quotes.INIT;
                                                                       Quotes.INSERT(TRUE);
@@ -3350,6 +3373,8 @@ OBJECT Table 37 Sales Line
       RestMengeAuftrag@1000000038 : Decimal;
       Text50061@1000000043 : TextConst 'DEU=Der Einkaufsw„hrungskurs liegt auáerhalb der W„hrungstoleranz fr %1.';
       Text50062@1000000021 : TextConst 'DEU=DSP Group Hinwis: Wurde der Artikel bereits auf REACH bzw RoHS Konformit„t geprft?';
+      BestPrice@1000000040 : Decimal;
+      BestDate@1000000044 : Date;
 
     PROCEDURE InitOutstanding@16();
     BEGIN
@@ -6144,6 +6169,7 @@ OBJECT Table 37 Sales Line
       10      TOP1.05   03.02.21    ST    Hinweis OVT Module bei Mengen Eingabe und Text Konstante Text50031 entfernt
       11      TOP1.06   14.04.21    ST    Neues Feld 50114 "Bestellnr.", DSP Group REACH bzw. RoHS Hinweis, wenn bei dem Artikel der Haken "Lead free" nicht gesetzt ist
       12      TOP1.07   28.01.23    ST    Neues Feld 50270 Bemerkung
+      13      TOP1.08   22.03.23    ST    Bugfix DC-Preis holen, wenn Preislisten Kalkulation auf neu steht und der EK-Preis noch nicht gltig ist
     }
     END.
   }
