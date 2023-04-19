@@ -2,14 +2,18 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
 {
   OBJECT-PROPERTIES
   {
-    Date=13.01.23;
-    Time=08:52:00;
+    Date=04.04.23;
+    Time=15:05:42;
     Modified=Yes;
     Version List=TOPAS;
   }
   PROPERTIES
   {
     CaptionML=DEU=AudioCodes Systemartikel-, ACTS- und CHAMPS Preis Import Tool;
+    InsertAllowed=No;
+    DeleteAllowed=No;
+    ModifyAllowed=No;
+    ShowFilter=No;
     OnOpenPage=BEGIN
                  //Erstellt eine Statistik zu den vorhandenen Service Artikeln
                  //Z„hlt die aktuell vorhandenen
@@ -24,6 +28,28 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                    service_items_CHAMPS := Servicepreise.COUNT;
                    Servicepreise.SETRANGE(Art,Servicepreise.Art::ACTS);
                    service_items_ACTS := Servicepreise.COUNT;
+                 END;
+
+                 PreislistenStatus.RESET;
+                 PreislistenStatus.SETRANGE("Tabellen ID",36);
+                 PreislistenStatus.SETRANGE("Feld ID",50351);
+                 PreislistenStatus.SETRANGE(Code,'PREISLISTE');
+                 PreislistenStatus.SETRANGE("Lfd.-Nr.",0); //vorab Preisliste
+                 IF PreislistenStatus.FINDFIRST THEN
+                   preisliste_vorab := TRUE
+                 ELSE
+                   preisliste_vorab := FALSE;
+
+                 PreislistenStatus.SETRANGE("Lfd.-Nr.",1); //neu Preisliste
+                 IF PreislistenStatus.FINDFIRST THEN BEGIN
+                   preisliste_aktuell_version := PreislistenStatus."Nr.";
+                   preisliste_aktuell_ltb := PreislistenStatus.Enddatum;
+                 END;
+
+                 PreislistenStatus.SETRANGE("Lfd.-Nr.",2); //alt Preisliste
+                 IF PreislistenStatus.FINDFIRST THEN BEGIN
+                   preisliste_alt_version := PreislistenStatus."Nr.";
+                   preisliste_alt_ltb := PreislistenStatus.Enddatum;
                  END;
                END;
 
@@ -74,12 +100,13 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                 CaptionML=DEU=Info;
                 GroupType=Group }
 
+    { 1000000003;2;Field  ;
+                CaptionML=DEU=Mit diesem Tool k”nnen die AudioCodes System-,  ACTS-,  ACTS Schaeffler- und Champs Servicepreise eingespielt werden. }
+
     { 1000000013;2;Group  ;
+                CaptionML=DEU=Statistiken;
                 Editable=FALSE;
                 GroupType=Group }
-
-    { 1000000003;3;Field  ;
-                CaptionML=DEU=Mit diesem Tool k”nnen die AudioCodes System-,  ACTS-,  ACTS Schaeffler- und Champs Servicepreise eingespielt werden. }
 
     { 1000000012;3;Field  ;
                 Name=service_items_total;
@@ -107,6 +134,31 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                 SourceExpr=service_items_ACTS;
                 Editable=FALSE }
 
+    { 1000000032;2;Group  ;
+                CaptionML=DEU=Preislisten Info;
+                Editable=FALSE;
+                GroupType=Group }
+
+    { 1000000028;3;Group  ;
+                CaptionML=DEU=Preislisten Status;
+                GroupType=Group }
+
+    { 1000000024;3;Field  ;
+                CaptionML=DEU=Aktuelle Preisliste;
+                SourceExpr=preisliste_aktuell_version }
+
+    { 1000000025;3;Field  ;
+                CaptionML=DEU=Last Time Buy;
+                SourceExpr=preisliste_aktuell_ltb }
+
+    { 1000000026;3;Field  ;
+                CaptionML=DEU=Alte Preisliste;
+                SourceExpr=preisliste_alt_version }
+
+    { 1000000027;3;Field  ;
+                CaptionML=DEU=Last Time Buy;
+                SourceExpr=preisliste_alt_ltb }
+
     { 1000000002;1;Group  ;
                 CaptionML=DEU=Pfad angeben;
                 GroupType=Group }
@@ -129,6 +181,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                 GroupType=Group }
 
     { 1000000015;2;Group  ;
+                CaptionML=DEU=Modus;
                 GroupType=Group }
 
     { 1000000010;3;Field  ;
@@ -321,6 +374,12 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
       service_items_ACTS@1000000149 : Integer;
       step@1000000131 : Integer;
       Doku_Import@1000000132 : TextConst 'DEU=F:\Daten NEU\Gemeinsame Ordner\Preislisten\AudioCodes\Preislisten Importe\Import AudioCodes Preislisten - How to.docx';
+      LiveSupport_Column_exist@1000000152 : Boolean;
+      preisliste_aktuell_version@1000000154 : Code[10];
+      preisliste_aktuell_ltb@1000000156 : Date;
+      preisliste_alt_version@1000000155 : Code[10];
+      preisliste_alt_ltb@1000000157 : Date;
+      preisliste_vorab@1000000153 : Boolean;
 
     LOCAL PROCEDURE Run_Import_Direct@1000000006();
     BEGIN
@@ -443,6 +502,11 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         IF PriceBookNormal.FINDLAST THEN
           EVALUATE(TotalRowsPriceBook,FORMAT(PriceBookNormal.xlRowID));
 
+        IF (auswahl = 2) AND (UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,10)) = 'LIVE SUPPORT') THEN
+          LiveSupport_Column_exist := TRUE
+        ELSE
+          LiveSupport_Column_exist := FALSE;
+
         //Weitere Prfungen der Preisliste
         IF auswahl = 1 THEN BEGIN
           IF UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,10)) <> UPPERCASE(CHAMPS_ColText9x5) THEN ERROR(PriceBookErrMsg,10,CHAMPS_ColText9x5);
@@ -450,11 +514,19 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
           IF UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,14)) <> UPPERCASE(CHAMPS_ColTextAHR) THEN ERROR(PriceBookErrMsg,14,CHAMPS_ColTextAHR);
         END;
         IF auswahl = 2 THEN BEGIN
-          IF UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,10)) <> UPPERCASE(ACTS_ColText9x5) THEN ERROR(PriceBookErrMsg,10,ACTS_ColText9x5);
-          IF UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,12)) <> UPPERCASE(ACTS_ColText24x7) THEN ERROR(PriceBookErrMsg,12,ACTS_ColText24x7);
-          IF UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,14)) <> UPPERCASE(ACTS_ColTextAHR) THEN ERROR(PriceBookErrMsg,14,ACTS_ColTextAHR);
-          IF UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,16)) <> UPPERCASE(ACTS_ColTextMS24x7) THEN ERROR(PriceBookErrMsg,16,ACTS_ColTextMS24x7);
-          IF UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,18)) <> UPPERCASE(ACTS_ColTextMS9x5) THEN ERROR(PriceBookErrMsg,18,ACTS_ColTextMS9x5);
+          IF LiveSupport_Column_exist =FALSE THEN BEGIN
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,10)) <> UPPERCASE(ACTS_ColText9x5) THEN ERROR(PriceBookErrMsg,10,ACTS_ColText9x5);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,12)) <> UPPERCASE(ACTS_ColText24x7) THEN ERROR(PriceBookErrMsg,12,ACTS_ColText24x7);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,14)) <> UPPERCASE(ACTS_ColTextAHR) THEN ERROR(PriceBookErrMsg,14,ACTS_ColTextAHR);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,16)) <> UPPERCASE(ACTS_ColTextMS24x7) THEN ERROR(PriceBookErrMsg,16,ACTS_ColTextMS24x7);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,18)) <> UPPERCASE(ACTS_ColTextMS9x5) THEN ERROR(PriceBookErrMsg,18,ACTS_ColTextMS9x5);
+          END ELSE BEGIN
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,11)) <> UPPERCASE(ACTS_ColText9x5) THEN ERROR(PriceBookErrMsg,11,ACTS_ColText9x5);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,13)) <> UPPERCASE(ACTS_ColText24x7) THEN ERROR(PriceBookErrMsg,13,ACTS_ColText24x7);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,15)) <> UPPERCASE(ACTS_ColTextAHR) THEN ERROR(PriceBookErrMsg,15,ACTS_ColTextAHR);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,17)) <> UPPERCASE(ACTS_ColTextMS24x7) THEN ERROR(PriceBookErrMsg,17,ACTS_ColTextMS24x7);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,19)) <> UPPERCASE(ACTS_ColTextMS9x5) THEN ERROR(PriceBookErrMsg,19,ACTS_ColTextMS9x5);
+          END;
         END;
 
         PriceBookEOL.DELETEALL;
@@ -469,11 +541,19 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
           IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,14)) <> UPPERCASE(CHAMPS_ColTextAHR) THEN ERROR(PriceBookErrMsg,14,CHAMPS_ColTextAHR);
         END;
         IF auswahl = 2 THEN BEGIN
-          IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,10)) <> UPPERCASE(ACTS_ColText9x5) THEN ERROR(PriceBookErrMsg,10,ACTS_ColText9x5);
-          IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,12)) <> UPPERCASE(ACTS_ColText24x7) THEN ERROR(PriceBookErrMsg,12,ACTS_ColText24x7);
-          IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,14)) <> UPPERCASE(ACTS_ColTextAHR) THEN ERROR(PriceBookErrMsg,14,ACTS_ColTextAHR);
-          IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,16)) <> UPPERCASE(ACTS_ColTextMS24x7) THEN ERROR(PriceBookErrMsg,16,ACTS_ColTextMS24x7);
-          IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,18)) <> UPPERCASE(ACTS_ColTextMS9x5) THEN ERROR(PriceBookErrMsg,18,ACTS_ColTextMS9x5);
+          IF LiveSupport_Column_exist = FALSE THEN BEGIN
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,10)) <> UPPERCASE(ACTS_ColText9x5) THEN ERROR(PriceBookErrMsg,10,ACTS_ColText9x5);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,12)) <> UPPERCASE(ACTS_ColText24x7) THEN ERROR(PriceBookErrMsg,12,ACTS_ColText24x7);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,14)) <> UPPERCASE(ACTS_ColTextAHR) THEN ERROR(PriceBookErrMsg,14,ACTS_ColTextAHR);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,16)) <> UPPERCASE(ACTS_ColTextMS24x7) THEN ERROR(PriceBookErrMsg,16,ACTS_ColTextMS24x7);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,18)) <> UPPERCASE(ACTS_ColTextMS9x5) THEN ERROR(PriceBookErrMsg,18,ACTS_ColTextMS9x5);
+          END ELSE BEGIN
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,11)) <> UPPERCASE(ACTS_ColText9x5) THEN ERROR(PriceBookErrMsg,11,ACTS_ColText9x5);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,13)) <> UPPERCASE(ACTS_ColText24x7) THEN ERROR(PriceBookErrMsg,13,ACTS_ColText24x7);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,15)) <> UPPERCASE(ACTS_ColTextAHR) THEN ERROR(PriceBookErrMsg,15,ACTS_ColTextAHR);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,17)) <> UPPERCASE(ACTS_ColTextMS24x7) THEN ERROR(PriceBookErrMsg,17,ACTS_ColTextMS24x7);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,19)) <> UPPERCASE(ACTS_ColTextMS9x5) THEN ERROR(PriceBookErrMsg,19,ACTS_ColTextMS9x5);
+          END;
         END;
 
         //********************************************************************************************
@@ -604,6 +684,14 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                       END;
                 END;
                 Window.UPDATE(6,TotalRows);
+
+                //Mit Preisliste 7.8 kam bei ACTS Preislisten neue Spalte Live Support hinzu (Spalte J), alles dahinter verschiebt sich somit um 1 Spaltenr.
+                IF (UPPERCASE(GetValueAtCellPriceBook(PriceBookActual,1,10)) = 'LIVE SUPPORT') THEN BEGIN
+                  LiveSupport_Column_exist := TRUE;
+                  ColumnNo_ServiceName += 1;
+                  ColumnNo_MSRP += 1;
+                END ELSE
+                  LiveSupport_Column_exist := FALSE;
 
                 FOR i := 2 TO TotalRows DO BEGIN
 
