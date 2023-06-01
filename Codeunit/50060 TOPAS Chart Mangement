@@ -2,8 +2,8 @@ OBJECT Codeunit 50060 TOPAS Chart Mangement
 {
   OBJECT-PROPERTIES
   {
-    Date=30.11.18;
-    Time=15:31:57;
+    Date=03.12.18;
+    Time=15:51:35;
     Modified=Yes;
     Version List=TOPAS Charts;
   }
@@ -236,6 +236,45 @@ OBJECT Codeunit 50060 TOPAS Chart Mangement
       END;
     END;
 
+    PROCEDURE GenerateOrdersHistoryProgress@1000000004(VAR BusinessChartBuffer@1000000000 : Record 485;VAR PeriodLength@1000000001 : Option);
+    VAR
+      i@1000000003 : Integer;
+      ToDate@1000000005 : ARRAY [12] OF Date;
+      FromDate@1000000004 : ARRAY [12] OF Date;
+      Value@1000000007 : Decimal;
+      TotalValue@1000000002 : Decimal;
+      ColumnNo@1000000006 : Integer;
+      MeasureIndex@1000000008 : Integer;
+    BEGIN
+      //Auftragseingangsverlauf
+      WITH BusinessChartBuffer DO BEGIN
+        Initialize;
+        //Adding Y-Axis measure in chart like: Name, DataType, ChartType to the Business Chart
+        AddMeasure('*',0,"Data Type"::Decimal,"Chart Type"::StackedColumn); //Workaround fr Farb„nderung 1. Measure blau, 2. Measure rot usw.
+        AddMeasure('**',0,"Data Type"::Decimal,"Chart Type"::StackedColumn);
+        AddMeasure('Betrag',1,"Data Type"::Decimal,"Chart Type"::StackedColumn);
+
+        //Filtering Query Result
+        MeasureIndex := 1;
+        Period_Length := PeriodLength;
+        "Period Length" := Period_Length;
+
+        //Adding X-Axis measure in chart like: Name, DataType, ChartType to the Business Chart
+        SetPeriodXAxis;
+
+        IF CalcPeriodsProgress(FromDate,ToDate,BusinessChartBuffer) THEN BEGIN
+          AddPeriods(ToDate[1],ToDate[ARRAYLEN(ToDate)]);
+
+          TotalValue := 0;
+          FOR ColumnNo := 1 TO ARRAYLEN(ToDate) DO BEGIN
+            TotalValue := GetSalesOrderAmount(FromDate[ColumnNo],ToDate[ColumnNo]);
+            SetValueByIndex(MeasureIndex + 1,ColumnNo - 1,TotalValue);
+          END;
+        END;
+
+      END;
+    END;
+
     PROCEDURE DrillDownInvoicesByTerritory@1000000005(VAR BusChartBuf@1000000004 : Record 485;VAR PeriodLength@1000000003 : Option);
     VAR
       CustLedgerEntry@1000000000 : Record 21;
@@ -312,6 +351,27 @@ OBJECT Codeunit 50060 TOPAS Chart Mangement
       CalcPeriods(FromDate,ToDate);
       IF NoTerritoryFilter = FALSE THEN
         AUmtl.SETRANGE(Gebietscode,Territory);
+      AUmtl.SETFILTER(Belegart,'%1|%2|%3','AMTL','AEMT','GUMT');
+      AUmtl.SETRANGE(Datum,FromDate,ToDate);
+      PAGE.RUN(PAGE::"Auftragseingang mtl.",AUmtl);
+    END;
+
+    PROCEDURE DrillDownOrdersProgress@1000000007(VAR BusChartBuf@1000000004 : Record 485;VAR PeriodLength@1000000003 : Option);
+    VAR
+      CustLedgerEntry@1000000000 : Record 21;
+      AUmtl@1000000007 : Record 50017;
+      ToDate@1000000002 : Date;
+      FromDate@1000000001 : Date;
+      Measure@1000000005 : Integer;
+    BEGIN
+      Measure := BusChartBuf."Drill-Down X Index";
+      //IF (Measure < 0) THEN
+        //EXIT;
+
+      ToDate := BusChartBuf.GetXValueAsDate(BusChartBuf."Drill-Down X Index");
+      Period_Length := PeriodLength;
+      FromDate := CalcFromDate(ToDate);
+
       AUmtl.SETFILTER(Belegart,'%1|%2|%3','AMTL','AEMT','GUMT');
       AUmtl.SETRANGE(Datum,FromDate,ToDate);
       PAGE.RUN(PAGE::"Auftragseingang mtl.",AUmtl);
@@ -414,6 +474,22 @@ OBJECT Codeunit 50060 TOPAS Chart Mangement
       SalesInvoiceQry.OPEN;
       WHILE SalesInvoiceQry.READ DO BEGIN
         TotalAmount += SalesInvoiceQry.SalesLCY;
+      END;
+      EXIT(TotalAmount);
+    END;
+
+    LOCAL PROCEDURE GetSalesOrderAmount@1000000006(FromDate@1001 : Date;ToDate@1002 : Date) : Decimal;
+    VAR
+      CurrExchRate@1004 : Record 330;
+      OrdersQuery@1003 : Query 50004;
+      Amount@1008 : Decimal;
+      TotalAmount@1005 : Decimal;
+    BEGIN
+      OrdersQuery.SETRANGE(Datum,FromDate,ToDate);
+      OrdersQuery.SETFILTER(Belegart,'%1|%2|%3','AMTL','AEMT','GUMT');
+      OrdersQuery.OPEN;  //Query Open
+      WHILE OrdersQuery.READ DO BEGIN
+        TotalAmount += OrdersQuery.Sum_Betrag_in_EUR;
       END;
       EXIT(TotalAmount);
     END;
