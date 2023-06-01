@@ -2,8 +2,8 @@ OBJECT Codeunit 50060 TOPAS Chart Mangement
 {
   OBJECT-PROPERTIES
   {
-    Date=03.12.18;
-    Time=15:51:35;
+    Date=31.05.23;
+    Time=16:37:24;
     Modified=Yes;
     Version List=TOPAS Charts;
   }
@@ -110,6 +110,7 @@ OBJECT Codeunit 50060 TOPAS Chart Mangement
       Manufacturer@1000000010 : Record 5720;
       TOPAS_API@1000000011 : Codeunit 50001;
       InvoicesByManufacturerQ@1000000009 : Query 50003;
+      CreditMemoByManufacturerQ@1000000014 : Query 50005;
       i@1000000003 : Integer;
       ToDate@1000000005 : ARRAY [6] OF Date;
       FromDate@1000000004 : ARRAY [6] OF Date;
@@ -118,6 +119,7 @@ OBJECT Codeunit 50060 TOPAS Chart Mangement
       ColumnNo@1000000006 : Integer;
       MeasureIndex@1000000008 : Integer;
       DataType@1000000012 : Option;
+      ManufacBalanceValue@1000000015 : Decimal;
     BEGIN
       //Umsatzverlauf nach Herstellern
       WITH BusinessChartBuffer DO BEGIN
@@ -165,13 +167,23 @@ OBJECT Codeunit 50060 TOPAS Chart Mangement
             InvoicesByManufacturerQ.SETFILTER(Herstellercode,FilterManufacturer);
             InvoicesByManufacturerQ.OPEN;  //Query Open
             WHILE InvoicesByManufacturerQ.READ DO BEGIN //Reading filtered Query Data
+              ManufacBalanceValue := 0;
               i += 1;
               Manufacturer.GET(InvoicesByManufacturerQ.ManufacCode);
-              SetValue(FORMAT(Manufacturer.Herstellerkurzname), ColumnNo - 1, InvoicesByManufacturerQ.SalesLCY); //Y-Axis Values
+              CreditMemoByManufacturerQ.SETRANGE(Posting_Date,FromDate[ColumnNo],ToDate[ColumnNo]);
+              CreditMemoByManufacturerQ.SETFILTER(Herstellercode,Manufacturer.Code);
+              CreditMemoByManufacturerQ.OPEN;  //Query Open
+              WHILE CreditMemoByManufacturerQ.READ DO BEGIN //Reading filtered Query Data
+                ManufacBalanceValue -= CreditMemoByManufacturerQ.SalesLCY; //Y-Axis Values
+                TotalValue -= CreditMemoByManufacturerQ.SalesLCY;
+              END;
+              ManufacBalanceValue += InvoicesByManufacturerQ.SalesLCY;
+              SetValue(FORMAT(Manufacturer.Herstellerkurzname), ColumnNo - 1, ManufacBalanceValue); //Y-Axis Values
               TotalValue += InvoicesByManufacturerQ.SalesLCY;
             END;
 
             //SetValue('Betrag', ColumnNo - 1, TotalValue); //Y-Axis Values
+            CreditMemoByManufacturerQ.CLOSE;  //Query Close
             InvoicesByManufacturerQ.CLOSE;  //Query Close
 
           END;
@@ -324,6 +336,33 @@ OBJECT Codeunit 50060 TOPAS Chart Mangement
       CustLedgerEntry.SETRANGE("Document Type",CustLedgerEntry."Document Type"::Invoice,CustLedgerEntry."Document Type"::"Credit Memo");
       CustLedgerEntry.SETRANGE("Posting Date",FromDate,ToDate);
       PAGE.RUN(PAGE::"Customer Ledger Entries",CustLedgerEntry);
+    END;
+
+    PROCEDURE DrillDownInvoicesProgressByManufacturer@1000000009(VAR BusChartBuf@1000000004 : Record 485;VAR PeriodLength@1000000003 : Option);
+    VAR
+      Belege@1000000000 : Record 50010;
+      Manufacturer@1000000008 : Record 5720;
+      ToDate@1000000002 : Date;
+      FromDate@1000000001 : Date;
+      Measure@1000000005 : Integer;
+      Period@1000000006 : Date;
+      ManufacturerName@1000000009 : Text;
+      ManufacturerCode@1000000007 : Code[10];
+    BEGIN
+      Measure := BusChartBuf."Drill-Down X Index";
+      ManufacturerName := BusChartBuf.GetMeasureName(BusChartBuf."Drill-Down Measure Index");
+      Manufacturer.SETRANGE(Herstellerkurzname,ManufacturerName);
+      IF Manufacturer.FINDFIRST THEN
+        ManufacturerCode := Manufacturer.Code;
+
+      ToDate := BusChartBuf.GetXValueAsDate(BusChartBuf."Drill-Down X Index");
+      Period_Length := PeriodLength;
+      FromDate := CalcFromDate(ToDate);
+
+      Belege.SETRANGE(Belegart,Belege.Belegart::Invoice,Belege.Belegart::"Credit Memo");
+      Belege.SETRANGE(Belegdatum,FromDate,ToDate);
+      Belege.SETRANGE(Herstellercode,ManufacturerCode);
+      PAGE.RUN(PAGE::"Projekt Rechnungen Subform",Belege);
     END;
 
     PROCEDURE DrillDownOrdersByTerritory@1000000002(VAR BusChartBuf@1000000004 : Record 485;VAR PeriodLength@1000000003 : Option);
