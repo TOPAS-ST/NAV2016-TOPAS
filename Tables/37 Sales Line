@@ -2,10 +2,10 @@ OBJECT Table 37 Sales Line
 {
   OBJECT-PROPERTIES
   {
-    Date=22.03.23;
+    Date=21.11.23;
     Time=17:00:00;
     Modified=Yes;
-    Version List=NAVW19.00.00.50458,TOP1.08;
+    Version List=NAVW19.00.00.50458,TOP1.09;
   }
   PROPERTIES
   {
@@ -354,17 +354,10 @@ OBJECT Table 37 Sales Line
                                                                       ELSE
                                                                         VALIDATE(Einkaufsw„hrungscode,'');
 
-                                                                      //TOPAS 11.05.09 ST
-                                                                      IF Item."ECCN-Nr." = '3A001' THEN
-                                                                        MESSAGE(Text50000);
-
                                                                       //TOPAS 23.09.10 ST - šbernahme des AC_Solutionpartners aus dem Debitor bei Auftr„gen und Angeboten
                                                                       IF (("Document Type" = "Document Type"::Order) OR ("Document Type" = "Document Type"::Quote)) AND (Item."Manufacturer Code" = '59')
                                                                       AND (Customer.GET(SalesHeader."Sell-to Customer No.")) THEN
                                                                         AC_Solutionpartner := Customer.AC_Solutionpartner;
-
-                                                                      IF Item."Item Tracking Code" = '' THEN
-                                                                        ERROR(Text50015,Item."No.");
 
                                                                       //TOPAS 07.09.11 ST - Vorhandene Service Kalkulation + Auswahl Seriennummern werden gel”scht
                                                                       IF (xRec."No." <> "No.") THEN BEGIN
@@ -380,11 +373,10 @@ OBJECT Table 37 Sales Line
 
                                                                       //TOPAS 26.10.11 ST - Prft OmniVision Artikel und NDA Vorhandensein beim Kunden
                                                                       IF "Document Type" = "Document Type"::Order THEN
-                                                                        SalesHeader.CheckOVTNDA("Document No.","Document Type","No.");
+                                                                        TOPASBelegPruefungen.CheckOVTNDA("Document No.","Document Type","No.");
 
-                                                                      //TOPAS 14.04.21 ST -
-                                                                      IF ("Manufacturer Code" = '17') AND (Item."Lead Free" = FALSE) THEN
-                                                                        MESSAGE(Text50062);
+                                                                      //TOPAS 21.11.23 ST - Artikel Prfungen +
+                                                                      TOPASBelegPruefungen.CheckSalesLineNoOnValidate(Rec);
 
                                                                       //TOPAS -
 
@@ -3333,7 +3325,6 @@ OBJECT Table 37 Sales Line
       "***TOPAS***"@1000000000 : Integer;
       Artikel@1000000011 : Record 27;
       Quotes2@1000000001 : Record 50014;
-      Text50000@1000000039 : TextConst 'DEU=Dies ist ein Military Part. Der Kunde muss ein End User Statement abgeben.\Das Formular "IDT Certificate of Enduse.docx" liegt hier:\\F:/Daten NEU/Gemeinsame Ordner/Formulare (Muster, RMA. Split usw.)/IDT';
       Text50002@1000000002 : TextConst 'DEU=Sie mssen zuerst einen Artikel anlegen, bevor Sie diese Funktion ausfhren k”nnen.';
       Text50003@1000000003 : TextConst 'DEU=Sie k”nnen diese Funktion nur bei einem Bestcker ausfhren.';
       Currency3@1000000005 : Record 4;
@@ -3350,8 +3341,6 @@ OBJECT Table 37 Sales Line
       Text50008@1000000017 : TextConst 'DEU=Es existieren keine aktiven Projekte.';
       Text50011@1000000026 : TextConst 'DEU=Es konnte eine Kalkulation zu diesem Artikel gefunden werden, diese wurde nun gel”scht.';
       Text50012@1000000025 : TextConst 'DEU=Diese Position wird in der Service Kalkulation in Zeile %1 verwendet. Bitte korrigieren Sie die Kalkulation manuell.';
-      Text50015@1000000042 : TextConst 'DEU=Bei Artikel %1 wurde kein Artikelverfolgungscode ausgew„hlt.';
-      Text50022@1000000019 : TextConst 'DEU=Diese Funktion ist nur bei Service- oder Splicecom System Artikeln erlaubt.';
       Text50030@1000000020 : TextConst 'DEU=Da die Verpackungsmenge des Artikels %1 %2 betr„gt, wird die Menge von %3 auf %4 erh”ht. Wollen Sie den Vorgang fortsetzen ?';
       Text50040@1000000018 : TextConst 'DEU=Fr Quote %1 wird die Quotemenge %2 in der Auftragszeile %3, DC-Preis (MW) %4 berschritten!';
       Text50041@1000000010 : TextConst 'DEU=Der DC-Preis (EKW) in H”he von %1\weicht vom Quotepreis %2 ab.';
@@ -3372,7 +3361,6 @@ OBJECT Table 37 Sales Line
       PosFilter@1000000004 : Text[250];
       RestMengeAuftrag@1000000038 : Decimal;
       Text50061@1000000043 : TextConst 'DEU=Der Einkaufsw„hrungskurs liegt auáerhalb der W„hrungstoleranz fr %1.';
-      Text50062@1000000021 : TextConst 'DEU=DSP Group Hinwis: Wurde der Artikel bereits auf REACH bzw RoHS Konformit„t geprft?';
       BestPrice@1000000040 : Decimal;
       BestDate@1000000044 : Date;
 
@@ -6148,6 +6136,7 @@ OBJECT Table 37 Sales Line
           MESSAGE ('Mindestdeckungsbeitrag % %1 bei Artikel %2 ist mit %3 unterschritten.',
             Artikel."Mindestdeckungsbeitrag %", Artikel."Nr.", "DB %");
         }
+        TOPASBelegPruefungen.CheckSalesLineProfit(Rec,xRec);
       END;
       // +008.4
     END;
@@ -6170,6 +6159,7 @@ OBJECT Table 37 Sales Line
       11      TOP1.06   14.04.21    ST    Neues Feld 50114 "Bestellnr.", DSP Group REACH bzw. RoHS Hinweis, wenn bei dem Artikel der Haken "Lead free" nicht gesetzt ist
       12      TOP1.07   28.01.23    ST    Neues Feld 50270 Bemerkung
       13      TOP1.08   22.03.23    ST    Bugfix DC-Preis holen, wenn Preislisten Kalkulation auf neu steht und der EK-Preis noch nicht gltig ist
+      14      TOP1.09   21.11.23    ST    Auslagerung von Code - No. OnValidate Routinen in CU 50007 - Fkt. CheckSalesLineNoOnValidate, neue Fkt. CheckSalesLineProfit aus CU 50007 eingebunden
     }
     END.
   }
