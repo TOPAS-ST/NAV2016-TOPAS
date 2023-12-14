@@ -2,8 +2,8 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
 {
   OBJECT-PROPERTIES
   {
-    Date=23.08.23;
-    Time=13:51:25;
+    Date=21.11.23;
+    Time=17:00:00;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -65,6 +65,11 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
       Text122@1000000047 : TextConst 'DEU=Der Artikel %1 aus der Auswahl Seriennr. konnte nicht in der Service Kalkulation in Zeile %2 gefunden werden. Bitte l”schen Sie diese Artikelnr. aus der tempor„ren Vorbelegung.';
       Text130@1000000024 : TextConst 'DEU=Die Kalkulation fr Service Artikel %1 in Zeile %2 hat sich ge„ndert, m”chten Sie den aktuelleren DC bernehmen?';
       Text140@1000000027 : TextConst 'DEU=Die Restmenge des Rahmenauftrages %1 ,in Zeilennr. %2 wurde mit %3 berschritten. Bitte passen Sie den Rahmenauftrag entsprechend an.';
+      Text37_1@1000000050 : TextConst 'DEU=Warnung !!\Die aktuelle Marge von %1 Prozent unterschreitet den Wert von %2 Prozent!';
+      Text37_2@1000000048 : TextConst 'DEU=DSP Group Hinwis: Wurde der Artikel bereits auf REACH bzw RoHS Konformit„t geprft?';
+      Text37_3@1000000049 : TextConst 'DEU=Fr Artikel %1 wurde kein %2 ausgew„hlt.';
+      Text37_4@1000000051 : TextConst 'DEU=Hinweis: interne Konstruktion bei Bestellung bei Ingke, Rcksprache mit Vertrieb.';
+      Text37_5@1000000052 : TextConst 'DEU=Hinweis: Der Kunde besitzt kein gltiges OmniVision NDA.\\Bitte wenden Sie sich an den NDA Versand.';
 
     PROCEDURE CheckPurchaseBeforePost@1000000000(PurchaseHeader@1000000002 : Record 38) : Boolean;
     VAR
@@ -1055,6 +1060,63 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
               ERROR(Text042,SalesLine."No.",SalesLine."Location Code");
           UNTIL SalesLine.NEXT = 0;
 
+      END;
+    END;
+
+    PROCEDURE CheckSalesLineNoOnValidate@1000000005(SalesLine@1000000000 : Record 37);
+    BEGIN
+      IF SalesLine.Type = SalesLine.Type::Item THEN
+        IF Item.GET(SalesLine."No.") THEN BEGIN
+          //11.05.09 ST IDT
+          //IF Item."ECCN-Nr." = '3A001' THEN
+          //  MESSAGE(Text37_1);
+
+          //14.04.21 ST Lead DSP Group
+          IF (SalesLine."Manufacturer Code" = '17') AND (Item."Lead Free" = FALSE) THEN
+            MESSAGE(Text37_2);
+
+          // ??? ST
+          IF Item."Item Tracking Code" = '' THEN
+            ERROR(Text37_3,Item."No.",Item.FIELDCAPTION("Item Tracking Code"));
+
+          //Artikel Warnungen YKJV-3020LT
+          IF SalesLine."No." = 'YKJV-3020LT' THEN
+            MESSAGE(Text37_4);
+        END;
+    END;
+
+    PROCEDURE CheckSalesLineProfit@1000000003(SalesLine@1000000000 : Record 37;xRecSalesLine@1000000001 : Record 37);
+    BEGIN
+      //Margen Warnung im Beleg
+      IF (SalesLine.Type = SalesLine.Type::Item) AND (SalesLine."Unit Price" <> 0) AND (SalesLine."Profit %" <> xRecSalesLine."Profit %") AND (SalesLine."Location Code" = 'ZENT') THEN
+        IF (SalesLine."Profit %" < 8) AND (SalesLine."Manufacturer Code" = '69') THEN
+          MESSAGE(Text37_1,ROUND(SalesLine."Profit %"),8)
+        ELSE
+          IF (SalesLine."Profit %" < 10) AND (SalesLine."Manufacturer Code" <> '69') THEN
+            MESSAGE(Text37_1,ROUND(SalesLine."Profit %"),10);
+    END;
+
+    PROCEDURE CheckOVTNDA@1140002(DocNo@1140002 : Code[20];DocType@1140001 : Option;ItemNo@1140004 : Code[20]);
+    VAR
+      SalesHeader@1000000000 : Record 36;
+      SalesLine@1140000 : Record 37;
+      Doku@1140003 : Record 50032;
+    BEGIN
+      //TOPAS 26.10.11 ST - Prft OmniVision Artikel und NDA Vorhandensein beim Kunden
+      SalesLine.RESET;
+      SalesLine.SETRANGE("Document No.",DocNo);
+      SalesLine.SETRANGE("Document Type",DocType);
+      SalesLine.SETRANGE("No.",ItemNo);
+      SalesLine.SETRANGE(Type,SalesLine.Type::Item);
+      SalesLine.SETRANGE("Manufacturer Code",'43');
+      IF SalesLine.FINDFIRST THEN BEGIN
+        SalesHeader.GET(DocType,DocNo);
+        Doku.RESET;
+        Doku.SETFILTER(Linie,'%1','43');
+        Doku.SETFILTER(Ablaufdatum,'>=%1',WORKDATE);
+        Doku.SETFILTER("Mandantennr.",'%1',SalesHeader."Sell-to Contact No.");
+        IF NOT Doku.FINDFIRST THEN
+          MESSAGE(Text37_5);
       END;
     END;
 
