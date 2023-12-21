@@ -2,10 +2,10 @@ OBJECT Page 6510 Item Tracking Lines
 {
   OBJECT-PROPERTIES
   {
-    Date=17.12.19;
-    Time=10:49:30;
+    Date=21.11.23;
+    Time=17:00:00;
     Modified=Yes;
-    Version List=NAVW19.00.00.50682,TOP1.03;
+    Version List=NAVW19.00.00.50682,TOP1.04;
   }
   PROPERTIES
   {
@@ -493,6 +493,20 @@ OBJECT Page 6510 Item Tracking Lines
                                  //TOPAS -
                                END;
                                 }
+      { 1000000003;2 ;Action    ;
+                      Name=ExcelImportTrackingLines;
+                      CaptionML=DEU=Excel Import Seriennr.;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=Excel;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 //TOPAS 21.11.23 ST - Zum Einspielen von Seriennr. +
+                                 CurrPage.SAVERECORD;
+                                 ExcelImportTrackingLines(Rec);
+                                 //TOPAS -
+                               END;
+                                }
     }
   }
   CONTROLS
@@ -950,6 +964,7 @@ OBJECT Page 6510 Item Tracking Lines
       Text50007@1000000014 : TextConst 'DEU=M”chten Sie die Restmenge von %1 Stck auffllen lassen?';
       Text50008@1000000013 : TextConst 'DEU=Der Vorgang konnte nicht durchgefhrt werden. Es muss mindestens eine Zeile mit einer gltige(n) %1 bzw. %2 vorbelegt und die Restmenge darf nicht 0 sein.';
       AutoFillAvail@1000000015 : Boolean;
+      SourceFile@1000000016 : Text;
 
     PROCEDURE SetFormRunMode@19(Mode@1000 : ',Reclass,Combined Ship/Rcpt,Drop Shipment');
     BEGIN
@@ -2677,6 +2692,7 @@ OBJECT Page 6510 Item Tracking Lines
       Item@1000000002 : Record 27;
       start_serialno@1000000006 : Code[20];
       highest_index@1000000005 : Integer;
+      actual_index@1000000007 : Integer;
       i@1000000003 : Integer;
     BEGIN
       //TOPAS 21.12.18 ST +
@@ -2684,7 +2700,7 @@ OBJECT Page 6510 Item Tracking Lines
       TrackingSpecification.TESTFIELD("Quantity (Base)");
       TrackingSpecification.TESTFIELD("Item No.");
       Item.GET(TrackingSpecification."Item No.");
-      IF (Item.Serviceklassifizierung = 'SOFTWARE') AND ((ItemTrackingCode.Code = 'PRODUCTKEY') OR (ItemTrackingCode.Code = 'SERIENNR') OR ((ItemTrackingCode.Code = 'SN-ODER-PK'))) THEN BEGIN
+      IF (Item.Serviceklassifizierung = 'SOFTWARE') AND ((SerialNoOnly) OR (ProductKeyOnly)) THEN BEGIN
         IF (TrackingSpecification.COUNT > 0) AND (UndefinedQtyArray[1] > 0)
         AND (((TrackingSpecification."Product Key" <> '') AND (ProductKeyOnly))
         OR ((TrackingSpecification."Serial No." <> '') AND (SerialNoOnly) AND (STRPOS((TrackingSpecification."Serial No."),'LIC') <> 0))) THEN BEGIN
@@ -2701,10 +2717,12 @@ OBJECT Page 6510 Item Tracking Lines
                 IF highest_index = 0 THEN BEGIN
                   CopyTrackingSpecification.COPY(Rec,TRUE);
                   CopyTrackingSpecification.FINDFIRST;
-                  start_serialno :=  CopyTrackingSpecification."Serial No.";
+                  start_serialno :=  COPYSTR(CopyTrackingSpecification."Serial No.",1,STRPOS(CopyTrackingSpecification."Serial No.",'_LIC') +3);
                   REPEAT
                     IF COPYSTR(CopyTrackingSpecification."Serial No.", STRPOS(CopyTrackingSpecification."Serial No.", '_LIC') +4) >= FORMAT(highest_index) THEN
-                      EVALUATE(highest_index,COPYSTR(CopyTrackingSpecification."Serial No.", STRPOS(CopyTrackingSpecification."Serial No.", '_LIC') +4));
+                      EVALUATE(actual_index,COPYSTR(CopyTrackingSpecification."Serial No.", STRPOS(CopyTrackingSpecification."Serial No.", '_LIC') +4));
+                    IF actual_index >= highest_index THEN
+                      highest_index := actual_index;
                   UNTIL CopyTrackingSpecification.NEXT = 0;
                   highest_index += 1;
                 END;
@@ -2729,6 +2747,125 @@ OBJECT Page 6510 Item Tracking Lines
       //TOPAS -
     END;
 
+    LOCAL PROCEDURE ExcelImportTrackingLines@1000000002(TrackingSpecification@1000000020 : Record 336) : Boolean;
+    VAR
+      CopyTrackingSpecification@1000000016 : TEMPORARY Record 336;
+      ReservationEntry@1000000003 : Record 337;
+      TempReservation@1000000005 : Record 337;
+      FileMgt@1000000000 : Codeunit 419;
+      LastExpDate@1000000004 : Date;
+      Column_Part@1000000013 : TextConst 'DEU=A';
+      Column_Quantity@1000000012 : TextConst 'DEU=B';
+      Column_SerialNo@1000000011 : TextConst 'DEU=B';
+      ErrMsg1@1000000006 : TextConst 'DEU=Quelldatei %1 existiert nicht.';
+      ItemNo@1000000021 : Code[20];
+      SerialNo@1000000010 : Code[20];
+      Quantity@1000000014 : Integer;
+      date_inc@1000000009 : Integer;
+      expire_counter@1000000008 : Integer;
+      empty_lines_counter@1000000015 : Integer;
+      i@1000000019 : Integer;
+      j@1000000007 : Text;
+      Excel@1000000018 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00024500-0000-0000-C000-000000000046}:Unknown Automation Server.Application";
+      Book@1000000017 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";
+      Range@1000000002 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";
+      Sheet@1000000001 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020820-0000-0000-C000-000000000046}:Unknown Automation Server.Worksheet";
+      ErrMsg2@1000000022 : TextConst 'DEU=Die Artikelnr. %1 in der Artikelverfolgungszeile entspricht nicht der Angabe %2 aus der Quelldatei.';
+      ErrMsg3@1000000023 : TextConst 'DEU=%1 muss SERIENNR lauten.';
+    BEGIN
+      //TOPAS 21.11.23 ST +
+      Item.GET(xRec."Item No.");
+      IF Item."Item Tracking Code" <> 'SERIENNR' THEN ERROR(ErrMsg3,Item.FIELDCAPTION("Item Tracking Code"));
+
+      SourceFile := FileMgt.OpenFileDialog('NAV File Browser','','Excel Dateien (*.xlsx)|*.xlsx');
+
+      //********************************************************************************************
+      //                                  Excel Import Definition
+      //********************************************************************************************
+
+      IF NOT FileMgt.ClientFileExists(SourceFile) THEN
+        ERROR(ErrMsg1,SourceFile);
+
+      CLEAR(Excel);
+      CREATE(Excel,FALSE,TRUE);                            //erzeugt excel
+      Book := Excel.Workbooks._Open(SourceFile,0,FALSE);   //”ffnet excel datei
+      Sheet := Book.Worksheets.Item(1);
+      //Sheet := Excel.ActiveSheet;                        //definiert aktives worksheet
+      j := '1';
+      expire_counter := 1;
+      date_inc := 0;
+
+      //********************************************************************************************
+      //                                       Starte
+      //********************************************************************************************
+
+      REPEAT
+        ItemNo := FORMAT(Sheet.Range(Column_Part+j).Value);
+        SerialNo := FORMAT(Sheet.Range(Column_SerialNo+j).Value);
+        //IF FORMAT(Sheet.Range(Column_Quantity + j).Value) <> '' THEN
+        //  EVALUATE(Quantity,FORMAT(Sheet.Range(Column_Quantity + j).Value));
+        IF "Item No." <> ItemNo THEN BEGIN
+          Book.Close(TRUE);
+          CLEAR(Excel);
+          ERROR(ErrMsg2,Item."No.",ItemNo);
+        END;
+        Quantity := 1;
+        IF (SerialNo <> '') AND (Quantity <> 0) AND (UndefinedQtyArray[1] > 0) THEN BEGIN
+          Item.GET(xRec."Item No.");
+          IF (Item.Serviceklassifizierung <> 'SOFTWARE') AND (SerialNoOnly) THEN BEGIN
+            CopyTrackingSpecification.COPY(Rec,TRUE);
+            CopyTrackingSpecification.SETRANGE("Serial No.",SerialNo);
+            IF NOT CopyTrackingSpecification.FINDFIRST THEN BEGIN
+              INIT;
+              TRANSFERFIELDS(xRec);
+              "Entry No." := NextEntryNo;
+              IF "Entry No." = 0 THEN "Entry No." := 1;
+              VALIDATE("Serial No.",SerialNo);
+              IF LastExpDate <> 0D THEN BEGIN
+                VALIDATE("Expiration Date",LastExpDate+1);
+                LastExpDate := "Expiration Date";
+              END ELSE
+                VALIDATE("Expiration Date",CALCDATE(FORMAT(date_inc)+'T',WORKDATE));
+              expire_counter += 1;
+              IF expire_counter = 11 THEN BEGIN
+                expire_counter := 1;
+                date_inc += 1;
+              END;
+              VALIDATE(Ursprungsland,Item."Country/Region of Origin Code");
+              VALIDATE("Quantity (Base)",Quantity);
+              INSERT;
+              TempItemTrackLineInsert.INIT;
+              IF (NOT InsertIsBlocked) AND (NOT ZeroLineExists) THEN
+                IF NOT TestTempSpecificationExists THEN BEGIN
+                  TempItemTrackLineInsert.TRANSFERFIELDS(Rec);
+                  TempItemTrackLineInsert.INSERT;
+                  ItemTrackingDataCollection.UpdateLotSNDataSetWithChange(
+                    TempItemTrackLineInsert,CurrentSignFactor * SourceQuantityArray[1] < 0,CurrentSignFactor,0);
+                END;
+              CalculateSums;
+            END ELSE
+              LastExpDate := CopyTrackingSpecification."Expiration Date";
+          END;
+          empty_lines_counter := 0;
+        END ELSE BEGIN
+          empty_lines_counter += 1;
+        END;
+
+        j:=INCSTR(j);
+
+      UNTIL (UndefinedQtyArray[1] = 0) OR (empty_lines_counter = 1);  // Nach 2 Leerzeilen ist Schluss
+
+      Book.Close(TRUE);
+      CLEAR(Excel);
+
+      EXIT(TRUE);
+      //TOPAS -
+    END;
+
+    LOCAL PROCEDURE CloseExcel@1000000011();
+    BEGIN
+    END;
+
     BEGIN
     {
       In order to provide F6 invoked lookup from availability bitmap columns, a menu button has been hidden behind control 1.
@@ -2741,6 +2878,7 @@ OBJECT Page 6510 Item Tracking Lines
       2       TOP1.01   04.06.18    ST      Abfrage Vorbelegung fr Bestellungen mit Artikelverfolgung SN-ODER-PK wird nun angezeigt, autom. SN oder PK generiert
       3       TOP1.02   21.12.18    ST      Funktion zum autom. Auffllen von Restmengen ist nun fr Artikelverfolgung PRODUCTKEY oder SN-ODER-PK verfgbar
       4       TOP1.03   10.04.19    ST      kleinere Fehler beim Auffllen von Restmengen behoben, Fkt. GetVSNForProductKey gel”scht
+      5       TOP1.04   26.11.20    ST      Bugfix in der Fkt. AutoFillTrackingSpec, wenn bereits Werte vorhanden sind und der gr”sste Index 2-stellig ist
     }
     END.
   }
