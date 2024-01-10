@@ -1,0 +1,458 @@
+OBJECT Page 50062 Projektbersicht Kunde
+{
+  OBJECT-PROPERTIES
+  {
+    Date=02.10.18;
+    Time=13:37:43;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    Editable=No;
+    InsertAllowed=No;
+    DeleteAllowed=No;
+    ModifyAllowed=No;
+    SourceTable=Table50005;
+    SourceTableView=WHERE(Kampagnennr.=FILTER(<>S*),
+                          Memonr.=FILTER(''));
+    PageType=List;
+    RefreshOnActivate=Yes;
+    PromotedActionCategoriesML=[DEU=Neu,Vorgang,Bericht,Filter;
+                                ENU=New,Process,Report,Filter];
+    OnOpenPage=BEGIN
+                 anzeige_text := '';
+                 kontaktnr_filter := GETFILTER("Kontaktnr.");
+                 filter_status := GETFILTER(Projektstatus);
+                 RESET;
+                 SETFILTER("Kontaktnr.",kontaktnr_filter);
+                 SETFILTER("Memonr.",'%1','');
+                 SETFILTER("Kampagnennr.",'<>%1','S*');
+                 SETFILTER(Projektstatus,'<>%1','BEENDET');
+                 CheckProjectStatus(TRUE);
+               END;
+
+    OnAfterGetRecord=BEGIN
+                       CheckProjectStatus(FALSE);
+
+                       IF Campaign.GET("Kampagnennr.") THEN BEGIN
+                         letztes_memo := 0D;
+                         Projektwert := Campaign.Projektwert;
+                         Memo.RESET;
+                         //Memo.SETCURRENTKEY(Anlagedatum,"Memonr.","Kampagnennr.");
+                         Memo.SETRANGE("Kampagnennr.","Kampagnennr.");
+                         IF Memo.FINDFIRST THEN BEGIN
+                           REPEAT
+                             IF letztes_memo < Memo."Korrigiert am" THEN
+                               letztes_memo := Memo."Korrigiert am"
+                           UNTIL Memo.NEXT = 0;
+                         END ELSE
+                           letztes_memo := 0D;
+                       END ELSE BEGIN
+                         Projektwert := 0;
+                         letztes_memo := 0D;
+                       END;
+
+                       Ansprech.RESET;
+                       Ansprech.SETRANGE("Kampagnennr.","Kampagnennr.");
+                       Ansprech.SETRANGE(Fhrungsrolle,TRUE);
+                       IF Ansprech.FINDFIRST THEN BEGIN
+                         Ansprech.CALCFIELDS(Mandantenname);
+                         Hauptbeteiligter := Ansprech.Mandantenname;
+                       END ELSE
+                         Hauptbeteiligter := '';
+
+                       Projektartikel := '';
+                       ProjArtikel.RESET;
+                       ProjArtikel.SETRANGE("Kampagnennr.","Kampagnennr.");
+                       ProjArtikel.SETRANGE(Inaktiv,FALSE);
+                       IF ProjArtikel.FINDFIRST THEN BEGIN
+                         z„hler := 0;
+                         REPEAT
+                           IF (STRLEN(Projektartikel) + STRLEN(ProjArtikel."Artikelnr. 2")) <= 248 THEN BEGIN
+                             IF z„hler = 0 THEN Projektartikel := ProjArtikel."Artikelnr. 2";
+                             IF z„hler > 0 THEN Projektartikel += ', ' + ProjArtikel."Artikelnr. 2";
+                             z„hler := z„hler + 1;
+                           END;
+                         UNTIL (ProjArtikel.NEXT = 0);
+                       END;
+
+                       //NEU 09.09.09-ST
+                       {
+                       filter_status := GETFILTER(Projektstatus);
+                       IF (filter_status = '') OR (filter_status = 'BEENDET') THEN BEGIN
+                         anzeige_text := '';
+                       END ELSE BEGIN
+                         Ansprech.RESET;
+                         Ansprech.SETFILTER("Kontaktnr.",'%1',kontaktnr_filter);
+                         Ansprech.SETFILTER("Memonr.",'%1','');
+                         Ansprech.SETFILTER("Kampagnennr.",'<>%1','S*');
+                         Ansprech.SETFILTER(Projektstatus,'%1','BEENDET');
+                         IF Ansprech.FINDFIRST THEN BEGIN
+                           anzeige_text := STRSUBSTNO(Text000,FORMAT(Ansprech.COUNT));
+                         END
+                       END;
+                       }
+                     END;
+
+    ActionList=ACTIONS
+    {
+      { 1000000009;0 ;ActionContainer;
+                      ActionContainerType=RelatedInformation }
+      { 1000000008;1 ;ActionGroup;
+                      CaptionML=[DEU=Allgemein;
+                                 ENU=General] }
+      { 1000000007;2 ;Action    ;
+                      Name=ShowCampaign;
+                      CaptionML=DEU=&Projekt anzeigen;
+                      Promoted=Yes;
+                      Image=Campaign;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 IF Campaign.GET("Kampagnennr.") THEN
+                                   PAGE.RUN(50052,Campaign)
+                                 ELSE
+                                   ERROR('Projekt existiert nicht!');
+                               END;
+                                }
+      { 1000000004;2 ;Action    ;
+                      Name=Help;
+                      CaptionML=DEU=&Hilfe;
+                      Promoted=Yes;
+                      Image=Help;
+                      PromotedCategory=Process;
+                      OnAction=VAR
+                                 Shell@1140000 : Automation "{50A7E9B0-70EF-11D1-B75A-00A0C90564FE} 1.0:{13709620-C279-11CE-A49E-444553540000}:'Microsoft Shell Controls And Automation'.Shell";
+                                 filename@1140001 : Text[260];
+                               BEGIN
+                                 CREATE(Shell,FALSE,TRUE);
+                                 filename := 'F:\Daten NEU\Gemeinsame Ordner\Navision 5.0 Anleitungen\Nav.5.0 Projekte.pdf';
+                                 Shell.Open(filename);
+                               END;
+                                }
+      { 1900000001;0 ;ActionContainer;
+                      ActionContainerType=ActionItems }
+      { 1000000001;1 ;ActionGroup;
+                      CaptionML=DEU=Anlage }
+      { 1000000002;2 ;Action    ;
+                      Name=NewCampaign;
+                      CaptionML=DEU=&Neues Projekt;
+                      Promoted=Yes;
+                      Image=New;
+                      OnAction=BEGIN
+                                 IF CONFIRM('M”chten Sie wirklich ein neues Projekt anlegen?',TRUE) THEN
+                                   NeuesProjekt("Kontakt Mandantennr.");
+                               END;
+                                }
+      { 1140016 ;1   ;ActionGroup;
+                      Name=Filtersetzen;
+                      CaptionML=DEU=Filter setzen }
+      { 1140029 ;2   ;Action    ;
+                      CaptionML=DEU=Alle;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=ClearFilter;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 RESET;
+                                 SETFILTER("Kontaktnr.",kontaktnr_filter);
+                                 SETFILTER("Memonr.",'%1','');
+                                 SETFILTER("Kampagnennr.",'<>%1','S*');
+                               END;
+                                }
+      { 1140032 ;2   ;Action    ;
+                      CaptionML=DEU=Alle Aktiven;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=Completed;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 RESET;
+                                 SETFILTER("Kontaktnr.",kontaktnr_filter);
+                                 SETFILTER("Memonr.",'%1','');
+                                 SETFILTER("Kampagnennr.",'<>%1','S*');
+                                 SETFILTER(Projektstatus,'<>%1','BEENDET');
+
+                                 Ansprech.RESET;
+                                 Ansprech.SETFILTER("Kontaktnr.",'%1',kontaktnr_filter);
+                                 Ansprech.SETFILTER("Memonr.",'%1','');
+                                 Ansprech.SETFILTER("Kampagnennr.",'<>%1','S*');
+                                 Ansprech.SETFILTER(Projektstatus,'%1','BEENDET');
+                                 IF Ansprech.FINDFIRST THEN BEGIN
+                                   anzeige_text := STRSUBSTNO(Text000,FORMAT(Ansprech.COUNT));
+                                 END;
+                               END;
+                                }
+      { 1140024 ;2   ;Action    ;
+                      CaptionML=DEU=Allgemein;
+                      Promoted=Yes;
+                      Image=Union;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 RESET;
+                                 SETFILTER("Kontaktnr.",kontaktnr_filter);
+                                 SETFILTER("Memonr.",'%1','');
+                                 SETFILTER("Kampagnennr.",'<>%1','S*');
+                                 SETFILTER(Projektstatus,'ALLGEMEIN');
+                               END;
+                                }
+      { 1140025 ;2   ;Action    ;
+                      CaptionML=DEU=Kundenprojekt;
+                      Promoted=Yes;
+                      Image=CampaignEntries;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 RESET;
+                                 SETFILTER("Kontaktnr.",kontaktnr_filter);
+                                 SETFILTER("Memonr.",'%1','');
+                                 SETFILTER("Kampagnennr.",'<>%1','S*');
+                                 SETFILTER(Projektstatus,'KUNDENPROJEKT');
+                               END;
+                                }
+      { 1140026 ;2   ;Action    ;
+                      CaptionML=DEU=Qualifizierung;
+                      Promoted=Yes;
+                      Image=QualificationOverview;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 RESET;
+                                 SETFILTER("Kontaktnr.",kontaktnr_filter);
+                                 SETFILTER("Memonr.",'%1','');
+                                 SETFILTER("Kampagnennr.",'<>%1','S*');
+                                 SETFILTER(Projektstatus,'QUALIFIZIERUNG');
+                               END;
+                                }
+      { 1140022 ;2   ;Action    ;
+                      CaptionML=DEU=Desgin Win;
+                      Promoted=Yes;
+                      Image=Design;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 RESET;
+                                 SETFILTER("Kontaktnr.",kontaktnr_filter);
+                                 SETFILTER("Memonr.",'%1','');
+                                 SETFILTER("Kampagnennr.",'<>%1','S*');
+                                 SETFILTER(Projektstatus,'DESIGN WIN');
+                               END;
+                                }
+      { 1140023 ;2   ;Action    ;
+                      CaptionML=DEU=Produktion;
+                      Promoted=Yes;
+                      Image=Production;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 RESET;
+                                 SETFILTER("Kontaktnr.",Rec."Kontaktnr.");
+                                 SETFILTER("Memonr.",'%1','');
+                                 SETFILTER("Kampagnennr.",'<>%1','S*');
+                                 SETFILTER(Projektstatus,'PRODUKTION');
+                               END;
+                                }
+      { 1140027 ;2   ;Action    ;
+                      CaptionML=DEU=On Hold;
+                      Promoted=Yes;
+                      Image=Pause;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 RESET;
+                                 SETFILTER("Kontaktnr.",kontaktnr_filter);
+                                 SETFILTER("Memonr.",'%1','');
+                                 SETFILTER("Kampagnennr.",'<>%1','S*');
+                                 SETFILTER(Projektstatus,'ON HOLD');
+                               END;
+                                }
+      { 1140028 ;2   ;Action    ;
+                      CaptionML=DEU=Beendet;
+                      Promoted=Yes;
+                      Image=CloseDocument;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 RESET;
+                                 SETFILTER("Kontaktnr.",kontaktnr_filter);
+                                 SETFILTER("Memonr.",'%1','');
+                                 SETFILTER("Kampagnennr.",'<>%1','S*');
+                                 SETFILTER(Projektstatus,'BEENDET');
+                               END;
+                                }
+      { 1140030 ;1   ;ActionGroup;
+                      Name=Berichte;
+                      CaptionML=DEU=Berichte }
+      { 1140031 ;2   ;Action    ;
+                      CaptionML=DEU=Projektartikel šbersicht;
+                      Promoted=Yes;
+                      Image=Report;
+                      PromotedCategory=Report;
+                      OnAction=VAR
+                                 Firma@1140000 : Record 50005;
+                                 Projarti@1140001 : Record 50006;
+                               BEGIN
+                                 Firma.SETFILTER(Firma."Kontaktnr.",kontaktnr_filter);
+                                 REPORT.RUN(50161,TRUE,FALSE,Firma);
+                               END;
+                                }
+      { 1140037 ;2   ;Action    ;
+                      CaptionML=DEU=šbersicht Memos;
+                      Promoted=Yes;
+                      Image=Report;
+                      PromotedCategory=Report;
+                      OnAction=VAR
+                                 Firma@1140000 : Record 50005;
+                               BEGIN
+                                 Firma.SETFILTER(Firma."Kontaktnr.",kontaktnr_filter);
+                                 REPORT.RUN(50167,TRUE,FALSE,Firma);
+                               END;
+                                }
+    }
+  }
+  CONTROLS
+  {
+    { 1900000;0;Container ;
+                ContainerType=ContentArea }
+
+    { 1000000005;1;Group  ;
+                CaptionML=DEU=Info;
+                Visible=anzeige_text <> '';
+                GroupType=Group }
+
+    { 1000000006;2;Group  ;
+                GroupType=FixedLayout }
+
+    { 1000000000;3;Group  ;
+                GroupType=Group }
+
+    { 1000000003;4;Field  ;
+                Name=Hinweis;
+                SourceExpr=anzeige_text;
+                Editable=FALSE;
+                Style=Unfavorable;
+                StyleExpr=TRUE }
+
+    { 1900001;1;Group     ;
+                GroupType=Repeater }
+
+    { 1140005;2;Field     ;
+                Name=Kampagnennr.;
+                SourceExpr="Kampagnennr.";
+                Editable=TRUE;
+                LookupPageID=Projekt Hauptform;
+                OnLookup=BEGIN
+                           Campaign.GET("Kampagnennr.");
+                           PAGE.RUN(50052,Campaign);
+                         END;
+                          }
+
+    { 1140001;2;Field     ;
+                Name=Kontakt Mandantennr.;
+                SourceExpr="Kontakt Mandantennr.";
+                Visible=FALSE;
+                Editable=TRUE }
+
+    { 1140003;2;Field     ;
+                Name=Mandantenname;
+                SourceExpr=Mandantenname;
+                Editable=TRUE }
+
+    { 1140007;2;Field     ;
+                Name=Projektname;
+                SourceExpr=Projektname }
+
+    { 1140040;2;Field     ;
+                Name=Projektartikel;
+                CaptionML=DEU=Projektartikel;
+                SourceExpr=Projektartikel;
+                Editable=FALSE }
+
+    { 1140035;2;Field     ;
+                Name=vhauptbeteiligter;
+                CaptionML=DEU=Hauptbeteiligter;
+                SourceExpr=Hauptbeteiligter }
+
+    { 1140009;2;Field     ;
+                Name=Projektstatus;
+                SourceExpr=Projektstatus }
+
+    { 1140011;2;Field     ;
+                Name=Projektklasse;
+                SourceExpr=Projektklasse }
+
+    { 1140033;2;Field     ;
+                Name=vprojektwert;
+                CaptionML=DEU=Projektwert;
+                SourceExpr=Projektwert }
+
+    { 1140045;2;Field     ;
+                Name=letztes_memo;
+                CaptionML=DEU=Letzte Memo Žnderung;
+                ToolTipML=DEU=Gibt an, welches das aktuellste Memo, laut dem Feld Korrigiert am, des Projektes ist.;
+                SourceExpr=letztes_memo }
+
+  }
+  CODE
+  {
+    VAR
+      Campaign@1140000 : Record 5071;
+      Memo@1140011 : Record 50003;
+      Ansprech@1140003 : Record 50005;
+      ProjArtikel@1140005 : Record 50006;
+      Projektwert@1140002 : Decimal;
+      Hauptbeteiligter@1140004 : Text;
+      Projektartikel@1140006 : Text;
+      anzeige_text@1140010 : Text;
+      anzeige@1000000004 : Text[30];
+      filter_status@1000000003 : Text;
+      letztes_memo@1140008 : Date;
+      z„hler@1140007 : Integer;
+      Text000@1000000000 : TextConst 'DEU=Beendete Projekte gefunden: %1. Klicken Sie auf den Filter "Alle" oder "Beendet" um diese sehen zu k”nnen.';
+      kontaktnr_filter@1000000001 : Text;
+      Text001@1000000002 : TextConst 'DEU=Es konnte keine eindeutige Kontaktnr. gefunden. Dies kann passieren wenn Sie einen Filter gesetzt haben. Bitte schlieáen die šbersicht und starten diese erneut.';
+
+    PROCEDURE NeuesProjekt@1140000(Kontaktnr@1140000 : Code[20]);
+    VAR
+      Projekt@1140002 : Record 5071;
+      Ansprech@1140001 : Record 50005;
+    BEGIN
+      IF Kontaktnr = '' THEN BEGIN
+        kontaktnr_filter := Rec.GETFILTER("Kontaktnr.");
+        IF STRPOS(kontaktnr_filter,'|') <> 0 THEN ERROR(Text001);
+      END ELSE
+        kontaktnr_filter := Kontaktnr;
+
+      CLEAR(Projekt);
+      Projekt.INIT;
+      Projekt.INSERT(TRUE);
+      Ansprech.RESET;
+      Ansprech.SETRANGE("Kampagnennr.",Projekt."No.");
+      Ansprech.SETRANGE("Kontaktnr.",kontaktnr_filter);
+      IF NOT Ansprech.FINDFIRST THEN BEGIN
+        Ansprech.INIT;
+        Ansprech.VALIDATE("Kontaktnr.",kontaktnr_filter);
+        Ansprech."Kampagnennr." := Projekt."No.";
+        Ansprech.VALIDATE(Fhrungsrolle,TRUE);
+        Ansprech.INSERT(TRUE);
+      END;
+      COMMIT;
+      PAGE.RUNMODAL(50052,Projekt);
+    END;
+
+    LOCAL PROCEDURE CheckProjectStatus@1000000005(FirstStart@1000000000 : Boolean);
+    BEGIN
+      filter_status := GETFILTER(Projektstatus);
+      IF ((filter_status = '') OR (filter_status = 'BEENDET')) AND (FirstStart = FALSE) THEN BEGIN
+        anzeige_text := '';
+      END ELSE BEGIN
+        Ansprech.RESET;
+        Ansprech.SETFILTER("Kontaktnr.",'%1',kontaktnr_filter);
+        Ansprech.SETFILTER("Memonr.",'%1','');
+        Ansprech.SETFILTER("Kampagnennr.",'<>%1','S*');
+        Ansprech.SETFILTER(Projektstatus,'%1','BEENDET');
+        IF Ansprech.FINDFIRST THEN BEGIN
+          anzeige_text := STRSUBSTNO(Text000,FORMAT(Ansprech.COUNT));
+        END;
+      END;
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
