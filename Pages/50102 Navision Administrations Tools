@@ -2,8 +2,8 @@ OBJECT Page 50102 Navision Administrations Tools
 {
   OBJECT-PROPERTIES
   {
-    Date=16.03.23;
-    Time=14:28:10;
+    Date=21.12.23;
+    Time=11:52:00;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -435,9 +435,9 @@ OBJECT Page 50102 Navision Administrations Tools
     { 1000000079;3;Field  ;
                 CaptionML=DEU=Bounced Datei;
                 SourceExpr=bounced_speicherort;
-                OnValidate=BEGIN
-                             TOPAS_API.OpenFile(bounced_speicherort);
-                           END;
+                OnLookup=BEGIN
+                           TOPAS_API.OpenFile(bounced_speicherort);
+                         END;
 
                 OnAssistEdit=BEGIN
                                bounced_speicherort := TOPAS_API.Save_FileDialog(bounced_speicherort);
@@ -965,24 +965,26 @@ OBJECT Page 50102 Navision Administrations Tools
     BEGIN
       //Debitoren mit Lieferbedingungscode AB_HAN auf AB_25°K_FH umstellen
 
-      zaehler  := 0;
-      zaehler2 := 0;
+      IF CONFIRM('M”chten Sie den Lieferbedingungscode AB_HAN auf AB_25°K_FH umstellen?', FALSE) THEN BEGIN
+        zaehler  := 0;
+        zaehler2 := 0;
 
-      Debitor.RESET;
-      Debitor.SETRANGE("Shipment Method Code",'AB_HAN');
-      //Debitor.SETRANGE(Blocked,FALSE);
+        Debitor.RESET;
+        Debitor.SETRANGE("Shipment Method Code",'AB_HAN');
+        //Debitor.SETRANGE(Blocked,FALSE);
 
-      IF Debitor.FIND('-') THEN
-        REPEAT
-          zaehler += 1;
-          IF Debitor."Shipment Method Code" = 'AB_HAN' THEN BEGIN
-            Debitor."Shipment Method Code" := 'AB_25°K_FH';
-            Debitor.MODIFY;
-            zaehler2 += 1;
-          END;
-        UNTIL Debitor.NEXT = 0;
+        IF Debitor.FIND('-') THEN
+          REPEAT
+            zaehler += 1;
+            IF Debitor."Shipment Method Code" = 'AB_HAN' THEN BEGIN
+              Debitor."Shipment Method Code" := 'AB_25°K_FH';
+              Debitor.MODIFY;
+              zaehler2 += 1;
+            END;
+          UNTIL Debitor.NEXT = 0;
 
-      MESSAGE('Von %1 gefundenen Debitoren wurden  %2 umgestellt',zaehler2, zaehler);
+        MESSAGE('Von %1 gefundenen Debitoren wurden  %2 umgestellt',zaehler2, zaehler);
+      END;
     END;
 
     PROCEDURE Debitornr_umbuchen@1000000003(Alte_Debnr@1000000000 : Code[20];Neue_Debnr@1000000001 : Code[20]);
@@ -1088,7 +1090,9 @@ OBJECT Page 50102 Navision Administrations Tools
         ERROR('Fehlerhafte Syntax in der Adressliste > Spalte ' + Spalte_Adressen_User1 + ' muss USER1 sein.');
       END;
       IF UPPERCASE(GetValueAtCell(1,Spalte_Adressen_EMail_Nr)) <> 'EMAIL' THEN BEGIN
-        ERROR('Fehlerhafte Syntax in der Adressliste > Spalte ' + Spalte_Adressen_EMail + ' muss Email sein.');
+        Spalte_Adressen_EMail_Nr := 13;
+        IF UPPERCASE(GetValueAtCell(1,Spalte_Adressen_EMail_Nr)) <> 'EMAIL' THEN
+          ERROR('Fehlerhafte Syntax in der Adressliste > Spalte ' + Spalte_Adressen_EMail + ' muss Email sein.');
       END;
 
       //********************************************************************************************
@@ -1116,7 +1120,7 @@ OBJECT Page 50102 Navision Administrations Tools
           Dokumentenversand.VALIDATE("Kontaktnr.",User1);
           Dokumentenversand.INSERT(TRUE);
           }
-          IF Datum > Contact."Letzte Kontaktaufnahme" THEN BEGIN
+          IF Datum >= Contact."Letzte Kontaktaufnahme" THEN BEGIN
             Contact."Letzte Kontaktaufnahme" := Datum;
             Contact.Kontaktgrund := Betreff;
             Contact.MODIFY;
@@ -1911,6 +1915,7 @@ OBJECT Page 50102 Navision Administrations Tools
       Customer@1000000009 : Record 18;
       ContactBusinessRelation@1000000005 : Record 5054;
       SalesHeader@1000000013 : Record 36;
+      SalesLine@1000000016 : Record 37;
       ServerUploadFile@1000000011 : Text;
       CustNo@1000000006 : Code[20];
       CustName@1000000007 : Text;
@@ -1920,6 +1925,7 @@ OBJECT Page 50102 Navision Administrations Tools
       Spalte_Kontakt_Nr@1000000004 : Integer;
       db_change@1000000002 : Boolean;
       Spalte_Kontaktnr@1000000003 : TextConst 'DEU=A';
+      salesorders_summary@1000000015 : Text;
     BEGIN
       //Umstellung mit Kontaktnr.
       IF (Speicherort = '') THEN ERROR(Text002);
@@ -1933,6 +1939,7 @@ OBJECT Page 50102 Navision Administrations Tools
         EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
 
       Spalte_Kontakt_Nr := 1;
+      salesorders_summary := 'Bestcker Belege:' + FORMAT('\');
 
       IF UPPERCASE(GetValueAtCell(1,Spalte_Kontakt_Nr)) <> 'KONTAKTNR.' THEN
           ERROR('Fehlerhafte Syntax in der Liste > Spalte ' + Spalte_Kontaktnr + ' muss Kontaktnr. sein.');
@@ -1968,43 +1975,43 @@ OBJECT Page 50102 Navision Administrations Tools
             Contact.MODIFY(TRUE);
         END;
 
-      {
-        db_change := FALSE;
-        }
-        ContactBusinessRelation.RESET;
-        ContactBusinessRelation.SETRANGE("Contact No.",ContactNo);
-        ContactBusinessRelation.SETRANGE("Link to Table",ContactBusinessRelation."Link to Table"::Customer);
-        IF ContactBusinessRelation.FINDFIRST THEN BEGIN
-          CustNo := ContactBusinessRelation."No.";
-          {
-          IF Customer.GET(CustNo) THEN BEGIN
-            IF (Betreuer <> '') AND (Customer."Betreuer Innendienst" <> Betreuer) THEN BEGIN
-              Customer.VALIDATE("Betreuer Innendienst",Betreuer);
-              db_change := TRUE;
+        IF db_change THEN BEGIN
+          ContactBusinessRelation.RESET;
+          ContactBusinessRelation.SETRANGE("Contact No.",ContactNo);
+          ContactBusinessRelation.SETRANGE("Link to Table",ContactBusinessRelation."Link to Table"::Customer);
+          IF ContactBusinessRelation.FINDFIRST THEN BEGIN
+            CustNo := ContactBusinessRelation."No.";
+            //Umstellung Belege
+            CLEAR(SalesHeader);
+            SalesHeader.SETRANGE("Sell-to Customer No.",CustNo);
+            IF SalesHeader.FINDFIRST THEN BEGIN
+              REPEAT
+                IF Betreuer <> '' THEN
+                  SalesHeader.VALIDATE("Betreuer Innendienst",Betreuer);
+                IF Salesperson <> '' THEN
+                  SalesHeader.VALIDATE("Salesperson Code",Salesperson);
+                SalesHeader.MODIFY(TRUE);
+              UNTIL SalesHeader.NEXT = 0;
             END;
-            IF (Salesperson <> '') AND (Customer."Salesperson Code" <> Salesperson) THEN BEGIN
-              Customer.VALIDATE("Salesperson Code",Salesperson);
-              db_change := TRUE;
-            END;
-            }
-            IF db_change THEN BEGIN
-              //Customer.MODIFY(TRUE);
+          END;
 
-              //Umstellung Belege
-              CLEAR(SalesHeader);
-              SalesHeader.SETRANGE("Sell-to Customer No.",CustNo);
-              IF SalesHeader.FINDFIRST THEN BEGIN
-                REPEAT
-                  IF Betreuer <> '' THEN
-                    SalesHeader.VALIDATE("Betreuer Innendienst",Betreuer);
-                  IF Salesperson <> '' THEN
-                    SalesHeader.VALIDATE("Salesperson Code",Salesperson);
-                  SalesHeader.MODIFY(TRUE);
-                UNTIL SalesHeader.NEXT = 0;
+          //Umstellung Bestcker Belege
+          SalesLine.RESET;
+          SalesLine.SETRANGE(Type,SalesLine.Type::Item);
+          SalesLine.SETRANGE("Endkundennr.",ContactNo);
+          IF SalesLine.FIND('-') THEN
+            REPEAT
+              SalesHeader.GET(SalesLine."Document Type",SalesLine."Document No.");
+              IF (SalesHeader."Betreuer Innendienst" <> Betreuer) OR (SalesHeader."Salesperson Code" <> Salesperson) THEN BEGIN
+                IF (SalesHeader."Betreuer Innendienst" <> Betreuer) AND (Betreuer <> '') THEN
+                  SalesHeader.VALIDATE("Betreuer Innendienst",Betreuer);
+                IF (SalesHeader."Salesperson Code" <> Salesperson) AND (Salesperson <> '') THEN
+                  SalesHeader.VALIDATE("Salesperson Code",Salesperson);
+                IF STRPOS(salesorders_summary,SalesLine."Document No.") = 0 THEN
+                  salesorders_summary += SalesLine."Document No." + ';' + SalesLine."Endkundennr." + ';' + SalesLine.Endkunde + ';' + SalesHeader."Betreuer Innendienst" + ';' + SalesHeader."Salesperson Code" + FORMAT('\');
+                SalesHeader.MODIFY(TRUE);
               END;
-            END;
-
-          //END;
+            UNTIL SalesLine.NEXT = 0;
         END;
 
         Window.UPDATE(1,ROUND(i / TotalRows * 10000,1));
@@ -2013,8 +2020,10 @@ OBJECT Page 50102 Navision Administrations Tools
 
       Window.CLOSE;
 
-      IF TotalRows > 1 THEN
+      IF TotalRows > 1 THEN BEGIN
         MESSAGE(Text302);
+        MESSAGE(salesorders_summary);
+      END;
     END;
 
     LOCAL PROCEDURE "-----------NEUES EXCEL-----------"@1000000012();
