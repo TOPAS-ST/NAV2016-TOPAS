@@ -2,8 +2,8 @@ OBJECT Report 50010 TOPAS FU + Aufgaben
 {
   OBJECT-PROPERTIES
   {
-    Date=05.07.22;
-    Time=15:57:09;
+    Date=22.08.24;
+    Time=10:56:07;
     Modified=Yes;
     Version List=TOPAS, BT šbergabe Fkt.! ,FORNAV6.1.0.2145/2145;
   }
@@ -19,6 +19,7 @@ OBJECT Report 50010 TOPAS FU + Aufgaben
                   //*******************************************************************************************************
                   Aufgaben.RESET;
                   Aufgaben.SETFILTER("System To-do Type",'%1',aufgabe."System To-do Type"::Organizer);
+                  Aufgaben.SETRANGE(Canceled,FALSE);
                   //*******************************************************************************************************
                   /////Filter - šbersicht Aufgaben\\\\\
                   IF option = option::"šbersicht - Aufgaben" THEN BEGIN
@@ -1604,14 +1605,33 @@ OBJECT Report 50010 TOPAS FU + Aufgaben
       Auftragskopf@1140001 : Record 36;
       Auftragszeile@1140000 : Record 37;
       vkzeile@1140002 : Record 37;
+      gebietscode@1000000000 : Code[10];
       akt_beleg_doppelt@1140003 : Boolean;
       aufgabe_eingetragen@1140004 : Boolean;
     BEGIN
       aufgabe_eingetragen := FALSE;
-      kontakt.RESET;
-      kontakt.SETRANGE(kontakt."No.",Aufgaben."Contact No.");
-      kontakt.FINDFIRST;
-      IF (filter_gebiet = 'OST') AND (kontakt."Territory Code" = 'NORDOST') THEN BEGIN
+      gebietscode := '';
+      CASE Aufgaben.Type OF
+        Aufgaben.Type::Meeting:
+          BEGIN
+            teilnehmer.RESET;
+            teilnehmer.SETRANGE("To-do No.",Aufgaben."No.");
+            teilnehmer.SETRANGE("Attendee Type",teilnehmer."Attendee Type"::Contact);
+            IF teilnehmer.FINDFIRST THEN BEGIN
+              kontakt.SETRANGE("No.",teilnehmer."Attendee No.");
+              IF (kontakt.FINDFIRST) AND (teilnehmer."Attendee No." <> '') THEN
+                gebietscode := kontakt."Territory Code";
+            END;
+          END;
+        Aufgaben.Type::" ",Aufgaben.Type::"Phone Call":
+          BEGIN
+            kontakt.SETRANGE("No.",Aufgaben."Contact No.");
+            IF (kontakt.FINDFIRST) AND (Aufgaben."Contact No."<>'') THEN
+              gebietscode := kontakt."Territory Code";
+          END;
+      END;
+
+      IF (filter_gebiet = 'OST') AND (gebietscode = 'NORDOST') THEN BEGIN
       END ELSE BEGIN
         Auftragskopf.RESET;
         Auftragskopf.SETFILTER("No.",'%1',Aufgaben."Belegnr.");
