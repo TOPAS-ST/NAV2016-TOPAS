@@ -2,8 +2,8 @@ OBJECT Codeunit 50014 Job Scheduler
 {
   OBJECT-PROPERTIES
   {
-    Date=03.04.24;
-    Time=16:11:16;
+    Date=10.04.24;
+    Time=17:00:00;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -53,6 +53,9 @@ OBJECT Codeunit 50014 Job Scheduler
       Servicepositionen@1000000000 : Record 50024;
       wartungsnr_cache@1000000001 : Text;
       accounts_to_export@1000000002 : Integer;
+      powermail_form@1000000005 : Text;
+      powermail_forms_infos@1000000003 : Text;
+      _File@1000000004 : File;
     BEGIN
       accounts_to_export := 0;
       Servicepositionen.RESET;
@@ -68,11 +71,24 @@ OBJECT Codeunit 50014 Job Scheduler
           END;
         UNTIL Servicepositionen.NEXT = 0;
 
+      ExecuteTypo3PowermailFormsScript;
+
+      _File.OPEN('\\WIN-FILESRV\Software\software\TOPAS eigen\MySQL\Typo3_Powermail_Formulare\Powermail_Formulare.txt');
+      _File.TEXTMODE(TRUE);
+      chr := 10;
+      powermail_forms_infos := FORMAT(chr) + FORMAT(chr) + 'Neue Powermail Formular Anmeldungen: '  + FORMAT(chr);
+
+      REPEAT
+         _File.READ(powermail_form);
+         powermail_forms_infos += powermail_form + FORMAT(chr);
+      UNTIL _File.POS = _File.LEN;
+      _File.CLOSE;
+
       chr := 10;
       mail_subject := 'Neue Service Account Daten (' + FORMAT(accounts_to_export) + ') fr Typo3 vorhanden';
       mail_body := 'Es sind neue bzw. aktualisierte Service Accounts (' + FORMAT(accounts_to_export) + ') verfgbar.' + FORMAT(chr) +
-                    'Bitte benutzen Sie im Navision in der Maske Service Einzelpositionen die Funktion "Daten - Excel Export"  zum Export der Informationen.';
-      SMPTMail.CreateMessage('','typo3@topas.de','sb@topas.de',mail_subject,mail_body,FALSE);
+                    'Um die Aktualisierung manuell anzustossen, nutzen Sie bitte im Navision die Maske Typo3 Verwaltungs Cockpit und die Funktion "Starte Update Job".';
+      SMPTMail.CreateMessage('','typo3@topas.de','sb@topas.de;administrativ@topas.de',mail_subject,mail_body + powermail_forms_infos,FALSE);
       SMPTMail.Send;
     END;
 
@@ -170,6 +186,34 @@ OBJECT Codeunit 50014 Job Scheduler
         ProcessShell.Kill();
         ExitCode := ProcessShell.ExitCode;
         ERROR('Fehlercode: %1. Der Job musste nach einem Timeout beendet werden, scheinbar liegt ein Fehler im Update Script vor. Bitte wenden Sie sich an Ihren Administrator.',ExitCode);
+      END;
+      ExitCode := ProcessShell.ExitCode;
+      IF ExitCode > 1 THEN ERROR('Fehlercode: %1. Weitere Informationen hierzu finden Sie im Status.log. Nach Fehlerbeseitigung muss der Administrator den Job wieder auf Bereit setzen.',ExitCode);
+      CLEAR(ProcessShell);
+      EXIT(1);
+    END;
+
+    LOCAL PROCEDURE ExecuteTypo3PowermailFormsScript@1000000014() : Integer;
+    VAR
+      ProcessShell@1000000004 : DotNet "'System, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Diagnostics.Process" SUPPRESSDISPOSE;
+      WshShell@1000000003 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{72C24DD5-D70A-438B-8A42-98424B88AFB8}:'Windows Script Host Object Model'.WshShell";
+      wshExec@1000000002 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{08FED191-BE19-11D3-A28B-00104BD35090}:'Windows Script Host Object Model'.WshExec";
+      wSHExecStatus@1000000001 : Integer;
+      mysql_program@1000000000 : Text;
+      ExitCode@1000000006 : Integer;
+    BEGIN
+      mysql_program := '"\\WIN-FILESRV\Software\software\TOPAS eigen\MySQL\Typo3_Powermail_Formulare\Typo3_Powermail_Formulare_check.exe"';
+      ProcessShell := ProcessShell.Process;
+      ProcessShell.StartInfo.UseShellExecute := FALSE;
+      ProcessShell.StartInfo.FileName := mysql_program;
+      ProcessShell.StartInfo.Arguments := 'formulare';
+      ProcessShell.StartInfo.CreateNoWindow := TRUE;
+      ProcessShell.Start();
+      ProcessShell.WaitForExit(60000 * 1); //1 Minute
+      IF ProcessShell.HasExited = FALSE THEN BEGIN
+        ProcessShell.Kill();
+        ExitCode := ProcessShell.ExitCode;
+        ERROR('Fehlercode: %1. Der Job musste nach einem Timeout beendet werden, scheinbar liegt ein Fehler im Script vor. Bitte wenden Sie sich an Ihren Administrator.',ExitCode);
       END;
       ExitCode := ProcessShell.ExitCode;
       IF ExitCode > 1 THEN ERROR('Fehlercode: %1. Weitere Informationen hierzu finden Sie im Status.log. Nach Fehlerbeseitigung muss der Administrator den Job wieder auf Bereit setzen.',ExitCode);
