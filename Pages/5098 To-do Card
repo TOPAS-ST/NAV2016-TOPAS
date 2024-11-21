@@ -2,10 +2,10 @@ OBJECT Page 5098 To-do Card
 {
   OBJECT-PROPERTIES
   {
-    Date=04.01.18;
-    Time=12:17:05;
+    Date=24.09.24;
+    Time=16:00:00;
     Modified=Yes;
-    Version List=NAVW19.00,TOP1.01;
+    Version List=NAVW19.00,TOP1.03;
   }
   PROPERTIES
   {
@@ -52,6 +52,12 @@ OBJECT Page 5098 To-do Card
                        ContactNoOnFormat(FORMAT("Contact No."));
                        ContactNameOnFormat;
                        ContactCompanyNameOnFormat;
+
+                       //TOPAS 24.09.24 ST - Kontakt rot markieren, wenn UN verlassen +
+                       contact_style := 'Standard';
+                       IF (Contact.GET("Contact No.")) AND (Contact."Unternehmen verlassen") THEN
+                         contact_style := 'Unfavorable';
+                       //TOPAS -
                      END;
 
     OnModifyRecord=BEGIN
@@ -68,23 +74,7 @@ OBJECT Page 5098 To-do Card
                    END;
 
     OnQueryClosePage=BEGIN
-                       //TOPAS 02.06.17 ST
-                       IF (Aufgabenart = 'ANGEBOT') OR (Aufgabenart = 'PROJEKT') OR (Aufgabenart = 'ALLGEMEIN') OR (Aufgabenart = 'MUSTER') THEN BEGIN
-                         IF ("Follow Up" = 0D) OR ("Follow Up" <> WORKDATE) THEN BEGIN
-                           Bemerkungen.RESET;
-                           Bemerkungen.SETRANGE("Table Name",Bemerkungen."Table Name"::"To-do");
-                           Bemerkungen.SETRANGE("No.","No.");
-                           Bemerkungen.SETRANGE(Date,WORKDATE);
-                           IF Bemerkungen.FINDFIRST THEN BEGIN
-                             IF CONFIRM(Text50003,TRUE) THEN BEGIN
-                               Todo.GET("No.");
-                               Todo."Follow Up" := WORKDATE;
-                               Todo.MODIFY(TRUE);
-                             END;
-                           END;
-                         END;
-                       END;
-                       //TOPAS Ende
+                       CheckFollowUpStatus;
                      END;
 
     ActionList=ACTIONS
@@ -292,6 +282,7 @@ OBJECT Page 5098 To-do Card
     { 10  ;2   ;Field     ;
                 SourceExpr="Contact No.";
                 Editable="Contact No.Editable";
+                StyleExpr=contact_style;
                 OnValidate=BEGIN
                              ContactNoOnAfterValidate;
                            END;
@@ -318,7 +309,8 @@ OBJECT Page 5098 To-do Card
     { 47  ;2   ;Field     ;
                 SourceExpr="Contact Name";
                 Editable=FALSE;
-                HideValue="Contact NameHideValue" }
+                HideValue="Contact NameHideValue";
+                StyleExpr=contact_style }
 
     { 49  ;2   ;Field     ;
                 SourceExpr="Contact Company Name";
@@ -544,10 +536,12 @@ OBJECT Page 5098 To-do Card
       Todo@1000000007 : Record 5080;
       SalesHeader@1000000008 : Record 36;
       SalesHeaderArchive@1000000009 : Record 5107;
+      Contact@1000000013 : Record 5050;
       Musterberwachung@1000000005 : Record 50029;
       Bemerkungen@1000000006 : Record 5061;
       PageManagement@1000000010 : Codeunit 700;
       Text50004@1000000011 : TextConst 'DEU=Beleg konnte nicht gefunden werden.';
+      contact_style@1000000012 : Text;
 
     PROCEDURE SetRecurringEditable@1();
     BEGIN
@@ -698,6 +692,7 @@ OBJECT Page 5098 To-do Card
       IF (Closed = TRUE) AND (Aufgabenart = 'ANGEBOT') AND ("Belegnr." <> '') THEN BEGIN
         IF SalesHeader.GET(SalesHeader."Document Type"::Quote,"Belegnr.") THEN BEGIN
           IF CONFIRM(Text50002,TRUE) THEN BEGIN
+            CheckFollowUpStatus;
             COMMIT;
             PageManagement.PageRunModalWithFieldFocus(SalesHeader,50212);
             IF (NOT SalesHeader.GET(SalesHeader."Document Type"::Quote,"Belegnr.")) AND ("Belegnr." <> '') THEN BEGIN
@@ -707,6 +702,27 @@ OBJECT Page 5098 To-do Card
           END;
         END;
       END;
+    END;
+
+    LOCAL PROCEDURE CheckFollowUpStatus@1000000000();
+    BEGIN
+      //TOPAS 02.06.17 ST
+      IF (Aufgabenart = 'ANGEBOT') OR (Aufgabenart = 'PROJEKT') OR (Aufgabenart = 'ALLGEMEIN') OR (Aufgabenart = 'MUSTER') THEN BEGIN
+        IF ("Follow Up" = 0D) OR ("Follow Up" <> WORKDATE) THEN BEGIN
+          Bemerkungen.RESET;
+          Bemerkungen.SETRANGE("Table Name",Bemerkungen."Table Name"::"To-do");
+          Bemerkungen.SETRANGE("No.","No.");
+          Bemerkungen.SETRANGE(Date,WORKDATE);
+          IF Bemerkungen.FINDFIRST THEN BEGIN
+            IF CONFIRM(Text50003,TRUE) THEN BEGIN
+              Todo.GET("No.");
+              Todo."Follow Up" := WORKDATE;
+              Todo.MODIFY(TRUE);
+            END;
+          END;
+        END;
+      END;
+      //TOPAS Ende
     END;
 
     BEGIN
@@ -719,6 +735,7 @@ OBJECT Page 5098 To-do Card
       4       TOP1.00   24.07.17    ST    neues ActionItem Projekt
       5       TOP1.01   03.11.17    ST    neues ActionItem Beleg_anzeigen
       6       TOP1.02   04.01.18    ST    šberarbeitung der Status Abgeschlossen Aktionen
+      7       TOP1.03   24.09.24    ST    Kontakt wird rot markiert, wenn UN verlassen
     }
     END.
   }
