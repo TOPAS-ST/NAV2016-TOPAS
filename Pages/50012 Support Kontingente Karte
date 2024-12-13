@@ -2,8 +2,8 @@ OBJECT Page 50012 Support Kontingente Karte
 {
   OBJECT-PROPERTIES
   {
-    Date=06.06.24;
-    Time=11:54:49;
+    Date=13.12.24;
+    Time=13:11:24;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -18,25 +18,26 @@ OBJECT Page 50012 Support Kontingente Karte
                END;
 
     OnAfterGetRecord=BEGIN
-                       FOR i := 1 TO 6 DO
-                         BEGIN
-                           Zeile[i] := '';
-                         END;
+                       CommentFound := FALSE;
+                       CommentText := '';
 
-                       i := 1;
-                       "TOPAS Bemerkungen".RESET;
-                       "TOPAS Bemerkungen".SETRANGE("TOPAS Bemerkungen"."Nr.","Nr.");
-                       "TOPAS Bemerkungen".SETRANGE("TOPAS Bemerkungen".Art,"TOPAS Bemerkungen".Art :: Kontingente);
-                       IF "TOPAS Bemerkungen".FINDFIRST THEN BEGIN
-                         comment := TRUE;
-                         REPEAT
-                           Zeile[i] := COPYSTR("TOPAS Bemerkungen".Bemerkung,1,80);
-                           i := i+1;
-                         UNTIL (i=5) OR ("TOPAS Bemerkungen".NEXT=0);
-                         IF i = 6 THEN
-                           Zeile[i] := '... fr Fortsetzung klicken Sie bitte oben in die Bemerkung.';
-                       END ELSE
-                         comment := FALSE;
+                       IF "Nr." <> '' THEN BEGIN
+                         TOPAS_Bemerkungen.RESET;
+                         TOPAS_Bemerkungen.SETRANGE("Nr.","Nr.");
+                         TOPAS_Bemerkungen.SETRANGE(Art,TOPAS_Bemerkungen.Art::Kontingente);
+                         IF TOPAS_Bemerkungen.FINDFIRST THEN BEGIN
+                            CommentFound := TRUE;
+                           REPEAT
+                             IF CommentText = '' THEN
+                               CommentText += FORMAT(TOPAS_Bemerkungen.Datum) + ' ' + TOPAS_Bemerkungen.Bemerkung
+                             ELSE
+                               IF TOPAS_Bemerkungen.Datum <> 0D THEN
+                                 CommentText += ' --- ' + FORMAT(TOPAS_Bemerkungen.Datum) + ' ' + TOPAS_Bemerkungen.Bemerkung
+                               ELSE
+                                 CommentText += ' ' + TOPAS_Bemerkungen.Bemerkung;
+                           UNTIL TOPAS_Bemerkungen.NEXT = 0;
+                         END;
+                       END;
 
                        IF "Offenes Kontingent" = 0 THEN
                          style_offenes_kontingent := 'Standard'
@@ -52,6 +53,10 @@ OBJECT Page 50012 Support Kontingente Karte
                          AnzBeteiligte := Beteiligte.COUNT
                        ELSE
                          AnzBeteiligte := 0;
+
+                       IF (ControlReady) AND (CommentText <> '') AND (CommentFound) THEN BEGIN
+                         CurrPage.CommentControl.SendDatatoJavaScript(CommentText, 600, 82);
+                       END;
                      END;
 
     OnAfterGetCurrRecord=VAR
@@ -206,8 +211,17 @@ OBJECT Page 50012 Support Kontingente Karte
 
     { 1000000002;3;Field  ;
                 Name=Bemerkung vorhanden;
-                SourceExpr=comment;
+                SourceExpr=CommentFound;
                 Editable=FALSE }
+
+    { 1000000015;1;Group  ;
+                Visible=CommentFound;
+                GroupType=Group }
+
+    { 1000000014;2;Field  ;
+                Name=CommentControl;
+                SourceExpr=CommentText;
+                ControlAddIn=[CreateCustomHTMLTextbox;PublicKeyToken=504c26232bb21f06] }
 
     { 1900003;1;Group     ;
                 Name=Support;
@@ -267,15 +281,23 @@ OBJECT Page 50012 Support Kontingente Karte
   CODE
   {
     VAR
-      "TOPAS Bemerkungen"@1140005 : Record 50023;
+      TOPAS_Bemerkungen@1140005 : Record 50023;
       Support@1140003 : Record 50012;
       Beteiligte@1000000003 : Record 50005;
-      comment@1140004 : Boolean;
-      Zeile@1140006 : ARRAY [6] OF Text[80];
       style_offenes_kontingent@1000000000 : Text;
-      i@1000000001 : Integer;
       info_show@1000000002 : Boolean;
       AnzBeteiligte@1000000004 : Integer;
+      CommentText@1000000006 : Text;
+      CommentFound@1000000005 : Boolean;
+      ControlReady@1000000001 : Boolean;
+
+    EVENT CommentControl@-1000000014::ControlAddInReady@1();
+    BEGIN
+      ControlReady := TRUE;
+      IF CommentFound THEN BEGIN
+        CurrPage.CommentControl.SendDatatoJavaScript(CommentText, 600, 82);
+      END;
+    END;
 
     BEGIN
     END.
