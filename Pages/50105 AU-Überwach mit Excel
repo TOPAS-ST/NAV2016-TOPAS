@@ -2,8 +2,8 @@ OBJECT Page 50105 AU-šberwach mit Excel
 {
   OBJECT-PROPERTIES
   {
-    Date=01.08.24;
-    Time=16:52:16;
+    Date=25.04.25;
+    Time=09:11:06;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -69,6 +69,8 @@ OBJECT Page 50105 AU-šberwach mit Excel
              hinweis[14] := 'Dieses Tool wird nicht mehr untersttzt, es werden nach und nach Funktionen deaktiviert (graue H„kchen).' +
                             'Bitte nutze stattdessen die Maske AU-Kontrolle mit Excel.' +
                             'Sollten dort Funktionen fehlen, dann wende dich bitte an den NAV Administrator.';
+
+             hinweis[15] := 'Optional: Nur Ausfhren, wenn die Funktion AB holen mit Fehler bei der Erstellung der Exceldatei aufgetreten ist.';
            END;
 
     ActionList=ACTIONS
@@ -155,6 +157,8 @@ OBJECT Page 50105 AU-šberwach mit Excel
                       PromotedIsBig=Yes;
                       PromotedCategory=Category4;
                       OnAction=BEGIN
+                                 IF v_rechnungsberprfung1 THEN RE_holen_Datum := AE_holen_Datum;
+
                                  tab_ab_bw.RESET;
                                  tab_ab_bw.SETFILTER(Belegart,'%1','SYST');
                                  tab_ab_bw.SETFILTER(Datum,'%1',31122222D);
@@ -172,6 +176,8 @@ OBJECT Page 50105 AU-šberwach mit Excel
                                   END;
                                  END;
 
+                                 IF v_rechnungsberprfung1 THEN AE_holen_Datum := RE_holen_Datum;
+
                                  tab_ab_bw.RESET;
                                  IF tab_ab_bw.Linie = '00' THEN MESSAGE ('Es gibt Linien mit einer Zahl als Herstellerkurzname');
 
@@ -182,6 +188,7 @@ OBJECT Page 50105 AU-šberwach mit Excel
                                  IF BB_Diff = TRUE THEN var_anzahl_h„kchen += 1;
                                  IF ((AB_holen = TRUE) AND (AE_holen_Datum = 0D)) THEN ERROR('Datum muá eingetragen sein! Programm abgebrochen');
                                  IF AB_holen_rcksetzen = TRUE THEN var_anzahl_h„kchen += 1;
+                                 IF AB_holen_EXCEL_EXPORT = TRUE THEN var_anzahl_h„kchen += 1;
                                  IF Diff_ermitteln = TRUE THEN var_anzahl_h„kchen += 1;
                                  IF t„gl_AE = TRUE THEN var_anzahl_h„kchen += 1;
                                  IF ((t„gl_AE = TRUE) AND (AE_holen_Datum_1 = 0D)) THEN ERROR('Datum muá eingetragen sein! Programm abgebrochen');
@@ -253,6 +260,7 @@ OBJECT Page 50105 AU-šberwach mit Excel
                                  IF BE_holen = TRUE THEN "aktuellen BB einfgen";
                                  IF BB_Diff = TRUE THEN "BB Diff ermitteln";
                                  IF AB_holen_rcksetzen = TRUE THEN "AB einfgen rcksetzen";
+                                 IF AB_holen_EXCEL_EXPORT THEN AU_AEND_Bestaet_Ueberpruefung_EXCEL_EXPORT;
                                  IF Diff_ermitteln = TRUE THEN Differenzen_ermitteln_Neu;
                                  IF t„gl_AE = TRUE THEN "t„glichen AE einfgen";
                                  IF AE_verteilen = TRUE THEN AE_Verteilen_Filter_Abfrage;
@@ -361,6 +369,21 @@ OBJECT Page 50105 AU-šberwach mit Excel
                 CaptionML=DEU=AB holen - Rcksetzen (nur nach Rcksprache mit Uwe !!!);
                 SourceExpr=AB_holen_rcksetzen }
 
+    { 1000000070;2;Group  ;
+                CaptionML=DEU=Excel Export;
+                GroupType=Group }
+
+    { 1000000072;3;Field  ;
+                SourceExpr=hinweis[15];
+                Enabled=False;
+                Editable=False;
+                Style=StrongAccent;
+                StyleExpr=TRUE }
+
+    { 1000000071;3;Field  ;
+                CaptionML=DEU=Aktuellen Auftragsbestand nach Excel exportieren;
+                SourceExpr=AB_holen_EXCEL_EXPORT }
+
     { 1900002;1;Group     ;
                 CaptionML=DEU=" Auftr„ge";
                 Enabled=FALSE }
@@ -384,7 +407,7 @@ OBJECT Page 50105 AU-šberwach mit Excel
                 GroupType=Group }
 
     { 1140025;3;Field     ;
-                Name=Diff_ermitteln;
+                Name=Diff_ermitteln1;
                 CaptionML=DEU=Differenzen zwischen altem und neuem AB ermitteln;
                 SourceExpr=Diff_ermitteln }
 
@@ -895,6 +918,7 @@ OBJECT Page 50105 AU-šberwach mit Excel
       var_AU_Nr@1140147 : Code[20];
       var_AU_Nr1@1000000157 : Code[10];
       AB_holen_rcksetzen@1140146 : Boolean;
+      AB_holen_EXCEL_EXPORT@1000000224 : Boolean;
       Diff_ermitteln@1140145 : Boolean;
       t„gl_AE@1140144 : Boolean;
       t„gl_AE_Saldo@1140143 : Boolean;
@@ -902,6 +926,7 @@ OBJECT Page 50105 AU-šberwach mit Excel
       var_be_menge@1140141 : Decimal;
       AE_mtl@1140140 : Record 50017;
       AE_holen_Datum@1140139 : Date;
+      RE_holen_Datum@1000000225 : Date;
       tab_vkk1@1140138 : Record 36;
       tab_vkk1_arch@1140137 : Record 5107;
       var_anzahl_h„kchen@1140136 : Integer;
@@ -11001,6 +11026,12 @@ OBJECT Page 50105 AU-šberwach mit Excel
           END;
         UNTIL tab_ab_bw.NEXT = 0;
       END;
+
+      AU_AEND_Bestaet_Ueberpruefung_EXCEL_EXPORT;
+    END;
+
+    LOCAL PROCEDURE AU_AEND_Bestaet_Ueberpruefung_EXCEL_EXPORT@1000000039();
+    BEGIN
       // Alle Fehler erhalten den Status FF, nur ungleiches "Best„tigtes Lieferdatum" erh„lt den Status FD, wenn sonst noch kein Fehler vorlag.(Gilt auch fr Wunschdatum)
       // Es k”nnen somit alle Žnderungen angezeigt werden oder Fehler ohne ge„ndertes Best„tigtes Lieferdatum. (Gilt auch fr Wunschdatum)
       CreateExcel;
