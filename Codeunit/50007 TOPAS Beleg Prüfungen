@@ -2,8 +2,8 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
 {
   OBJECT-PROPERTIES
   {
-    Date=21.11.23;
-    Time=17:00:00;
+    Date=30.01.25;
+    Time=15:40:47;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -70,6 +70,8 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
       Text37_3@1000000049 : TextConst 'DEU=Fr Artikel %1 wurde kein %2 ausgew„hlt.';
       Text37_4@1000000051 : TextConst 'DEU=Hinweis: interne Konstruktion bei Bestellung bei Ingke, Rcksprache mit Vertrieb.';
       Text37_5@1000000052 : TextConst 'DEU=Hinweis: Der Kunde besitzt kein gltiges OmniVision NDA.\\Bitte wenden Sie sich an den NDA Versand.';
+      Text37_6@1000000053 : TextConst 'DEU=Hinweis: Bitte bei Bestellung fr Sch”lly folgende Bemerkung auf unserer BET: "Please add Vynil Paper between the trays"';
+      TOPAS_Funktionen@1000000054 : Codeunit 50006;
 
     PROCEDURE CheckPurchaseBeforePost@1000000000(PurchaseHeader@1000000002 : Record 38) : Boolean;
     VAR
@@ -1064,6 +1066,21 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
     END;
 
     PROCEDURE CheckSalesLineNoOnValidate@1000000005(SalesLine@1000000000 : Record 37);
+    VAR
+      SalesCommentLine@1000000001 : Record 44;
+      temp_SalesCommentLine@1000000002 : Record 44;
+      L_LineNo@1000000003 : Integer;
+      L_RecRef@1000000004 : RecordRef;
+      WorkRec@1000000005 : RecordRef;
+      WorkFld@1000000007 : FieldRef;
+      FieldLength@1000000009 : Integer;
+      TextString@1000000008 : Text;
+      SearchString@1000000012 : Text;
+      InsertString@1000000013 : Text;
+      LastSpacePos@1000000014 : Integer;
+      counter_loop@1000000011 : Integer;
+      max_loop@1000000010 : Integer;
+      i@1000000006 : Integer;
     BEGIN
       IF SalesLine.Type = SalesLine.Type::Item THEN
         IF Item.GET(SalesLine."No.") THEN BEGIN
@@ -1082,6 +1099,67 @@ OBJECT Codeunit 50007 TOPAS Beleg Prfungen
           //Artikel Warnungen YKJV-3020LT
           IF SalesLine."No." = 'YKJV-3020LT' THEN
             MESSAGE(Text37_4);
+
+          //Artikel Warnung - OVT Bestellung beachten
+          IF SalesLine."No." = 'OH08A40-A63A-001B' THEN BEGIN
+            MESSAGE(Text37_6);
+
+            SalesCommentLine.RESET;
+            SalesCommentLine.SETFILTER(Comment,'%1','*'+'Vynil Paper'+'*');
+            SalesCommentLine.SETFILTER("Document Type",'%1',SalesCommentLine."Document Type"::Order);
+            SalesCommentLine.SETFILTER("No.",'%1',SalesLine."Document No.");
+            IF NOT SalesCommentLine.FINDFIRST THEN BEGIN
+
+              L_RecRef.GETTABLE(SalesCommentLine);
+              WorkRec.OPEN(L_RecRef.NUMBER);
+              FOR i:= 1 TO WorkRec.FIELDCOUNT DO BEGIN
+                WorkFld := WorkRec.FIELD(i);
+                IF (WorkFld.NAME = 'Comment') OR (WorkFld.NAME = 'Bemerkung') THEN
+                  FieldLength := WorkFld.LENGTH;
+              END;
+
+              TextString := Text37_6;
+              counter_loop := 0;
+              IF FieldLength <> 0 THEN BEGIN
+                SearchString := TextString;
+                max_loop := ROUND(STRLEN(TextString) / FieldLength,1,'>');
+                REPEAT
+                  counter_loop += 1;
+                  LastSpacePos := TOPAS_Funktionen.GetLastCharPos(SearchString,32,FieldLength);
+                  IF ((LastSpacePos < STRLEN(SearchString)) AND (STRLEN(TextString) > FieldLength)) THEN BEGIN
+                    IF LastSpacePos <> 0 THEN BEGIN
+                      InsertString := COPYSTR(SearchString,1,LastSpacePos);
+                      SearchString := COPYSTR(SearchString,LastSpacePos + 1);
+                    END ELSE BEGIN
+                      InsertString := SearchString;
+                      SearchString := '';
+                    END;
+                  END ELSE BEGIN
+                    InsertString := SearchString;
+                    SearchString := '';
+                  END;
+
+                  SalesCommentLine.INIT;
+                  SalesCommentLine."Document Type" := SalesCommentLine."Document Type"::Order;
+                  SalesCommentLine."No." := SalesLine."Document No.";
+                  temp_SalesCommentLine.RESET;
+                  temp_SalesCommentLine.SETRANGE("Document Type",temp_SalesCommentLine."Document Type"::Order);
+                  temp_SalesCommentLine.SETRANGE("No.",SalesLine."Document No.");
+                  IF temp_SalesCommentLine.FINDLAST THEN
+                    L_LineNo := temp_SalesCommentLine."Line No." + 10000
+                  ELSE
+                    L_LineNo := 10000;
+                  SalesCommentLine."Line No." := L_LineNo;
+                  IF counter_loop = 1 THEN
+                    SalesCommentLine.Date := WORKDATE;
+                  SalesCommentLine.Comment := InsertString;
+                  SalesCommentLine.INSERT(TRUE);
+                UNTIL (STRLEN(SearchString) = 0) OR (counter_loop >= max_loop);
+              END;
+
+            END;
+          END;
+
         END;
     END;
 
