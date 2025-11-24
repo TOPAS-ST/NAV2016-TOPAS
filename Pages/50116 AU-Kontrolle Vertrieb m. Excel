@@ -1,0 +1,2517 @@
+OBJECT Page 50116 AU-Kontrolle Vertrieb m. Excel
+{
+  OBJECT-PROPERTIES
+  {
+    Date=09.10.25;
+    Time=08:30:18;
+    Modified=Yes;
+    Version List=TOPAS;
+  }
+  PROPERTIES
+  {
+    PageType=Card;
+    PromotedActionCategoriesML=[DEU=Neu,Vorgang,Bericht,Funktion;
+                                ENU=New,Process,Report,Function];
+    ShowFilter=No;
+    OnInit=BEGIN
+             //  Wenn untere Meldung erscheint, gibt es eine neue Linie, die noch nicht umgesetzt wird.
+             //  Siehe kurz vor Ende der Functions 'aktuellen Ab einfgen'
+             //tab_ab_bw.RESET;
+             //tab_ab_bw.SETFILTER(tab_ab_bw.Linie,'%1..%2','00','99');
+             //IF tab_ab_bw.FINDFIRST THEN BEGIN
+             //"Linien umsetzen";
+             //END;
+
+             tab_ab_bw.RESET;
+             tab_ab_bw.SETFILTER(tab_ab_bw.Linie,'%1..%2','00','99');
+             IF tab_ab_bw.FINDFIRST THEN
+               MESSAGE ('Es gibt Linien mit einer Zahl als Herstellerkurzname! Bitte Steffen ansprechen');
+
+             tab_ab_bw.RESET;
+             tab_ab_bw.SETFILTER(tab_ab_bw.Belegart,'%1','SYST');
+             tab_ab_bw.SETFILTER(tab_ab_bw.Datum,'%1',31122222D);
+             tab_ab_bw.SETFILTER(tab_ab_bw.AU_Nr,'%1','AU999999');
+             tab_ab_bw.SETFILTER(tab_ab_bw.POS_Nr,'%1',10000);
+             IF tab_ab_bw.FINDFIRST THEN BEGIN
+               IF tab_ab_bw.Wunschdatum = WORKDATE THEN BEGIN
+                 AB_holen_Datum:=tab_ab_bw.Wunschdatum;
+                 AE_holen_Datum:=tab_ab_bw.Auftragsdatum;
+                 AE_holen_Datum_1:=tab_ab_bw.Auftragsdatum;
+               END ELSE BEGIN
+             //   tab_ab_bw.Auftragsdatum :=tab_ab_bw.Wunschdatum;
+             //   tab_ab_bw.MODIFY;
+                 AB_holen_Datum:=tab_ab_bw.Wunschdatum;
+                 AE_holen_Datum:=tab_ab_bw.Wunschdatum;
+             //   AE_holen_Datum:=tab_ab_bw.Auftragsdatum;
+               END;
+             END;
+
+             //kto_datum := 010199D;
+           END;
+
+    ActionList=ACTIONS
+    {
+      { 1900000000;0 ;ActionContainer;
+                      ActionContainerType=RelatedInformation }
+      { 1000000016;0 ;ActionContainer;
+                      ActionContainerType=ActionItems }
+      { 1000000015;1 ;ActionGroup;
+                      CaptionML=DEU=Funktionen }
+      { 1140154 ;2   ;Action    ;
+                      Name=Ausfhren;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 AE_nach_Excel_ausgeben;
+                               END;
+                                }
+    }
+  }
+  CONTROLS
+  {
+    { 1900000;0;Container ;
+                ContainerType=ContentArea }
+
+    { 1000000000;1;Group  ;
+                GroupType=Group }
+
+    { 1000000001;2;Field  ;
+                CaptionML=DEU=AU-Nr. eingeben;
+                SourceExpr=var_AU_Nr }
+
+  }
+  CODE
+  {
+    VAR
+      Excel@1140164 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00024500-0000-0000-C000-000000000046}:Unknown Automation Server.Application";
+      Book@1140163 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";
+      Range@1140162 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";
+      Sheet@1140161 : Automation "{00020813-0000-0000-C000-000000000046} 1.2:{00020820-0000-0000-C000-000000000046}:Unknown Automation Server.Worksheet";
+      wshFile@1000000001 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{0D43FE01-F093-11CF-8940-00A0C9054228}:'Windows Script Host Object Model'.FileSystemObject";
+      j@1140160 : Text[30];
+      AB_holen@1140159 : Boolean;
+      AB_holen_Datum@1140158 : Date;
+      tab_ab@1140157 : Record 37;
+      tab_ab_arch@1140156 : Record 5108;
+      tab_ab_bw@1140155 : Record 50016;
+      prf@1140154 : Record 50016;
+      rech@1140153 : Record 113;
+      vkrk@1140152 : Record 112;
+      best@1140151 : Record 123;
+      tab_vkk@1140150 : Record 36;
+      tab_vkk_arch@1140149 : Record 5107;
+      tab_kurse@1140148 : Record 330;
+      TOPAS_API@1000000003 : Codeunit 50001;
+      var_AU_Nr@1140147 : Code[20];
+      AB_holen_rcksetzen@1140146 : Boolean;
+      Diff_ermitteln@1140145 : Boolean;
+      t„gl_AE@1140144 : Boolean;
+      t„gl_AE_Saldo@1140143 : Boolean;
+      var_re_menge@1140142 : Decimal;
+      var_be_menge@1140141 : Decimal;
+      AE_mtl@1140140 : Record 50017;
+      AE_holen_Datum@1140139 : Date;
+      tab_vkk1@1140138 : Record 36;
+      tab_vkk1_arch@1140137 : Record 5107;
+      var_anzahl_h„kchen@1140136 : Integer;
+      aus_Excel_impotieren@1140135 : Boolean;
+      tglAE@1140133 : Boolean;
+      AE_holen_Datum_1@1140132 : Date;
+      AE_verteilen@1140131 : Boolean;
+      Datum_von@1140130 : Date;
+      Datum_bis@1140129 : Date;
+      var_datum_kz@1140125 : Date;
+      var_linie_kz@1140124 : Text[10];
+      var_rec@1140123 : Record 50017;
+      Datei@1140122 : File;
+      Filename@1140119 : Text;
+      Jahr@1140075 : Integer;
+      Monat@1140074 : Integer;
+      MonatGJ@1140073 : Integer;
+      KW@1140072 : Integer;
+      Beleg@1140071 : Record 50010;
+      deb@1140069 : Record 18;
+      Artikel@1140056 : Record 27;
+      v_deb_prf@1140026 : Boolean;
+      Pfaddatum@1140016 : Text;
+      Pfad_tag@1140015 : Text[10];
+      Pfad_monat@1140014 : Text[10];
+      Pfad_jahr@1140013 : Text[10];
+      v_n2@1140012 : Boolean;
+      v_vertrieb4@1140011 : Boolean;
+      OK@1140010 : Boolean;
+      v_abstimm_tab_belege@1140006 : Boolean;
+      Text100@1000000002 : TextConst 'DEU=Sie mssen zuerst einen Dateinamen vergeben.';
+      Text000@1000000028 : TextConst 'DEU=Daten werden analysiert ...\\;ENU=Analyzing Data...\\';
+      Text001@1000000027 : TextConst 'DEU=Auftragseingang;ENU=New Orders';
+      Text002@1000000026 : TextConst 'DEU=Arbeitsmappe aktualisieren;ENU=Update Workbook';
+      Text020@1000000023 : TextConst 'DEU=Datum';
+      Text021@1000000022 : TextConst 'DEU=Auftragsnr.';
+      Text022@1000000021 : TextConst 'DEU=Debitornr.';
+      Text023@1000000020 : TextConst 'DEU=Name';
+      Text024@1000000019 : TextConst 'DEU=Menge';
+      Text025@1000000018 : TextConst 'DEU=Artikel';
+      Text026@1000000017 : TextConst 'DEU=Lager';
+      Text027@1000000016 : TextConst 'DEU=EK';
+      Text028@1000000015 : TextConst 'DEU=VK';
+      Text029@1000000014 : TextConst 'DEU=W„hrung';
+      Text030@1000000013 : TextConst 'DEU=WŽ_Faktor';
+      Text031@1000000012 : TextConst 'DEU=Betrag in EUR';
+      Text032@1000000011 : TextConst 'DEU=DB';
+      Text033@1000000010 : TextConst 'DEU=Bearbeiter';
+      Text034@1000000009 : TextConst 'DEU=Vertreter';
+      Text035@1000000008 : TextConst 'DEU=Hersteller';
+      Text036@1000000007 : TextConst 'DEU=EK Gesamt';
+      Text037@1000000006 : TextConst 'DEU=PLZ';
+      Text038@1000000005 : TextConst 'DEU=Endkunde';
+      Text039@1000000024 : TextConst 'DEU=Team';
+      Text040@1000000029 : TextConst 'DEU=Gebiet';
+      ExcelFileExtensionTok@1000000004 : TextConst '@@@={Locked};DEU=.xlsx;ENU=.xlsx';
+      TempExcelBuffer@1000000040 : TEMPORARY Record 370;
+      FileMgt@1000000038 : Codeunit 419;
+      ServerFileName@1000000037 : Text;
+      SheetName@1000000036 : Text[250];
+      DoUpdateExistingWorksheet@1000000035 : Boolean;
+      Testmode@1000000034 : Boolean;
+      Window@1000000033 : Dialog;
+      RecNo@1000000032 : Integer;
+      TotalRecNo@1000000031 : Integer;
+      RowNo@1000000030 : Integer;
+      ColumnNo@1000000025 : Integer;
+      AE_Verteilen_mtl_test@1000000039 : Boolean;
+      AE_Verteilen_test@1000000043 : Boolean;
+      v_Pfadname@1000000041 : Text[40];
+      v_Pfadzuweisung@1000000042 : Text[3];
+      Text050@1000000044 : TextConst 'DEU=No_';
+      Text051@1000000045 : TextConst 'DEU=Company Name';
+      Text052@1000000046 : TextConst 'DEU=Name 2';
+      Text053@1000000047 : TextConst 'DEU=First Name';
+      Text054@1000000048 : TextConst 'DEU=Surname';
+      Text055@1000000049 : TextConst 'DEU=Address';
+      Text056@1000000050 : TextConst 'DEU=Address 2';
+      Text057@1000000051 : TextConst 'DEU=Post Code';
+      Text058@1000000052 : TextConst 'DEU=City';
+      Text059@1000000053 : TextConst 'DEU=Nummer';
+      IDProvExtensionTok@1000000054 : TextConst 'DEU=.csv';
+      "Text003
+
+    "@1000000055 : TextConst 'DEU=Excel Export erfolgreich abgeschlossen.';
+      v_kreditprfen@1000000056 : Boolean;
+      v_anz_RE12@1000000062 : Decimal;
+      v_date_1RE@1000000063 : Date;
+      v_OP_gesamt@1000000064 : Decimal;
+      v_Nur_Diff_AB_ausgeben@1000000065 : Boolean;
+      v_W„_Abstimmung@1000000066 : Boolean;
+      v_AE_nach_Excel_ausgeben@1000000109 : Boolean;
+      v_t„gl_AE_Liste_kontrollieren@1000000110 : Boolean;
+      v_Q_Daten@1000000111 : Record 50014;
+      v_deckblatt@1000000112 : Boolean;
+      v_bemerkung@1000000113 : Record 44;
+      v_sum_AU_MW@1000000114 : Decimal;
+      v_sum_AU_WŽ@1000000115 : Decimal;
+      v_sum_13B2@1000000116 : Decimal;
+      v_EU_Fehler@1000000117 : Decimal;
+      v_sum_AE_Gesamt@1000000118 : Decimal;
+      v_sum_AE_DL@1000000119 : Decimal;
+      v_sum_AE_HAN@1000000120 : Decimal;
+      v_sum_AE_SYS@1000000121 : Decimal;
+      v_kursdif_vkk_vkz@1000000122 : Boolean;
+      tab_vkz@1000000123 : Record 37;
+      v_prdbuchgrp@1000000124 : Code[15];
+      RADROK@1000000125 : Text[20];
+      LADROK@1000000126 : Text[20];
+      RAOK@1000000127 : Decimal;
+      LAOK@1000000128 : Decimal;
+      v_Ust_ID_1@1000000129 : Text[15];
+      v_Ust_ID_2@1000000130 : Integer;
+      v_USt_ID_fehlt@1000000131 : Boolean;
+      v_POS@1000000132 : Integer;
+      v_Marge10prozent@1000000133 : Boolean;
+      v_VAT_fehlt@1000000143 : Boolean;
+      v_VAT_Deb@1000000142 : Text[20];
+      v_diff_ok@1000000141 : Boolean;
+      v_AU_AE@1000000140 : Boolean;
+      v_dopp_AUNR@1000000139 : Code[10];
+      v_Fehler_16_DL@1000000138 : Boolean;
+      v_AUNr@1000000137 : Code[10];
+      v_AUZeilNr@1000000136 : Integer;
+      v_AUDatum@1000000135 : Date;
+      v_Belegart@1000000134 : Text[15];
+
+    PROCEDURE "aktuellen AB einfgen"@1140000();
+    BEGIN
+    END;
+
+    PROCEDURE "AB einfgen rcksetzen"@1140001();
+    BEGIN
+    END;
+
+    PROCEDURE "t„glichen AE einfgen"@1140003();
+    BEGIN
+    END;
+
+    PROCEDURE "tgl AE in mtl AE bernehmen"@1140005();
+    BEGIN
+    END;
+
+    PROCEDURE AE_Verteilung_mtl@1140027();
+    BEGIN
+    END;
+
+    PROCEDURE AE_Verteilung_xx@1140029();
+    BEGIN
+    END;
+
+    PROCEDURE "aktuellen BB einfgen"@1140012();
+    BEGIN
+    END;
+
+    PROCEDURE "Linien umsetzen"@1140013();
+    BEGIN
+    END;
+
+    PROCEDURE "BB Diff ermitteln"@1140014();
+    BEGIN
+    END;
+
+    PROCEDURE Auftrag_sichern@1140015();
+    BEGIN
+    END;
+
+    PROCEDURE Auftrag_Arch_sichern@1140065();
+    BEGIN
+    END;
+
+    PROCEDURE "Konto Salden holen"@1140026();
+    BEGIN
+    END;
+
+    PROCEDURE "AE Salden t„gl gesamt"@1140044();
+    BEGIN
+    END;
+
+    PROCEDURE AE_Vertrieb1@1140047();
+    BEGIN
+    END;
+
+    PROCEDURE AE_Vertrieb2@1140048();
+    BEGIN
+    END;
+
+    PROCEDURE AE_Vertrieb3@1140059();
+    BEGIN
+    END;
+
+    PROCEDURE AE_Vertrieb4@1140061(VAR AU_Nr@1000000000 : Code[20]);
+    BEGIN
+    END;
+
+    PROCEDURE Debitor_šberprfung@1140053();
+    BEGIN
+    END;
+
+    PROCEDURE ID_Prove@1140056();
+    BEGIN
+    END;
+
+    PROCEDURE ID_Prove_2@1140057();
+    BEGIN
+    END;
+
+    PROCEDURE t„gl_AE_Saldo_abstimmen@1140058();
+    BEGIN
+    END;
+
+    PROCEDURE N2_berprfen@1140060();
+    BEGIN
+    END;
+
+    PROCEDURE Abstimm_tab_belege@1140064();
+    BEGIN
+    END;
+
+    PROCEDURE geschenk_adr_liste@1140066();
+    BEGIN
+    END;
+
+    PROCEDURE geschenk_adr_liste_bersicht@1140067();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE AE_Verteilen_Filter_Abfrage@1000000000();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE AE_Verteilen_Excelblatt_anlegen@1000000001();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE AE_Verteilen_Excelblatt_Daten@1000000003();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE AE_Verteilen_Excelblatt_schliessen@1000000002();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE AE_Verteilen_Pfad_festlegen@1000000004();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE ID_Prove_Filter_Abfrage@1000000005();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE ID_Prove_Excelblatt_anlegen@1000000006();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE ID_Prove_Excelblatt_Daten@1000000007();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE ID_Prove_Excelblatt_schliessen@1000000008();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE Geschenkliste_šbersicht@1000000009();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE CreateExcel@1000000010();
+    BEGIN
+      IF DoUpdateExistingWorksheet THEN BEGIN
+        IF ServerFileName = '' THEN
+          ServerFileName := FileMgt.UploadFile(Text002,ExcelFileExtensionTok);
+        IF ServerFileName = '' THEN
+          EXIT;
+        SheetName := TempExcelBuffer.SelectSheetsName(ServerFileName);
+        IF SheetName = '' THEN
+          EXIT;
+      END;
+
+      Window.OPEN(
+        Text000 +
+        '@1@@@@@@@@@@@@@@@@@@@@@\');
+
+      TempExcelBuffer.DELETEALL;
+      CLEAR(TempExcelBuffer);
+    END;
+
+    LOCAL PROCEDURE CloseExcel@1000000011(Sheetname@1000000000 : Text;FileName@1000000001 : Text;FilePath@1000000002 : Text);
+    BEGIN
+      Window.CLOSE;
+
+      IF DoUpdateExistingWorksheet THEN BEGIN
+        TempExcelBuffer.UpdateBook(ServerFileName,Sheetname);
+        TempExcelBuffer.WriteSheet('',COMPANYNAME,USERID);
+        TempExcelBuffer.CloseBook;
+        IF NOT Testmode THEN TempExcelBuffer.DownloadAndOpenExcel;
+      END ELSE BEGIN
+        TempExcelBuffer.CreateBook(ServerFileName,Sheetname);
+        TempExcelBuffer.WriteSheet(Sheetname,COMPANYNAME,USERID);
+        TempExcelBuffer.CloseBook;
+        IF NOT Testmode THEN BEGIN
+          IF (FileName = '') OR (FilePath = '') THEN
+            TempExcelBuffer.OpenExcel //hat Autofit drin der die Spaltenbreite wieder berschreibt, deshalb neue Fkt. nachfolgend
+        ELSE
+            TempExcelBuffer.OpenExcelWithoutAutoFit(Sheetname,FileName + ExcelFileExtensionTok,FilePath,TRUE);
+        END;
+      END;
+      IF NOT Testmode THEN
+        TempExcelBuffer.GiveUserControl;
+    END;
+
+    LOCAL PROCEDURE EnterCell@1000000012(RowNo@1000000000 : Integer;ColumnNo@1000000001 : Integer;CellValue@1000000002 : Text[250];Formular@1000000008 : Text[250];Bold@1000000003 : Boolean;Italic@1000000004 : Boolean;UnderLine@1000000005 : Boolean;NumberFormat@1000000006 : Text[30];CellType@1000000007 : Option);
+    BEGIN
+      TempExcelBuffer.INIT;
+      TempExcelBuffer.VALIDATE("Row No.",RowNo);
+      TempExcelBuffer.VALIDATE("Column No.",ColumnNo);
+      TempExcelBuffer."Cell Value as Text" := CellValue;
+      TempExcelBuffer.Formula := Formular;
+      TempExcelBuffer.Bold := Bold;
+      TempExcelBuffer.Italic := Italic;
+      TempExcelBuffer.Underline := UnderLine;
+      TempExcelBuffer.NumberFormat := NumberFormat;
+      TempExcelBuffer."Cell Type" := CellType;
+      TempExcelBuffer.INSERT;
+    END;
+
+    LOCAL PROCEDURE UpdateCell@1000000013(RowNo@1000000000 : Integer;ColumnNo@1000000001 : Integer;CellValue@1000000002 : Text[250]);
+    BEGIN
+      IF TempExcelBuffer.GET(RowNo,ColumnNo)  THEN BEGIN
+        TempExcelBuffer."Cell Value as Text" := CellValue;
+        TempExcelBuffer.MODIFY;
+      END;
+    END;
+
+    LOCAL PROCEDURE Kredtilimit_prfen@1000000014();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE Debitor_berprfen@1000000015();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE Differenzen_ermitteln_Neu@1000000016();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE Nur_Diff_AB_ausgeben@1000000017();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE WŽ_Abstimmung@1000000018();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE uwe@1000000019();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE t„glichen_AE_Saldo_abstimmen@1000000020();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE AE_nach_Excel_ausgeben@1000000022();
+    BEGIN
+
+      //v_sum_AU_MW:=0;
+      //v_sum_AU_WŽ:=0;
+      //v_sum_13B2:=0;
+      //CreateExcel;
+      //RowNo := 1;
+      //EnterCell(RowNo,1,FORMAT('Auftragseingang'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //EnterCell(RowNo,2,FORMAT('Kontrollliste'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //RowNo := 2;
+      //RowNo := 3;
+      tab_vkk.RESET;
+      IF var_AU_Nr='' THEN BEGIN
+
+        ERROR('Keine AU-Nummer eingegeben, Liste wurde abgebrochen!');
+      END ELSE BEGIN
+        tab_vkk.SETFILTER(tab_vkk."Document Type",'%1|%2',tab_vkk."Document Type"::Order,tab_vkk."Document Type"::"Blanket Order");/// Erweitern auf Rahmen
+        tab_vkk.SETFILTER(tab_vkk."Location Code",'%1|%2','ZENT','KONSI');
+        tab_vkk.SETFILTER(tab_vkk."No.",'%1',var_AU_Nr);
+      END;
+      IF tab_vkk.FIND('-') THEN BEGIN
+        REPEAT
+          v_USt_ID_fehlt:=FALSE;
+          v_sum_AU_MW:=0;
+          v_sum_AU_WŽ:=0;
+          v_sum_13B2:=0;
+          v_Marge10prozent:=FALSE;
+          CreateExcel;
+          RowNo := 1;
+          EnterCell(RowNo,1,FORMAT('AU-Kontrollblatt Vertrieb'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+          // Abgleich  Rechnungs- und Lieferadressen mit der Auftragsadresse
+          RADROK:='     ';
+          LADROK:='     ';
+          RAOK:= 0;
+          LAOK:= 0;
+          //šberprfung Rechnungsadresse
+          //Name
+          IF tab_vkk."Sell-to Customer Name" <> tab_vkk."Bill-to Name" THEN BEGIN
+            RAOK:=RAOK+111
+          END ELSE BEGIN
+            RAOK:=RAOK+1
+          END;
+          //Name 2
+          IF tab_vkk."Sell-to Customer Name 2" <> tab_vkk."Bill-to Name 2" THEN BEGIN
+            RAOK:=RAOK+111
+          END ELSE BEGIN
+            RAOK:=RAOK+1
+          END;
+          //Adresse
+          IF tab_vkk."Sell-to Address" <> tab_vkk."Bill-to Address" THEN BEGIN
+            RAOK:=RAOK+111
+          END ELSE BEGIN
+            RAOK:=RAOK+1
+          END;
+          //Adresse 2
+          IF tab_vkk."Sell-to Address 2" <> tab_vkk."Bill-to Address 2" THEN BEGIN
+            RAOK:=RAOK+111
+          END ELSE BEGIN
+            RAOK:=RAOK+1
+          END;
+          //Ort
+          IF tab_vkk."Sell-to City" <> tab_vkk."Bill-to City" THEN BEGIN
+            RAOK:=RAOK+111
+          END ELSE BEGIN
+            RAOK:=RAOK+1
+          END;
+          //Plz
+          IF tab_vkk."Sell-to Post Code" <> tab_vkk."Bill-to Post Code" THEN BEGIN
+            RAOK:=RAOK+111
+          END ELSE BEGIN
+            RAOK:=RAOK+1
+          END;
+          IF RAOK>10 THEN
+            RADROK:='Re.Adr. prfen'
+          ELSE
+            RADROK:='Re.Adr. wie AB';
+          //šberprfung Lieferadresse
+          //Name
+          IF tab_vkk."Sell-to Customer Name" <> tab_vkk."Ship-to Name" THEN BEGIN
+            LAOK:=LAOK+111
+          END ELSE BEGIN
+            LAOK:=LAOK+1
+          END;
+          //Name 2
+          IF tab_vkk."Sell-to Customer Name 2" <> tab_vkk."Ship-to Name 2" THEN BEGIN
+            LAOK:=LAOK+111
+          END ELSE BEGIN
+            LAOK:=LAOK+1
+          END;
+          //Adresse
+          IF tab_vkk."Sell-to Address" <> tab_vkk."Ship-to Address" THEN BEGIN
+            LAOK:=LAOK+111
+          END ELSE BEGIN
+            LAOK:=LAOK+1
+          END;
+          //Adresse 2
+          IF tab_vkk."Sell-to Address 2" <> tab_vkk."Ship-to Address 2" THEN BEGIN
+            LAOK:=LAOK+111
+          END ELSE BEGIN
+            LAOK:=LAOK+1
+          END;
+          //Ort
+          IF tab_vkk."Sell-to City" <> tab_vkk."Ship-to City" THEN BEGIN
+            LAOK:=LAOK+111
+          END ELSE BEGIN
+            LAOK:=LAOK+1
+          END;
+          //Plz
+          IF tab_vkk."Sell-to Post Code" <> tab_vkk."Ship-to Post Code" THEN BEGIN
+            LAOK:=LAOK+111
+          END ELSE BEGIN
+            LAOK:=LAOK+1
+          END;
+          IF LAOK>10 THEN
+            LADROK:='Li.Adr. prfen'
+          ELSE
+            LADROK:='Li.Adr. wie AB';
+      RowNo := 3;
+
+          IF LADROK='Li.Adr. prfen' THEN EnterCell(RowNo,6,FORMAT('prfen'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          IF LADROK='Li.Adr. wie AB' THEN EnterCell(RowNo,6,FORMAT('wie AB'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+      RowNo := 4;
+          IF RADROK='Re.Adr. prfen' THEN EnterCell(RowNo,6,FORMAT('prfen'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          IF RADROK='Re.Adr. wie AB' THEN EnterCell(RowNo,6,FORMAT('wie AB'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+
+      RowNo := 2;
+          EnterCell(RowNo,1,'Deb.Nr.','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,2,tab_vkk."Sell-to Customer No.",TOPAS_API.replace_text(TOPAS_API.CreateExcelHyperlinkToNav(deb.TABLENAME,1,21,tab_vkk."Sell-to Customer No."),';',','),FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Text);
+
+      //    EnterCell(RowNo,2,FORMAT(tab_vkk."Sell-to Customer No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,4,'Bestellangaben','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          IF tab_vkk."External Document No."='' THEN BEGIN
+            EnterCell(RowNo,5,'fehlt','',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END ELSE BEGIN
+            EnterCell(RowNo,5,FORMAT(tab_vkk."External Document No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          END;
+
+          EnterCell(RowNo,6,FORMAT('prfen'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          EnterCell(RowNo,7,'AU-Adresse','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+
+          EnterCell(RowNo,8,FORMAT(tab_vkk."Sell-to Customer Name"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,9,FORMAT(tab_vkk."Sell-to Customer Name 2"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,10,FORMAT(tab_vkk."Sell-to Address"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,11,FORMAT(tab_vkk."Sell-to Address 2"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          IF tab_vkk."Sell-to County"='' THEN BEGIN
+            EnterCell(RowNo,12,FORMAT(tab_vkk."Sell-to Country/Region Code"+' '+tab_vkk."Sell-to Post Code"+' '+tab_vkk."Sell-to City"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          END ELSE BEGIN
+            EnterCell(RowNo,12,FORMAT(tab_vkk."Sell-to County"+' '+tab_vkk."Sell-to Post Code"+' '+tab_vkk."Sell-to City"+', '+tab_vkk."Sell-to Country/Region Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          END;
+      //    EnterCell(RowNo,9,FORMAT(tab_vkk."Sell-to Address"+' '+tab_vkk."Sell-to Address 2"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //    EnterCell(RowNo,10,FORMAT(tab_vkk."Sell-to Country/Region Code"+' '+tab_vkk."Sell-to Post Code"+' '+tab_vkk."Sell-to City"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,14,FORMAT(tab_vkk."Sell-to Contact"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      RowNo := 3;
+          EnterCell(RowNo,1,'AU-Nr.','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //    EnterCell(RowNo,2,FORMAT(tab_vkk."No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          IF tab_vkk."Document Type"=tab_vkk."Document Type"::Order THEN
+            EnterCell(RowNo,2,tab_vkk."No.",TOPAS_API.replace_text(TOPAS_API.CreateExcelHyperlinkToNav(tab_vkk.TABLENAME,1,42,tab_vkk."No."),';',','),FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Text);
+          IF tab_vkk."Document Type"=tab_vkk."Document Type"::"Blanket Order" THEN
+            EnterCell(RowNo,2,tab_vkk."No.",TOPAS_API.replace_text(TOPAS_API.CreateExcelHyperlinkToNav(tab_vkk.TABLENAME,1,507,tab_vkk."No."),';',','),FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Text);
+
+          EnterCell(RowNo,5,FORMAT(tab_vkk."Your Reference"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,7,'Lieferadresse','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+
+          EnterCell(RowNo,8,FORMAT(tab_vkk."Ship-to Name"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,9,FORMAT(tab_vkk."Ship-to Name 2"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,10,FORMAT(tab_vkk."Ship-to Address"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,11,FORMAT(tab_vkk."Ship-to Address 2"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          IF tab_vkk."Ship-to County"='' THEN BEGIN
+            EnterCell(RowNo,12,FORMAT(tab_vkk."Ship-to Country/Region Code"+' '+tab_vkk."Ship-to Post Code"+' '+tab_vkk."Ship-to City"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          END ELSE BEGIN
+            EnterCell(RowNo,12,FORMAT(tab_vkk."Ship-to County"+' '+tab_vkk."Ship-to Post Code"+' '+tab_vkk."Ship-to City"+', '+tab_vkk."Ship-to Country/Region Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          END;
+      //    EnterCell(RowNo,9,FORMAT(tab_vkk."Ship-to Address"+' '+tab_vkk."Ship-to Address 2"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //    EnterCell(RowNo,10,FORMAT(tab_vkk."Ship-to Country/Region Code"+' '+tab_vkk."Ship-to Post Code"+' '+tab_vkk."Ship-to City"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,14,FORMAT(tab_vkk."Ship-to Contact"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+
+
+
+      RowNo := 4;
+      {
+      ///////
+          IF tab_vkk."Order Date"<>tab_vkk."Posting Date" THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Auftrags- und Buchungsdatum weichen bei '+tab_vkk."No."+' von einander ab. AU-Datum='+FORMAT(tab_vkk."Order Date")+';Buch-Datum='+FORMAT(tab_vkk."Posting Date")+'.'),'',TRUE,FALSE,FALSE,'[red]',
+            TempExcelBuffer."Cell Type"::Number);
+          END;
+          IF tab_vkk."Order Date"<>tab_vkk."Document Date" THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,('Auftrags- und Belegdatum weichen bei '+tab_vkk."No."+' von einander ab. AU-Datum='+FORMAT(tab_vkk."Order Date")+';Beleg-Datum='+FORMAT(tab_vkk."Document Date")+'.'),'',TRUE,FALSE,FALSE,'[red]',
+            TempExcelBuffer."Cell Type"::Number);
+          END;
+          IF tab_vkk."Posting Date"<>tab_vkk."Document Date" THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Buchungs- und Belegdatum weichen bei '+tab_vkk."No."+' von einander ab. Buch-Datum='+FORMAT(tab_vkk."Posting Date")+';Beleg-Datum='+FORMAT(tab_vkk."Document Date")+'.'),'',TRUE,FALSE,FALSE,'[red]',
+            TempExcelBuffer."Cell Type"::Number);
+          END;
+
+      //////////
+      }
+
+
+
+          EnterCell(RowNo,1,'Au-Datum','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+          IF tab_vkk."Order Date"<>tab_vkk."Posting Date" THEN  EnterCell(RowNo,2,FORMAT(tab_vkk."Order Date"),'',FALSE,FALSE,FALSE,'[red]dd.mm.yyy',TempExcelBuffer."Cell Type"::Date);
+          IF tab_vkk."Order Date"= tab_vkk."Posting Date" THEN  EnterCell(RowNo,2,FORMAT(tab_vkk."Order Date"),'',FALSE,FALSE,FALSE,'[blue]dd.mm.yyy',TempExcelBuffer."Cell Type"::Date);
+
+          EnterCell(RowNo,4,'Lieferanten-Nr','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+          deb.RESET;
+          deb.SETFILTER(deb."No.",'%1',tab_vkk."Sell-to Customer No.");
+          IF deb.FINDFIRST THEN BEGIN
+            IF deb."Our Account No."='' THEN BEGIN
+              EnterCell(RowNo,5,'fehlt','',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            END ELSE BEGIN
+              EnterCell(RowNo,5,FORMAT(deb."Our Account No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            END;
+      //  Nachgelagerte Debitorinfos ausgeben
+      RowNo := 7;
+           EnterCell(RowNo,8,FORMAT(deb."Payment Terms Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+           IF deb."Payment Terms Code"=tab_vkk."Payment Terms Code" THEN EnterCell(RowNo,9,FORMAT('OK'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+           IF deb."Payment Terms Code"<>tab_vkk."Payment Terms Code" THEN EnterCell(RowNo,9,FORMAT('Abweich'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+
+      RowNo := 8;
+          EnterCell(RowNo,8,FORMAT(deb."Shipment Method Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          IF deb."Shipment Method Code"=tab_vkk."Shipment Method Code" THEN EnterCell(RowNo,9,FORMAT('OK'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+          IF deb."Shipment Method Code"<>tab_vkk."Shipment Method Code" THEN EnterCell(RowNo,9,FORMAT('Abweich'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+
+      RowNo := 9;
+          EnterCell(RowNo,8,FORMAT(deb."Shipping Agent Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          IF deb."Shipping Agent Code"=tab_vkk."Shipping Agent Code" THEN EnterCell(RowNo,9,FORMAT('OK'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+          IF deb."Shipping Agent Code"<>tab_vkk."Shipping Agent Code" THEN EnterCell(RowNo,9,FORMAT('Abweich'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+
+      RowNo := 10;
+          EnterCell(RowNo,7,'Deb:Sped.Account','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,8,FORMAT(deb.Spediteuraccount),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          IF deb.Spediteuraccount=tab_vkk.Spediteuraccount THEN EnterCell(RowNo,9,FORMAT('OK'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+          IF deb.Spediteuraccount<>tab_vkk.Spediteuraccount THEN EnterCell(RowNo,9,FORMAT('Abweich'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+
+      RowNo := 14;
+          EnterCell(RowNo,6,FORMAT(deb."AB via EMail"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+          EnterCell(RowNo,8,FORMAT(deb."AB EMail-Adresse"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          IF deb."AB via EMail" = TRUE THEN BEGIN
+            IF tab_vkk."AB EMail-Adresse"='' THEN BEGIN
+              EnterCell(RowNo,9,FORMAT('prfen'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            END ELSE BEGIN
+              IF deb."AB EMail-Adresse"=tab_vkk."AB EMail-Adresse" THEN EnterCell(RowNo,9,FORMAT('OK'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+              IF deb."AB EMail-Adresse"<>tab_vkk."AB EMail-Adresse" THEN EnterCell(RowNo,9,FORMAT('Abweich'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            END;
+          END ELSE BEGIN
+            IF tab_vkk."AB EMail-Adresse"='' THEN BEGIN
+              IF deb."AB EMail-Adresse"='' THEN EnterCell(RowNo,9,FORMAT('OK'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+            END ELSE BEGIN
+              IF deb."AB EMail-Adresse"<>'' THEN EnterCell(RowNo,9,FORMAT('prfen'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            END;
+          END;
+
+
+
+
+
+
+
+       //   IF ((tab_vkk."AB EMail-Adresse"='') AND (deb."AB via EMail"=TRUE)) THEN EnterCell(RowNo,9,FORMAT('prfen'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+      //    IF ((deb."AB EMail-Adresse"=tab_vkk."AB EMail-Adresse") AND (deb."AB via EMail"=FALSE)) THEN EnterCell(RowNo,9,FORMAT('OK'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+      //    IF deb."AB EMail-Adresse"<>tab_vkk."AB EMail-Adresse" THEN EnterCell(RowNo,9,FORMAT('Abweich'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+
+      RowNo := 15;
+          EnterCell(RowNo,6,FORMAT(deb."Rech via EMail"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+          EnterCell(RowNo,8,FORMAT(deb."Rech EMail-Adresse"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //    IF ((tab_vkk."Rech EMail-Adresse"='') AND (deb."Rech via EMail"=TRUE)) THEN EnterCell(RowNo,9,FORMAT('prfen'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+      //    IF (deb."Rech EMail-Adresse"=tab_vkk."Rech EMail-Adresse") AND (deb."Rech EMail-Adresse" <> '') THEN EnterCell(RowNo,9,FORMAT('OK'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+      //    IF deb."Rech EMail-Adresse"<>tab_vkk."Rech EMail-Adresse" THEN EnterCell(RowNo,9,FORMAT('Abweich'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+
+          IF deb."Rech via EMail" = TRUE THEN BEGIN
+            IF tab_vkk."Rech EMail-Adresse"='' THEN BEGIN
+              EnterCell(RowNo,9,FORMAT('prfen'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            END ELSE BEGIN
+              IF deb."Rech EMail-Adresse"=tab_vkk."Rech EMail-Adresse" THEN EnterCell(RowNo,9,FORMAT('OK'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+              IF deb."Rech EMail-Adresse"<>tab_vkk."Rech EMail-Adresse" THEN EnterCell(RowNo,9,FORMAT('Abweich'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            END;
+          END ELSE BEGIN
+            IF tab_vkk."Rech EMail-Adresse"='' THEN BEGIN
+              IF deb."Rech EMail-Adresse"='' THEN EnterCell(RowNo,9,FORMAT('OK'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+            END ELSE BEGIN
+              IF deb."Rech EMail-Adresse"<>'' THEN EnterCell(RowNo,9,FORMAT('prfen'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            END;
+          END;
+
+      RowNo := 16;
+          EnterCell(RowNo,6,FORMAT(deb."Service via EMail"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+          EnterCell(RowNo,8,FORMAT(deb."Service EMail-Adresse"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //    IF ((tab_vkk."Service EMail-Adresse"='') AND (deb."Service via EMail"=TRUE)) THEN EnterCell(RowNo,9,FORMAT('prfen'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+      //    IF (deb."Service EMail-Adresse"=tab_vkk."Service EMail-Adresse") AND (deb."Service EMail-Adresse" <> '') THEN EnterCell(RowNo,9,FORMAT('OK'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+      //    IF deb."Service EMail-Adresse"<>tab_vkk."Service EMail-Adresse" THEN EnterCell(RowNo,9,FORMAT('Abweich'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+
+          IF deb."Service via EMail" = TRUE THEN BEGIN
+            IF tab_vkk."Service EMail-Adresse"='' THEN BEGIN
+              EnterCell(RowNo,9,FORMAT('prfen'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            END ELSE BEGIN
+              IF deb."Service EMail-Adresse"=tab_vkk."Service EMail-Adresse" THEN EnterCell(RowNo,9,FORMAT('OK'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+              IF deb."Service EMail-Adresse"<>tab_vkk."Service EMail-Adresse" THEN EnterCell(RowNo,9,FORMAT('Abweich'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            END;
+          END ELSE BEGIN
+            IF tab_vkk."Service EMail-Adresse"='' THEN BEGIN
+              IF deb."Service EMail-Adresse"='' THEN EnterCell(RowNo,9,FORMAT('OK'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+            END ELSE BEGIN
+              IF deb."Service EMail-Adresse"<>'' THEN EnterCell(RowNo,9,FORMAT('prfen'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            END;
+          END;
+
+      RowNo := 17;
+          EnterCell(RowNo,6,FORMAT(deb."Lizenz via EMail"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+          EnterCell(RowNo,8,FORMAT(deb."Lizenz EMail-Adresse"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //    IF ((tab_vkk."Lizenz EMail-Adresse"='') AND (deb."Lizenz via EMail"=TRUE)) THEN EnterCell(RowNo,9,FORMAT('prfen'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+      //    IF (deb."Lizenz EMail-Adresse"=tab_vkk."Lizenz EMail-Adresse") AND (deb."Lizenz EMail-Adresse" <> '') THEN EnterCell(RowNo,9,FORMAT('OK'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+      //    IF deb."Lizenz EMail-Adresse"<>tab_vkk."Lizenz EMail-Adresse" THEN EnterCell(RowNo,9,FORMAT('Abweich'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+
+
+          IF deb."Lizenz via EMail" = TRUE THEN BEGIN
+            IF tab_vkk."Lizenz EMail-Adresse"='' THEN BEGIN
+              EnterCell(RowNo,9,FORMAT('prfen'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            END ELSE BEGIN
+              IF deb."Lizenz EMail-Adresse"=tab_vkk."Lizenz EMail-Adresse" THEN EnterCell(RowNo,9,FORMAT('OK'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+              IF deb."Lizenz EMail-Adresse"<>tab_vkk."Lizenz EMail-Adresse" THEN EnterCell(RowNo,9,FORMAT('Abweich'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            END;
+          END ELSE BEGIN
+            IF tab_vkk."Lizenz EMail-Adresse"='' THEN BEGIN
+              IF deb."Lizenz EMail-Adresse"='' THEN EnterCell(RowNo,9,FORMAT('OK'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+            END ELSE BEGIN
+              IF deb."Lizenz EMail-Adresse"<>'' THEN EnterCell(RowNo,9,FORMAT('prfen'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            END;
+          END;
+
+      // ENDE von Nachgelagerte Debitorinfos ausgeben
+
+          END;
+      RowNo := 4;
+          EnterCell(RowNo,7,'Rechnungsadresse','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,8,FORMAT(tab_vkk."Bill-to Name"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,9,FORMAT(tab_vkk."Bill-to Name 2"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,10,FORMAT(tab_vkk."Bill-to Address"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,11,FORMAT(tab_vkk."Bill-to Address 2"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          IF tab_vkk."Bill-to County"='' THEN BEGIN
+            EnterCell(RowNo,12,FORMAT(tab_vkk."Bill-to Country/Region Code"+' '+tab_vkk."Bill-to Post Code"+' '+tab_vkk."Bill-to City"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          END ELSE BEGIN
+            EnterCell(RowNo,12,FORMAT(tab_vkk."Bill-to County"+' '+tab_vkk."Bill-to Post Code"+' '+tab_vkk."Bill-to City"+', '+tab_vkk."Bill-to Country/Region Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          END;
+      //    EnterCell(RowNo,9,FORMAT(tab_vkk."Bill-to Address"+' '+tab_vkk."Bill-to Address 2"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //    EnterCell(RowNo,10,FORMAT(tab_vkk."Bill-to Country/Region Code"+' '+tab_vkk."Bill-to Post Code"+' '+tab_vkk."Bill-to City"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,14,FORMAT(tab_vkk."Bill-to Contact"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+
+
+      RowNo := 5;
+          EnterCell(RowNo,1,'Buchungsdatum','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          IF tab_vkk."Posting Date"<>tab_vkk."Document Date" THEN EnterCell(RowNo,2,FORMAT(tab_vkk."Posting Date"),'',FALSE,FALSE,FALSE,'[red]dd.mm.yyyy',TempExcelBuffer."Cell Type"::Date);
+          IF tab_vkk."Posting Date"=tab_vkk."Document Date" THEN EnterCell(RowNo,2,FORMAT(tab_vkk."Posting Date"),'',FALSE,FALSE,FALSE,'[blue]dd.mm.yyyy',TempExcelBuffer."Cell Type"::Date);
+          EnterCell(RowNo,7,'Endkundenadresse','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      //    deb.RESET;
+      //    deb.SETFILTER(deb."No.",'%1',tab_vkk."Sell-to Customer No.");
+      //    IF deb.FINDFIRST THEN BEGIN
+      //      EnterCell(RowNo,5,FORMAT(deb."Our Account No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //    END;
+
+          EnterCell(RowNo,8,FORMAT(tab_vkk.Endkunde),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,10,FORMAT(tab_vkk."Endkunde Adresse"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,12,FORMAT(tab_vkk."Endkunde Land"+' '+tab_vkk."Endkunde PLZ-Code"+' '+tab_vkk."Endkunde Ort"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,14,FORMAT(tab_vkk."Endkunde Kontakt"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      RowNo := 6;
+          EnterCell(RowNo,1,'Belegdatum','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          IF tab_vkk."Order Date"<>tab_vkk."Document Date" THEN EnterCell(RowNo,2,FORMAT(tab_vkk."Document Date"),'',FALSE,FALSE,FALSE,'[red]dd.mm.yyyy',TempExcelBuffer."Cell Type"::Date);
+          IF tab_vkk."Order Date"=tab_vkk."Document Date" THEN EnterCell(RowNo,2,FORMAT(tab_vkk."Document Date"),'',FALSE,FALSE,FALSE,'[blue]dd.mm.yyyy',TempExcelBuffer."Cell Type"::Date);
+
+
+
+      RowNo := 7;
+          EnterCell(RowNo,1,'W„hrung','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          IF tab_vkk."Currency Code"='' THEN BEGIN
+            EnterCell(RowNo,2,'EUR','',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          END ELSE BEGIN
+            IF tab_vkk."Currency Code"='USD' THEN EnterCell(RowNo,2,FORMAT(tab_vkk."Currency Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
+            IF tab_vkk."Currency Code"='JPY' THEN EnterCell(RowNo,2,FORMAT(tab_vkk."Currency Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
+            IF tab_vkk."Currency Code"='GBP' THEN EnterCell(RowNo,2,FORMAT(tab_vkk."Currency Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
+          END;
+          EnterCell(RowNo,4,'Zahlungsbedingung','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,5,FORMAT(tab_vkk."Payment Terms Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,7,'Deb: Zahlungsbed','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,11,'Verkaufskopf','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      RowNo := 8;
+          EnterCell(RowNo,1,'Kurs','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,2,FORMAT(tab_vkk."Currency Factor"),'',FALSE,FALSE,FALSE,'##0.00###',TempExcelBuffer."Cell Type"::Number);
+          EnterCell(RowNo,4,'Lieferbedingung','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,5,FORMAT(tab_vkk."Shipment Method Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,7,'Deb: Lieferbed','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,11,'Gesch„ftsbuch.Gruppe','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      RowNo := 9;
+          EnterCell(RowNo,1,'Verk„ufer','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          IF tab_vkk."Salesperson Code"='' THEN BEGIN
+            EnterCell(RowNo,2,'fehlt','',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END ELSE BEGIN
+            EnterCell(RowNo,2,FORMAT(tab_vkk."Salesperson Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          END;
+          EnterCell(RowNo,4,'SpediteurCode','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,5,FORMAT(tab_vkk."Shipping Agent Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,7,'Deb: Sped.Code','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,11,FORMAT(tab_vkk."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      RowNo := 10;
+          EnterCell(RowNo,1,'Innen','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          IF tab_vkk."Betreuer Innendienst"='' THEN BEGIN
+            EnterCell(RowNo,2,'fehlt','',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END ELSE BEGIN
+            EnterCell(RowNo,2,FORMAT(tab_vkk."Betreuer Innendienst"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          END;
+          EnterCell(RowNo,4,'Sped.Account','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          IF tab_vkk.Spediteuraccount='' THEN BEGIN
+            IF tab_vkk."Shipping Agent Code"='ACCOUNT' THEN EnterCell(RowNo,5,'fehlt','',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END ELSE BEGIN
+             EnterCell(RowNo,5,FORMAT(tab_vkk.Spediteuraccount),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          END;
+
+      //    EnterCell(RowNo,5,FORMAT(tab_vkk.Spediteuraccount),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      RowNo := 11;
+          EnterCell(RowNo,1,'Gebiet','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,2,FORMAT(tab_vkk."Territory Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      RowNo := 12;
+          EnterCell(RowNo,1,'USt-ID-Nr','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //    v_Ust_ID_2:=STRPOS(tab_vkk."VAT Registration No.",3,12);
+       //   v_Ust_ID_2:=FORMAT(tab_vkk."VAT Registration No.").SEEK(3);
+      //    EnterCell(RowNo,4,FORMAT(v_Ust_ID_1),'',FALSE,FALSE,FALSE,'##.###.###.###',TempExcelBuffer."Cell Type"::Number);
+
+          IF tab_vkk."VAT Registration No."='' THEN BEGIN
+            EnterCell(RowNo,2,'fehlt','',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END ELSE BEGIN
+            EnterCell(RowNo,2,FORMAT(tab_vkk."VAT Registration No."),'',FALSE,FALSE,FALSE,'##.###.###.###',TempExcelBuffer."Cell Type"::Number);
+          END;
+
+      RowNo := 13;
+          EnterCell(RowNo,1,'Handelsregister','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          deb.RESET;
+          deb.SETFILTER(deb."No.",'%1',tab_vkk."Sell-to Customer No.");
+          IF deb.FINDFIRST THEN BEGIN
+            IF deb."Handelsregister Nr"='' THEN BEGIN
+              EnterCell(RowNo,2,'fehlt','',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            END ELSE BEGIN
+              EnterCell(RowNo,2,FORMAT(deb."Handelsregister Nr"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            END;
+          END;
+
+
+      RowNo := 14;
+          EnterCell(RowNo,1,'SVS Verzichtskunde','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,2,FORMAT(deb."SVS Verzichtskunde"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,4,'AU Email','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,5,FORMAT(tab_vkk."AB EMail-Adresse"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+          EnterCell(RowNo,7,'Deb: AU Email','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      RowNo := 15;
+          EnterCell(RowNo,1,'Deckblatt','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          v_deckblatt:=FALSE;
+          v_bemerkung.RESET;
+          v_bemerkung.SETFILTER(v_bemerkung."No.",tab_vkk."No.");
+          IF v_bemerkung.FINDFIRST THEN BEGIN
+            v_deckblatt:=TRUE;
+          END;
+          IF v_deckblatt=FALSE THEN BEGIN
+            IF deb."besondere Versandbedingungen"=TRUE THEN v_deckblatt:=TRUE;
+          END;
+          EnterCell(RowNo,2,FORMAT(v_deckblatt),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,4,'RE Email','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,5,FORMAT(tab_vkk."Rech EMail-Adresse"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,7,'Deb: RE Email','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      RowNo := 16;
+          EnterCell(RowNo,1,'Projekt-Nr','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,2,FORMAT(tab_vkk."Campaign No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,4,'Service Email','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,5,FORMAT(tab_vkk."Service EMail-Adresse"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,7,'Deb: Service Email','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      RowNo := 17;
+          EnterCell(RowNo,1,'Keine AB','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,2,FORMAT(tab_vkk."Keine AB an Kunden"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,4,'Lizenz Email','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,5,FORMAT(tab_vkk."Lizenz EMail-Adresse"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,7,'Deb: Lizenz Email','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      RowNo := 18;
+          EnterCell(RowNo,1,'Lagerortcode','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,2,FORMAT(tab_vkk."Location Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      RowNo := RowNo +4;
+          EnterCell(RowNo,1,'Best„tigt','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,2,'Wunschdatum','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,3,'Pos.','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,4,'Artikel','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,5,'Referenznr.','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,6,'Menge','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,7,'Restmenge','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,8,'EK W„hrung','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,9,'EK Kurs','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,10,'EK DC','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,11,'VK (MW)','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,12,'VK (WŽ)','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,13,'Betrag (MW)','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,14,'Betrag (WŽ)','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,15,'Marge %','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,16,'Handling %','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,17,'Zoll %','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,18,'Quote Ex','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,19,'Quote Intern','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,20,'Quote Ablaufdatum','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,21,'Gesch„ftsbuchgrp','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,22,'Produktbuchgrp','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,23,'MWSt Probuchgrp','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,24,'AC Solutionpartner','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,25,'Rahmen-AU-Nr','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,26,'Rahmen-AU WŽ','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,27,'Rahmen-AU Kurs','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,28,'Rahmen-AU 13B2','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,29,'Endkunde','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,30,'Lagerortcode','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+          tab_ab.RESET;
+          tab_ab.SETFILTER(tab_ab."Document No.",'%1',tab_vkk."No.");
+      //    tab_ab.SETFILTER(tab_ab.Type,'%1|%2',tab_ab.Type::Item, tab_ab.Type::"G/L Account");
+          IF tab_ab.FIND('-') THEN BEGIN
+            REPEAT
+              v_Q_Daten.Gltigkeitsdatum:=0D;
+
+
+              IF tab_ab."No."='LIEF_DRUCK' THEN BEGIN
+              RowNo := RowNo +1;
+                EnterCell(RowNo,4,FORMAT(tab_ab."No."),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                EnterCell(RowNo,5,FORMAT(tab_ab.Description),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              END;
+      ///////////////////////////////////////////////////////////////////////////////////////
+      IF ((tab_ab.Type=tab_ab.Type::Item) OR (tab_ab.Type=tab_ab.Type::"G/L Account")) THEN BEGIN
+
+
+      RowNo := RowNo +1;
+              EnterCell(RowNo,1,FORMAT(tab_ab."Promised Delivery Date"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,2,FORMAT(tab_ab."Requested Delivery Date"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,3,FORMAT(tab_ab."Line No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              IF tab_ab.Type=tab_ab.Type::Item THEN BEGIN    // Wenn Artikel
+                EnterCell(RowNo,4,FORMAT(tab_ab."Artikelnr. 2"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                IF tab_ab."Profit %"<10 THEN v_Marge10prozent:=TRUE;
+              END ELSE BEGIN
+       // MWSt 16%
+                IF ((tab_ab."No."='4416') OR (tab_ab."No."='4418') OR (tab_ab."No."='4122')) THEN BEGIN   // Wenn Sachkonto 4416 oder 4122 oder 4418
+                  IF ((tab_ab."No."='4416') AND (tab_ab."Gen. Bus. Posting Group"='INLAND')) THEN BEGIN
+                    IF tab_ab."VAT Prod. Posting Group"='16_13B2' THEN EnterCell(RowNo,4,FORMAT(tab_ab.Description+'('+tab_ab."No."+')'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                    IF tab_ab."VAT Prod. Posting Group"='16' THEN EnterCell(RowNo,4,FORMAT(tab_ab.Description+'('+tab_ab."No."+')'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  END;
+                  IF ((tab_ab."No."='4416') AND (tab_ab."Gen. Bus. Posting Group"<>'INLAND')) THEN  EnterCell(RowNo,4,FORMAT(tab_ab.Description+'('+tab_ab."No."+')'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  IF ((tab_ab."No."='4122') AND (tab_ab."Gen. Bus. Posting Group"='INLAND')) THEN  EnterCell(RowNo,4,FORMAT(tab_ab.Description+'('+tab_ab."No."+')'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  IF ((tab_ab."No."='4122') AND (tab_ab."Gen. Bus. Posting Group"='AUSLAND')) THEN EnterCell(RowNo,4,FORMAT(tab_ab.Description+'('+tab_ab."No."+')'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  IF ((tab_ab."No."='4122') AND (tab_ab."Gen. Bus. Posting Group"='EU')) THEN EnterCell(RowNo,4,FORMAT(tab_ab.Description+'('+tab_ab."No."+')'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  IF ((tab_ab."No."='4418') AND (tab_ab."VAT Bus. Posting Group"='INLAND')) THEN BEGIN
+                    IF ((tab_ab."No."='4418') AND (tab_ab."VAT Prod. Posting Group"='16_13B2')) THEN EnterCell(RowNo,4,FORMAT(tab_ab.Description+'('+tab_ab."No."+')'),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                    IF ((tab_ab."No."='4418') AND (tab_ab."VAT Prod. Posting Group"<>'16_13B2')) THEN  EnterCell(RowNo,4,FORMAT(tab_ab.Description+'('+tab_ab."No."+')'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  END ELSE BEGIN
+                    IF ((tab_ab."No."='4418') AND (tab_ab."VAT Prod. Posting Group"<>'16_13B2')) THEN  EnterCell(RowNo,4,FORMAT(tab_ab.Description+'('+tab_ab."No."+')'),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  END;
+                END ELSE BEGIN
+                  EnterCell(RowNo,4,FORMAT(tab_ab.Description+'('+tab_ab."No."+')'),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);   // Wenn weiteres Sachkonto
+                END;
+              END;
+      // MWSt 16%
+
+              EnterCell(RowNo,5,FORMAT(tab_ab."Cross-Reference No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,6,FORMAT(tab_ab.Quantity),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
+              EnterCell(RowNo,7,FORMAT(tab_ab."Outstanding Quantity"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
+              IF tab_ab.Einkaufsw„hrungscode='' THEN BEGIN
+                EnterCell(RowNo,8,'EUR','',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
+              END ELSE BEGIN
+                EnterCell(RowNo,8,FORMAT(tab_ab.Einkaufsw„hrungscode),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
+              END;
+              EnterCell(RowNo,9,FORMAT(tab_ab.Einkaufsw„hrungsfaktor),'',FALSE,FALSE,FALSE,'##0.00###',TempExcelBuffer."Cell Type"::Number);
+
+              IF tab_vkk."Currency Code"=tab_ab.Einkaufsw„hrungscode THEN BEGIN
+                IF tab_vkk."Currency Factor"<>tab_ab.Einkaufsw„hrungsfaktor THEN BEGIN
+                  IF tab_vkk."Currency Code"='' THEN BEGIN
+                  END ELSE BEGIN
+                    v_kursdif_vkk_vkz:=TRUE;
+                  END;
+                END;
+              END;
+
+              EnterCell(RowNo,10,FORMAT(tab_ab."DC-Preis (EKW)"),'',FALSE,FALSE,FALSE,'###,##0.00##',TempExcelBuffer."Cell Type"::Number);
+              EnterCell(RowNo,11,FORMAT(tab_ab."VK-Preis (MW)"),'',FALSE,FALSE,FALSE,'###,##0.00##',TempExcelBuffer."Cell Type"::Number);
+              EnterCell(RowNo,12,FORMAT(tab_ab."Unit Price"),'',FALSE,FALSE,FALSE,'###,##0.00##',TempExcelBuffer."Cell Type"::Number);
+              EnterCell(RowNo,13,FORMAT(tab_ab."VK-Preis (MW)"*tab_ab."Outstanding Quantity"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+              v_sum_AU_MW:=v_sum_AU_MW +ROUND(tab_ab."VK-Preis (MW)"*tab_ab."Outstanding Quantity",0.01);
+              IF tab_ab.Quantity * tab_ab."Outstanding Quantity" <> 0 THEN
+                EnterCell(RowNo,14,FORMAT(tab_ab.Amount/tab_ab.Quantity*tab_ab."Outstanding Quantity"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+              IF tab_ab.Quantity*tab_ab."Outstanding Quantity" <> 0 THEN
+                v_sum_AU_WŽ:=v_sum_AU_WŽ+ROUND(tab_ab.Amount/tab_ab.Quantity*tab_ab."Outstanding Quantity",0.01);
+              IF tab_ab."Profit %"<10 THEN BEGIN
+                EnterCell(RowNo,15,FORMAT(tab_ab."Profit %"),'',FALSE,FALSE,FALSE,'[red]###,##0.00',TempExcelBuffer."Cell Type"::Number);
+              END ELSE BEGIN
+                EnterCell(RowNo,15,FORMAT(tab_ab."Profit %"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+              END;
+              EnterCell(RowNo,16,FORMAT(tab_ab."Handlingskosten %"),'',FALSE,FALSE,FALSE,'###,##0.00##',TempExcelBuffer."Cell Type"::Number);
+              Artikel.RESET;
+              Artikel.SETFILTER(Artikel."No.",'%1',tab_ab."No.");
+              IF Artikel.FINDFIRST THEN BEGIN
+                EnterCell(RowNo,17,FORMAT(Artikel."Zollsatz %"),'',FALSE,FALSE,FALSE,'###,##0.00##',TempExcelBuffer."Cell Type"::Number);
+                IF ((Artikel."Tariff No."='8542 3190 000') AND (Artikel.UStG_13b_frei=FALSE)) THEN v_sum_13B2:=v_sum_13B2+(tab_ab."VK-Preis (MW)"*tab_ab."Outstanding Quantity");
+      //          IF Artikel."Tariff No."='8542 3190 000' THEN v_sum_13B2:=v_sum_13B2+(tab_ab."VK-Preis (MW)"*tab_ab."Outstanding Quantity");
+              END;
+              IF tab_ab."Quotenr." <>'' THEN BEGIN
+                v_Q_Daten.RESET;
+                v_Q_Daten.SETFILTER(v_Q_Daten."Quotenr.",'%1',tab_ab."Quotenr.");
+                IF v_Q_Daten.FINDFIRST THEN BEGIN
+                  EnterCell(RowNo,18,FORMAT(v_Q_Daten."Quotenr. Hersteller"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                  EnterCell(RowNo,19,FORMAT(tab_ab."Quotenr."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                  EnterCell(RowNo,20,FORMAT(v_Q_Daten.Gltigkeitsdatum),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                END;
+              END;
+
+              IF tab_ab."Gen. Bus. Posting Group"='EU' THEN v_USt_ID_fehlt:=TRUE;
+
+              IF ((tab_ab."Gen. Bus. Posting Group"='INLAND') AND (tab_ab."Gen. Prod. Posting Group"='16_SYSTEM')) THEN BEGIN  // MWSt 16%
+                IF tab_ab."VAT Prod. Posting Group"='16_SYS' THEN BEGIN  // MWSt 16%
+                  EnterCell(RowNo,21,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,22,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,23,FORMAT(tab_ab."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                END ELSE BEGIN
+                  EnterCell(RowNo,21,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,22,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,23,FORMAT(tab_ab."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                END;
+              END;
+
+              IF (((tab_ab."Gen. Bus. Posting Group"='INLAND') AND ((tab_ab."Gen. Prod. Posting Group"='16_SERVICE') OR (tab_ab."Gen. Prod. Posting Group"='SERVICE'))) OR // MWSt 16% oder 19%
+                  ((tab_ab."Gen. Bus. Posting Group"='INLAND') AND ((tab_ab."Gen. Prod. Posting Group"='16_SCHULUN') OR (tab_ab."Gen. Prod. Posting Group"='SCHULUNG'))) OR  // MWSt 16% oder 19%
+                  ((tab_ab."Gen. Bus. Posting Group"='INLAND') AND ((tab_ab."Gen. Prod. Posting Group"='16_STD_POO') OR (tab_ab."Gen. Prod. Posting Group"='STD_POOL')))) THEN BEGIN  // MWSt 16% oder 19%
+                IF ((tab_ab."VAT Prod. Posting Group"='16_DL') OR (tab_ab."VAT Prod. Posting Group"='19DL')) THEN BEGIN  // MWSt 16% oder 19%
+                  IF tab_ab."VAT Prod. Posting Group"='16_DL' THEN v_Fehler_16_DL:=TRUE;
+                  EnterCell(RowNo,21,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,22,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,23,FORMAT(tab_ab."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                END ELSE BEGIN
+                  EnterCell(RowNo,21,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,22,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,23,FORMAT(tab_ab."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                END;
+              END;
+
+              IF ((tab_ab."Gen. Bus. Posting Group"='INLAND') AND (tab_ab."Gen. Prod. Posting Group"='16_HANDEL')) THEN BEGIN  // MWSt 16%
+                IF tab_ab."VAT Prod. Posting Group"='16' THEN BEGIN  // MWSt 16%
+                  EnterCell(RowNo,21,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,22,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,23,FORMAT(tab_ab."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                END ELSE BEGIN
+                  EnterCell(RowNo,21,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,22,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,23,FORMAT(tab_ab."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                END;
+              END;
+
+              IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_ab."Gen. Prod. Posting Group"='16_SYSTEM')) THEN BEGIN  // MWSt 16%
+                IF tab_ab."VAT Prod. Posting Group"='16_SYS' THEN BEGIN // MWSt 16%
+                  EnterCell(RowNo,21,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,22,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,23,FORMAT(tab_ab."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                END ELSE BEGIN
+                  EnterCell(RowNo,21,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,22,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,23,FORMAT(tab_ab."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                END;
+              END;
+      {
+              IF (((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_ab."Gen. Prod. Posting Group"='16_SERVICE')) OR   // MWSt 16%
+                  ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_ab."Gen. Prod. Posting Group"='16_SCHULUN')) OR  // MWSt 16%
+                  ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_ab."Gen. Prod. Posting Group"='16_STD_POO'))) THEN BEGIN  // MWSt 16%
+                IF tab_ab."VAT Prod. Posting Group"='16_DL' THEN BEGIN  // MWSt 16%
+      }
+              IF (((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND ((tab_ab."Gen. Prod. Posting Group"='16_SERVICE') OR (tab_ab."Gen. Prod. Posting Group"='SERVICE'))) OR // MWSt 16% oder 19%
+                ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND ((tab_ab."Gen. Prod. Posting Group"='16_SCHULUN') OR (tab_ab."Gen. Prod. Posting Group"='SCHULUNG'))) OR  // MWSt 16% oder 19%
+                ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND ((tab_ab."Gen. Prod. Posting Group"='16_STD_POO') OR (tab_ab."Gen. Prod. Posting Group"='STD_POOL')))) THEN BEGIN  // MWSt 16% oder 19%
+                IF ((tab_ab."VAT Prod. Posting Group"='16_DL') OR (tab_ab."VAT Prod. Posting Group"='19DL')) THEN BEGIN  // MWSt 16% oder 19%
+                  IF tab_ab."VAT Prod. Posting Group"='16_DL' THEN v_Fehler_16_DL:=TRUE;
+                  EnterCell(RowNo,21,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,22,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,23,FORMAT(tab_ab."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                END ELSE BEGIN
+                  EnterCell(RowNo,21,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,22,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,23,FORMAT(tab_ab."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                END;
+              END;
+
+              IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_ab."Gen. Prod. Posting Group"='16_HANDEL')) THEN BEGIN  // MWSt 16%
+                IF tab_ab."VAT Prod. Posting Group"='16' THEN BEGIN // MWSt 16%
+                  EnterCell(RowNo,21,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,22,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,23,FORMAT(tab_ab."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                END ELSE BEGIN
+                  EnterCell(RowNo,21,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,22,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,23,FORMAT(tab_ab."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                END;
+              END;
+
+              IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_ab."Gen. Prod. Posting Group"='16_SYSTEM')) THEN BEGIN  // MWSt 16%
+                IF tab_ab."VAT Prod. Posting Group"='16_SYS' THEN BEGIN  // MWSt 16%
+                  EnterCell(RowNo,21,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,22,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,23,FORMAT(tab_ab."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                END ELSE BEGIN
+                  EnterCell(RowNo,21,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,22,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,23,FORMAT(tab_ab."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                END;
+              END;
+
+      {
+              IF (((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_ab."Gen. Prod. Posting Group"='16_SERVICE')) OR   // MWSt 16%
+                  ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_ab."Gen. Prod. Posting Group"='16_SCHULUN')) OR  // MWSt 16%
+                  ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_ab."Gen. Prod. Posting Group"='16_STD_POO'))) THEN BEGIN // MWSt 16%
+                IF tab_ab."VAT Prod. Posting Group"='16_DL' THEN BEGIN  // MWSt 16%
+      }
+              IF (((tab_ab."Gen. Bus. Posting Group"='EU') AND ((tab_ab."Gen. Prod. Posting Group"='16_SERVICE') OR (tab_ab."Gen. Prod. Posting Group"='SERVICE'))) OR // MWSt 16% oder 19%
+                ((tab_ab."Gen. Bus. Posting Group"='EU') AND ((tab_ab."Gen. Prod. Posting Group"='16_SCHULUN') OR (tab_ab."Gen. Prod. Posting Group"='SCHULUNG'))) OR  // MWSt 16% oder 19%
+                ((tab_ab."Gen. Bus. Posting Group"='EU') AND ((tab_ab."Gen. Prod. Posting Group"='16_STD_POO') OR (tab_ab."Gen. Prod. Posting Group"='STD_POOL')))) THEN BEGIN  // MWSt 16% oder 19%
+                IF ((tab_ab."VAT Prod. Posting Group"='16_DL') OR (tab_ab."VAT Prod. Posting Group"='19DL')) THEN BEGIN  // MWSt 16% oder 19%
+                  IF tab_ab."VAT Prod. Posting Group"='16_DL' THEN v_Fehler_16_DL:=TRUE;
+                  EnterCell(RowNo,21,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,22,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,23,FORMAT(tab_ab."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                END ELSE BEGIN
+                  EnterCell(RowNo,21,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,22,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,23,FORMAT(tab_ab."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                END;
+              END;
+      // MWSt 16%
+              IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_ab."Gen. Prod. Posting Group"='16_HANDEL')) THEN BEGIN // MWSt 16%
+                IF tab_ab."VAT Prod. Posting Group"='16' THEN BEGIN  // MWSt 16%
+                  EnterCell(RowNo,21,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,22,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,23,FORMAT(tab_ab."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+                END ELSE BEGIN
+                  EnterCell(RowNo,21,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,22,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                  EnterCell(RowNo,23,FORMAT(tab_ab."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                END;
+              END;
+
+              IF ((tab_ab."Gen. Bus. Posting Group"<>'INLAND') AND (tab_ab."Gen. Bus. Posting Group"<>'AUSLAND') AND (tab_ab."Gen. Bus. Posting Group"<>'EU')) THEN
+                EnterCell(RowNo,21,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              IF ((tab_ab."Gen. Bus. Posting Group"<>'INLAND') AND (tab_ab."Gen. Bus. Posting Group"<>'AUSLAND') AND (tab_ab."Gen. Bus. Posting Group"<>'EU')) THEN
+                EnterCell(RowNo,22,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              IF ((tab_ab."Gen. Bus. Posting Group"<>'INLAND') AND (tab_ab."Gen. Bus. Posting Group"<>'AUSLAND') AND (tab_ab."Gen. Bus. Posting Group"<>'EU')) THEN
+                EnterCell(RowNo,23,FORMAT(tab_ab."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+              EnterCell(RowNo,24,FORMAT(tab_ab.AC_Solutionpartner),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,25,FORMAT(tab_ab."Blanket Order No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              tab_vkk1.RESET;
+              tab_vkk1.SETFILTER(tab_vkk1."No.",'%1',tab_ab."Blanket Order No.");
+              IF tab_vkk1.FINDFIRST THEN BEGIN
+                IF tab_vkk1."Currency Code"='' THEN BEGIN
+                  EnterCell(RowNo,26,'EUR','',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                END ELSE BEGIN
+                  EnterCell(RowNo,26,FORMAT(tab_vkk1."Currency Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                END;
+                EnterCell(RowNo,27,FORMAT(tab_vkk1."Currency Factor"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                EnterCell(RowNo,28,FORMAT(tab_vkk1.USt13b2),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              END;
+
+              IF tab_ab.Endkunde='' THEN BEGIN
+                IF ((tab_vkk."Territory Code"='SYSTEM') AND (tab_ab.Type=tab_ab.Type::Item))  THEN EnterCell(RowNo,29,'Endkunde fehlt. Noch eintragen','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+              END ELSE BEGIN
+                EnterCell(RowNo,29,FORMAT(tab_ab.Endkunde),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              END;
+      // EnterCell(RowNo,29,FORMAT(tab_ab.Endkunde),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,30,FORMAT(tab_ab."Location Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      END;
+            UNTIL tab_ab.NEXT=0;
+
+          END;
+      {
+              tab_vkz.RESET;
+              tab_vkz.SETFILTER(tab_vkz."Document No.",'%1',tab_vkk."No.");
+              tab_vkz.SETFILTER(tab_vkz."No.",'%1','LIEF_DRUCK');
+              IF tab_vkz.FIND('-') THEN BEGIN
+                REPEAT
+                  RowNo := RowNo +1;
+                  EnterCell(RowNo,4,FORMAT(tab_vkz."No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                  EnterCell(RowNo,5,FORMAT(tab_vkz.Description),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                UNTIL tab_vkz.NEXT=0;
+              END;
+      }
+
+      RowNo := RowNo +2;
+          EnterCell(RowNo,1,'Gesamt','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          EnterCell(RowNo,13,FORMAT(v_sum_AU_MW),'',TRUE,FALSE,FALSE,'###,###,##0.00',TempExcelBuffer."Cell Type"::Number);
+          EnterCell(RowNo,14,FORMAT(v_sum_AU_WŽ),'',TRUE,FALSE,FALSE,'###,###,##0.00',TempExcelBuffer."Cell Type"::Number);
+
+      IF (tab_vkk."Docuware Gesendet" = FALSE) THEN BEGIN
+        RowNo := RowNo +1;
+        EnterCell(RowNo,1,'Das Deckblatt wurde nocht nicht gedruckt bzw. in DocuWare abgelegt! ','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+      END;
+
+
+      RowNo := RowNo +2;
+          v_bemerkung.RESET;    //    Anzeige von Bemerkungszeilen
+          v_bemerkung.SETFILTER(v_bemerkung."No.",'%1',tab_vkk."No.");
+          IF v_bemerkung.FIND('-') THEN BEGIN
+             EnterCell(RowNo,1,'Bemerkungen: ','',TRUE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+            REPEAT
+      RowNo := RowNo +1;
+              EnterCell(RowNo,1,FORMAT(v_bemerkung.Date),'',TRUE,FALSE,FALSE,'dd.mm.yyyy[blue]',TempExcelBuffer."Cell Type"::Date);
+              EnterCell(RowNo,2,FORMAT(v_bemerkung.Comment),'',TRUE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+            UNTIL v_bemerkung.NEXT=0;
+      RowNo := RowNo +1;
+          END;
+
+
+          IF v_sum_13B2>=5000 THEN BEGIN  //  šberprfung ob USt 13B2 in Frage kommt
+      RowNo := RowNo +1;
+            EnterCell(RowNo,1,'Achtung!!! Auf 13B2-Auftrag prfen','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+      RowNo := RowNo +1;
+            EnterCell(RowNo,1,'Es muss 13B2 in der Spalte Gesch„ftsbuchungsgruppe bei obigen Zeilen eingetragen sein','',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+      RowNo := RowNo +1;
+            EnterCell(RowNo,1,'Es muss 13B2 in der Spalte MWSt-Produktbuchungsgruppe bei obigen Zeilen eingetragen sein','',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+      RowNo := RowNo +1;
+            EnterCell(RowNo,1,'Summe Zollpos 8542 3190 000:','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            EnterCell(RowNo,4,FORMAT(v_sum_13B2),'',FALSE,FALSE,FALSE,'###,###,##0.00[red]',TempExcelBuffer."Cell Type"::Number);
+      RowNo := RowNo +1;
+            EnterCell(RowNo,1,'Ist 13B2-H„kchen im AU-Kopf gesetzt?','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            EnterCell(RowNo,4,FORMAT(tab_vkk.USt13b2),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+      RowNo := RowNo +1;
+            EnterCell(RowNo,1,'Wenn nicht, H„kchen setzen (letzte Gruppe im AU)','',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      RowNo := RowNo +1;
+            EnterCell(RowNo,1,'Lieferung im Inland?','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            EnterCell(RowNo,4,(tab_vkk."Ship-to Country/Region Code"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+
+          v_EU_Fehler:=0;   //   šberprfung ob bei der Gesch„ftsbuchungsgruppe EU auch in die EU geliefert wird
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='AT')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='BE')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='BG')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='CY')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='CZ')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='DK')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='EE')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='ES')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='FI')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='FR')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='GB')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='GR')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='HU')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='IE')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='IT')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='LT')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='LU')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='LV')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='ME')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='MT')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='NL')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='PL')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='PT')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='RO')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='RS')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='SE')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='SI')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Ship-to Country/Region Code" ='SK')) THEN v_EU_Fehler:=1;
+
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (v_EU_Fehler=0)) THEN BEGIN
+      RowNo := RowNo +1;
+            EnterCell(RowNo,1,'Fehler! Bitte šberprfen','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+      RowNo := RowNo +1;
+            EnterCell(RowNo,1,'Gesch„ftsbuchgrp','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            EnterCell(RowNo,2,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            EnterCell(RowNo,4,'Lieferregion/Land','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            EnterCell(RowNo,5,FORMAT(tab_vkk."Ship-to Country/Region Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          END;
+          //   šberprfung ob bei der Gesch„ftsbuchungsgruppe INLAND auch ins Inland geliefert wird
+          IF ((tab_ab."Gen. Bus. Posting Group"='INLAND') AND (tab_vkk."Ship-to Country/Region Code" <>'DE')) THEN BEGIN
+      RowNo := RowNo +1;
+            EnterCell(RowNo,1,'Fehler! Bitte šberprfen','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+      RowNo := RowNo +1;
+            EnterCell(RowNo,1,'Gesch„ftsbuchgrp','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            EnterCell(RowNo,2,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            EnterCell(RowNo,4,'Lieferregion/Land','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            EnterCell(RowNo,5,FORMAT(tab_vkk."Ship-to Country/Region Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          END;
+
+
+          v_EU_Fehler:=0;   //   šberprfung ob bei der Gesch„ftsbuchungsgruppe AUSLAND auch ins Ausland geliefert wird
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='AE')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='AR')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='AS')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='AU')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='BA')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='BM')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='BN')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='BR')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='BY')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='CA')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='CH')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='CL')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='CN')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='CO')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='CR')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='CS')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='DZ')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='EG')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='FJ')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='HK')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='HR')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='ID')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='IL')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='IN')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='IS')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='JP')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='KE')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='KP')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='KR')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='LB')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='LI')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='LK')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='MA')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='MD')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='MK')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='MX')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='MY')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='MZ')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='NG')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='NO')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='NZ')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='PE')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='PH')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='RU')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='SA')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='SB')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='SC')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='SG')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='SZ')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='TH')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='TN')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='TR')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='TW')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='TZ')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='UA')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='UG')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='US')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='VN')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='VU')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='WS')) THEN v_EU_Fehler:=1;
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Ship-to Country/Region Code" ='ZA')) THEN v_EU_Fehler:=1;
+
+          IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (v_EU_Fehler=0)) THEN BEGIN
+      RowNo := RowNo +1;
+            EnterCell(RowNo,1,'Fehler! Bitte šberprfen','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+      RowNo := RowNo +1;
+            EnterCell(RowNo,1,'Gesch„ftsbuchgrp','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            EnterCell(RowNo,2,FORMAT(tab_ab."Gen. Bus. Posting Group"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            EnterCell(RowNo,4,'Lieferregion/Land','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            EnterCell(RowNo,5,FORMAT(tab_vkk."Ship-to Country/Region Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+          END;
+          IF ((tab_ab."Gen. Bus. Posting Group"='EU') AND (tab_vkk."Gen. Bus. Posting Group"<>'EU')) THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,'Fehler! Gesch„ftsbuchungsgruppe in Kopf und Zeile abweichend. Berichtigen!!!','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+          IF ((tab_ab."Gen. Bus. Posting Group"='INLAND') AND (tab_vkk."Gen. Bus. Posting Group"<>'INLAND')) THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,'Fehler! Gesch„ftsbuchungsgruppe in Kopf und Zeile abweichend. Berichtigen!!!','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+            IF ((tab_ab."Gen. Bus. Posting Group"='AUSLAND') AND (tab_vkk."Gen. Bus. Posting Group"<>'AUSLAND')) THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,'Fehler! Gesch„ftsbuchungsgruppe in Kopf und Zeile abweichend. Berichtigen!!!','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+
+
+
+
+
+
+          IF v_Q_Daten.Gltigkeitsdatum<>0D THEN BEGIN
+            IF v_Q_Daten.Gltigkeitsdatum<=WORKDATE THEN BEGIN   //  šberprfung auf abgelaufene Qoutes
+      RowNo := RowNo +1;
+              EnterCell(RowNo,1,'Ein Qoute ist abgelaufen.','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            END;
+          END;
+      {
+          deb.RESET;    //   šberprfung  der Liefer- und Zahlungsbedingungen mit Debitorvorgaben
+          deb.SETFILTER(deb."No.",'%1',tab_vkk."Sell-to Customer No.");
+          IF deb.FINDFIRST THEN BEGIN
+
+            IF deb."Payment Terms Code"<>tab_vkk."Payment Terms Code" THEN BEGIN
+      RowNo := RowNo +1;
+              EnterCell(RowNo,1,'Debitor: '+deb."No."+'; Zahlungsbedingung: '+deb."Payment Terms Code"+'.','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            END;
+
+            IF deb."Shipment Method Code"<>tab_vkk."Shipment Method Code" THEN BEGIN
+      RowNo := RowNo +1;
+              EnterCell(RowNo,1,'Debitor: '+deb."No."+'; Lieferbedingung: '+deb."Shipment Method Code"+'.','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            END;
+
+            IF deb."AB EMail-Adresse"<>'' THEN BEGIN
+              IF deb."AB EMail-Adresse"<>tab_vkk."AB EMail-Adresse" THEN BEGIN
+      RowNo := RowNo +1;
+                EnterCell(RowNo,1,'Debitor: '+deb."No."+'; AB Emailadresse: '+deb."AB EMail-Adresse"+'.','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+              END;
+            END;
+
+            IF deb."Rech EMail-Adresse"<>'' THEN BEGIN
+              IF deb."Rech EMail-Adresse"<>tab_vkk."Rech EMail-Adresse" THEN BEGIN
+      RowNo := RowNo +1;
+                EnterCell(RowNo,1,'Debitor: '+deb."No."+'; Rech Emailadresse: '+deb."Rech EMail-Adresse"+'.','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+              END;
+            END;
+
+            IF deb."Service EMail-Adresse"<>'' THEN BEGIN
+              IF deb."Service EMail-Adresse"<>tab_vkk."Service EMail-Adresse" THEN BEGIN
+      RowNo := RowNo +1;
+                EnterCell(RowNo,1,'Debitor: '+deb."No."+'; Service Emailadresse: '+deb."Service EMail-Adresse"+'.','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+              END;
+            END;
+            IF deb."Lizenz EMail-Adresse"<>'' THEN BEGIN
+              IF deb."Lizenz EMail-Adresse"<>tab_vkk."Lizenz EMail-Adresse" THEN BEGIN
+      RowNo := RowNo +1;
+                EnterCell(RowNo,1,'Debitor: '+deb."No."+'; Lizenz Emailadresse: '+deb."Lizenz EMail-Adresse"+'.','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+              END;
+            END;
+
+          END;
+      }
+          tab_vkk1.RESET;    //  šberprfung der Rahmenw„hrung und -kurs mit der Auftragsw„hrung und -kurs
+          tab_vkk1.SETFILTER(tab_vkk1."No.",'%1',tab_ab."Blanket Order No.");
+          IF tab_vkk1.FINDFIRST THEN BEGIN
+            IF tab_vkk1."Currency Code"<>'' THEN BEGIN
+              IF tab_vkk1."Currency Code"=tab_vkk."Currency Code" THEN BEGIN
+                IF tab_vkk1."Currency Factor"=tab_vkk."Currency Factor" THEN BEGIN
+                END ELSE BEGIN
+      //          Keine Kurs-šbereinstimmung
+                  RowNo := RowNo +1;
+                  EnterCell(RowNo,1,'Rahmenauftrag: '+tab_vkk1."No."+'; Rahmenkurs: '+FORMAT(tab_vkk1."Currency Factor")+' weicht ab.','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+                END;
+              END ELSE BEGIN
+      //        keine W„hrungs-šbereinstimmung
+                RowNo := RowNo +1;
+                EnterCell(RowNo,1,'Rahmenauftrag: '+tab_vkk1."No."+'; Rahmenw„hrung: '+tab_vkk1."Currency Code"+' weicht ab.','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+              END;
+            END;
+          END;
+
+          IF v_kursdif_vkk_vkz=TRUE THEN BEGIN
+      RowNo := RowNo +1;
+            EnterCell(RowNo,1,'Der Kurs im AU-Kopf weicht von den Auftragszeilen ab.','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+          v_kursdif_vkk_vkz:=FALSE;
+
+      //    Hier weitere Abfragen einbauen
+
+      // unterschiedliche Gesch„ftsbuchungsgruppen abprfen
+
+          tab_vkz.RESET;
+          tab_vkz.SETFILTER(tab_vkz."Document No.",'%1',tab_vkk."No.");
+          tab_vkz.SETFILTER(tab_vkz.Type,'%1|%2',tab_vkz.Type::Item, tab_vkz.Type::"G/L Account");
+          IF tab_vkz.FIND('-') THEN BEGIN
+            v_prdbuchgrp:=tab_vkz."Gen. Bus. Posting Group";
+            REPEAT
+            IF tab_vkz."Gen. Bus. Posting Group"<>v_prdbuchgrp THEN BEGIN
+      RowNo := RowNo +1;
+              EnterCell(RowNo,1,'Im Auftrag gibt es unterschiedliche Gesch„ftsbuchungsgruppen.','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            END;
+            UNTIL tab_vkz.NEXT=0;
+          END;
+
+          tab_vkz.RESET;
+          tab_vkz.SETFILTER(tab_vkz."Document No.",'%1',tab_vkk."No.");
+          tab_vkz.SETFILTER(tab_vkz.Type,'%1',tab_vkz.Type::" ");
+          tab_vkz.SETFILTER(tab_vkz."No.",'<>%1','');
+          IF tab_vkz.FIND('-') THEN BEGIN
+            REPEAT
+      RowNo := RowNo +1;
+              EnterCell(RowNo,1,'Im Auftrag gibt es die Textkonserve '+ tab_vkz."No."+'.','',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            UNTIL tab_vkz.NEXT=0;
+          END;
+
+      {
+          tab_vkz.RESET;
+          tab_vkz.SETFILTER(tab_vkz."Document No.",'%1',tab_vkk."No.");
+          tab_vkz.SETFILTER(tab_vkz."No.",'%1','LIEF_DRUCK');
+          IF tab_vkz.FIND('-') THEN BEGIN
+      RowNo := RowNo +1;
+            EnterCell(RowNo,1,'Beschreibung:','',TRUE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+            REPEAT
+      RowNo := RowNo +1;
+              EnterCell(RowNo,1,FORMAT(tab_vkz.Description),'',FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Number);
+            UNTIL tab_vkz.NEXT=0;
+            RowNo := RowNo +1;
+          END;
+      }
+        // Wenn Verk„ufercode/Betreuer Innen oder Gebietscode leer ist
+          IF tab_vkk."Salesperson Code"='' THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Es fehlt der Verk„ufercode: '+tab_vkk."No."+'.'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+          IF tab_vkk."Salesperson Code"='MULTI' THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Verk„ufercode MULTI, bitte berichtigen bei: '+tab_vkk."No."+'.'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+          IF tab_vkk."Territory Code"='' THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Es fehlt der Gebietscode: '+tab_vkk."No."+'.'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+          IF tab_vkk."Betreuer Innendienst"='' THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Es fehlt der Betreuer Innen: '+tab_vkk."No."+'.'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+          IF tab_vkk."Betreuer Innendienst"='MULTI' THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Betreuer Innen = MULTI, bitte berichtigen bei: '+tab_vkk."No."+'.'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+          IF ((tab_vkk."VAT Registration No."='') AND (v_USt_ID_fehlt=TRUE)) THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Keine USt-ID-Nr hinterlegt, bitte nachtragen bei: '+tab_vkk."No."+'.'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+          IF tab_vkk."External Document No."='' THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Keine externe Belegnr. hinterlegt, bitte nachtragen bei: '+tab_vkk."No."+'.'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+          IF tab_vkk."AE reduzieren"=TRUE THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Dieser Auftrag soll den AE reduzieren: '+tab_vkk."No."+'. Doppel-Reduzierungen w/ Gutschriften vermeiden!'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+
+
+      //  diverse Email-Adressen auf Besteller durchsuchen
+          v_POS := STRPOS(tab_vkk."AB EMail-Adresse",'Besteller');
+          IF v_POS <> 0 THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Das Wort -Besteller- ist in der Emailadresse vorhanden, bitte berichtigen.'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+          v_POS:=0;
+          v_POS := STRPOS(tab_vkk."Rech EMail-Adresse",'Besteller');
+          IF v_POS <> 0 THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Das Wort -Besteller- ist in der Emailadresse vorhanden, bitte berichtigen.'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+          v_POS:=0;
+          v_POS := STRPOS(tab_vkk."Service EMail-Adresse",'Besteller');
+          IF v_POS <> 0 THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Das Wort -Besteller- ist in der Emailadresse vorhanden, bitte berichtigen.'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+          v_POS:=0;
+          v_POS := STRPOS(tab_vkk."Lizenz EMail-Adresse",'Besteller');
+          IF v_POS <> 0 THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Das Wort -Besteller- ist in der Emailadresse vorhanden, bitte berichtigen.'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+          v_POS:=0;
+
+          v_POS:=0;
+          v_POS := STRPOS(tab_vkz.Description,'0%');
+          IF v_POS <> 0 THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Im Feld Beschreibung ist " 0% " vorhanden, bitte streichen.'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+          v_POS:=0;
+
+          IF v_Marge10prozent=TRUE THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Eine Marge ist unter 10%. Bitte prfen.'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+
+          IF ((v_VAT_Deb<>'') AND (v_VAT_fehlt=TRUE)) THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('USt-ID-Nr fehlt im Auftrag. Im Debitor ist '+v_VAT_Deb+' hinterlegt.'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+
+          IF v_Fehler_16_DL=TRUE THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Es wurde 16% MWSt fr eine Dienstleistung im Auftrag festgestellt. Fehler? Bitte prfen'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+
+          tab_vkz.RESET;
+          tab_vkz.SETFILTER(tab_vkz."Document No.",'%1',tab_vkk."No.");
+          tab_vkz.SETFILTER(tab_vkz."Manufacturer Code",'%1','59');
+          tab_vkz.SETFILTER(tab_vkz."No.",'%1','SW*');
+          IF tab_vkz.FIND('-') THEN BEGIN
+            IF tab_vkk."Ship-to Country/Region Code" <> 'DE' THEN BEGIN
+              RowNo := RowNo +1;
+              EnterCell(RowNo,1,FORMAT('SW als Leistung k”nnte m”glich sein. Bitte berprfen! '),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+            END;
+          END;
+
+
+
+      RowNo := RowNo +2;
+          EnterCell(RowNo,1,FORMAT('kontrolliert:'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      RowNo := RowNo +3;
+          Pfad_tag :=FORMAT(DATE2DMY(WORKDATE,1));
+          Pfad_monat := FORMAT(DATE2DMY(WORKDATE,2));
+          Pfad_jahr := FORMAT(DATE2DMY(WORKDATE,3));
+          Pfaddatum:='_' + Pfad_jahr + '_' + Pfad_monat + '_' + Pfad_tag;
+          CloseExcel('AE_'+tab_vkk."No."+Pfaddatum,'AE_'+tab_vkk."No."+Pfaddatum,'F:\Daten Neu\Gemeinsame Ordner\Auftragseingang\AE_Kontrolle');
+      //    CloseExcel('AU-Kontrolle','AU-Kontrolle','');
+        UNTIL tab_vkk.NEXT = 0;
+      END;
+    END;
+
+    LOCAL PROCEDURE t„gl_AE_Liste_kontrollieren@1000000030();
+    BEGIN
+      {
+
+      v_anz_RE12:=0;
+      v_sum_AE_Gesamt:=0;
+      v_sum_AE_DL:=0;
+      v_sum_AE_HAN:=0;
+      v_sum_AE_SYS:=0;
+
+      CreateExcel;
+      RowNo := 1;
+      EnterCell(RowNo,1,FORMAT('Auftragseingangsliste'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      RowNo := 2;
+      EnterCell(RowNo,1,FORMAT('Datum'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,2,FORMAT('AU-Nr'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,3,FORMAT('Pos-Nr'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,4,FORMAT('Deb-Nr'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,5,FORMAT('Debitor'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,6,FORMAT('Menge'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,7,FORMAT('Artikel'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,8,FORMAT('Lager'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,9,FORMAT('EK DC'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,10,FORMAT('EK-WŽ-Code'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,11,FORMAT('EK-WŽ-Faktor'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,12,FORMAT('VK'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,13,FORMAT('VK-WŽ-Code'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,14,FORMAT('VK-WŽ-Faktor'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,15,FORMAT('Restmenge'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,16,FORMAT('AE DL'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,17,FORMAT('AE HAN'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,18,FORMAT('AE SYS'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,19,FORMAT('Betrag EUR Gesamt'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,20,FORMAT('Produktbuchgrp'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,21,'AUR-Nr','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,22,'AUR-Zeilen-Nr','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,23,'AUR VK-WŽ','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,24,'AUR VK_Kurs','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,25,'AUR EK-WŽ','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,26,'AUR EK_Kurs','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,27,'AUR MWSt-Kz','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,28,'AUR 13B2','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,29,FORMAT('DB %'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,30,FORMAT('Betreuer'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,31,FORMAT('Vertreter'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,32,FORMAT('Linie'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,33,FORMAT('EK-Gesamt'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,34,FORMAT('VK-Gesamt'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,35,FORMAT('PLZ'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,36,FORMAT('Teams'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,37,FORMAT('Endkunde'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,38,FORMAT('Belegart'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,39,FORMAT('Art'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,40,FORMAT('Best„tigt LD'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,41,FORMAT('Wunschtermin'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,42,FORMAT('Auftragsdatum'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,43,FORMAT('Status'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      RowNo := 3;
+      tab_vkk.RESET;
+      tab_vkk.SETFILTER(tab_vkk."Document Type",'%1|%2',tab_vkk."Document Type"::Order,tab_vkk."Document Type"::"Blanket Order");
+      tab_vkk.SETFILTER(tab_vkk."Order Date",'%1',AE_holen_Datum_1);
+      IF tab_vkk.FIND('-') THEN BEGIN
+        REPEAT
+               IF tab_vkk."Location Code"='MUST' THEN BEGIN   // Musterauftrag Leerzeile auflisten
+           RowNo := RowNo +1;
+                EnterCell(RowNo,1,FORMAT(tab_vkk."Order Date"),'',FALSE,FALSE,FALSE,'dd.mm.yyy',TempExcelBuffer."Cell Type"::Date);
+                EnterCell(RowNo,2,FORMAT(tab_vkk."No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
+      //        EnterCell(RowNo,3,FORMAT(tab_ab."Line No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                EnterCell(RowNo,4,FORMAT(tab_vkk."Sell-to Customer No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                EnterCell(RowNo,5,FORMAT(tab_vkk."Sell-to Customer Name"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      //        EnterCell(RowNo,6,FORMAT(tab_ab.Quantity),'',FALSE,FALSE,FALSE,'###,##0',TempExcelBuffer."Cell Type"::Number);
+      //        EnterCell(RowNo,7,FORMAT(tab_ab."No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                 EnterCell(RowNo,8,FORMAT(tab_vkk."Location Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
+              END;
+          tab_ab.RESET;
+          tab_ab.SETFILTER(tab_ab."Document No.",'%1',tab_vkk."No.");
+          tab_ab.SETFILTER(tab_ab.Type,'%1',tab_ab.Type::Item);
+      //    tab_ab.SETFILTER(tab_ab.Type,'%1|%2',tab_ab.Type::Item,tab_ab.Type::"G/L Account");
+          tab_ab.SETFILTER(tab_ab."Location Code",'%1|%2','ZENT','KONSI');
+          IF tab_ab.FIND('-') THEN BEGIN
+            REPEAT
+              RowNo := RowNo +1;
+              EnterCell(RowNo,1,FORMAT(tab_vkk."Order Date"),'',FALSE,FALSE,FALSE,'dd.mm.yyyy',TempExcelBuffer."Cell Type"::Date);
+
+              IF tab_vkk."Document Type"=tab_vkk."Document Type"::Order THEN
+              EnterCell(RowNo,2,tab_vkk."No.",TOPAS_API.replace_text(TOPAS_API.CreateExcelHyperlinkToNav(tab_vkk.TABLENAME,1,42,tab_vkk."No."),';',','),FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Text);
+              IF tab_vkk."Document Type"=tab_vkk."Document Type"::"Blanket Order" THEN
+              EnterCell(RowNo,2,tab_vkk."No.",TOPAS_API.replace_text(TOPAS_API.CreateExcelHyperlinkToNav(tab_vkk.TABLENAME,1,507,tab_vkk."No."),';',','),FALSE,FALSE,FALSE,'[blue]',TempExcelBuffer."Cell Type"::Text);
+
+              EnterCell(RowNo,3,FORMAT(tab_ab."Line No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,4,FORMAT(tab_vkk."Sell-to Customer No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,5,FORMAT(tab_vkk."Sell-to Customer Name"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,6,FORMAT(tab_ab.Quantity),'',FALSE,FALSE,FALSE,'###,##0',TempExcelBuffer."Cell Type"::Number);
+              EnterCell(RowNo,7,FORMAT(tab_ab."No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,8,FORMAT(tab_ab."Location Code"),'',FALSE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,9,FORMAT(tab_ab."DC-Preis (EKW)"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+              IF tab_ab.Einkaufsw„hrungscode='' THEN BEGIN
+                EnterCell(RowNo,10,'EUR','',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              END ELSE BEGIN
+                EnterCell(RowNo,10,FORMAT(tab_ab.Einkaufsw„hrungscode),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              END;
+              IF tab_ab.Einkaufsw„hrungscode='USD' THEN BEGIN
+                tab_kurse.RESET;
+                tab_kurse.SETFILTER(tab_kurse."Currency Code",'%1',tab_ab.Einkaufsw„hrungscode);
+                tab_kurse.SETFILTER(tab_kurse."Starting Date",'%1',tab_vkk."Order Date");
+                IF tab_kurse.FINDFIRST THEN BEGIN
+                  IF tab_ab.Einkaufsw„hrungsfaktor=tab_kurse."Exchange Rate Amount" THEN BEGIN
+                    EnterCell(RowNo,11,FORMAT(tab_ab.Einkaufsw„hrungsfaktor),'',FALSE,FALSE,FALSE,'##0.0000#',TempExcelBuffer."Cell Type"::Number);
+                  END ELSE BEGIN
+                    IF tab_ab."Blanket Order No."<>'' THEN BEGIN   // šberprfen ob im Rahmen derselbe Kurs benutzt wird.
+                      tab_vkz.RESET;
+                      tab_vkz.SETFILTER(tab_vkz."Document No.",'%1',tab_ab."Document No.");
+                      tab_vkz.SETFILTER(tab_vkz."Line No.",'%1',tab_ab."Line No.");
+                      IF tab_vkz.FINDFIRST THEN BEGIN
+                        IF tab_vkz.Einkaufsw„hrungsfaktor=tab_ab.Einkaufsw„hrungsfaktor THEN BEGIN
+                          EnterCell(RowNo,11,FORMAT(tab_ab.Einkaufsw„hrungsfaktor),'',FALSE,FALSE,FALSE,'##0.0000#',TempExcelBuffer."Cell Type"::Number);
+                        END ELSE BEGIN
+                          EnterCell(RowNo,11,FORMAT(tab_ab.Einkaufsw„hrungsfaktor),'',FALSE,FALSE,FALSE,'##0.0000#[red]',TempExcelBuffer."Cell Type"::Number);
+                          v_anz_RE12:=1;
+                        END;
+                      END;
+                    END;
+
+
+
+                  END;
+                END;
+              END;
+              IF tab_ab.Einkaufsw„hrungscode='GBP' THEN BEGIN
+                tab_kurse.RESET;
+                tab_kurse.SETFILTER(tab_kurse."Currency Code",'%1',tab_ab.Einkaufsw„hrungscode);
+                tab_kurse.SETFILTER(tab_kurse."Starting Date",'%1',tab_vkk."Order Date");
+                IF tab_kurse.FINDFIRST THEN BEGIN
+                  IF tab_ab.Einkaufsw„hrungsfaktor=tab_kurse."Exchange Rate Amount" THEN BEGIN
+                    EnterCell(RowNo,11,FORMAT(tab_ab.Einkaufsw„hrungsfaktor),'',FALSE,FALSE,FALSE,'##0.0000#',TempExcelBuffer."Cell Type"::Number);
+                  END ELSE BEGIN
+
+                     IF tab_ab."Blanket Order No."<>'' THEN BEGIN   // šberprfen ob im Rahmen derselbe Kurs benutzt wird.
+                      tab_vkz.RESET;
+                      tab_vkz.SETFILTER(tab_vkz."Document No.",'%1',tab_ab."Document No.");
+                      tab_vkz.SETFILTER(tab_vkz."Line No.",'%1',tab_ab."Line No.");
+                      IF tab_vkz.FINDFIRST THEN BEGIN
+                        IF tab_vkz.Einkaufsw„hrungsfaktor=tab_ab.Einkaufsw„hrungsfaktor THEN BEGIN
+                          EnterCell(RowNo,11,FORMAT(tab_ab.Einkaufsw„hrungsfaktor),'',FALSE,FALSE,FALSE,'##0.0000#',TempExcelBuffer."Cell Type"::Number);
+                        END ELSE BEGIN
+                          EnterCell(RowNo,11,FORMAT(tab_ab.Einkaufsw„hrungsfaktor),'',FALSE,FALSE,FALSE,'##0.0000#[red]',TempExcelBuffer."Cell Type"::Number);
+                          v_anz_RE12:=1;
+                        END;
+                      END;
+                    END;
+
+
+
+
+
+       //             EnterCell(RowNo,11,FORMAT(tab_ab.Einkaufsw„hrungsfaktor),'',FALSE,FALSE,FALSE,'##0.0000#[red]',TempExcelBuffer."Cell Type"::Number);
+       //             v_anz_RE12:=1;
+                  END;
+                END;
+              END;
+              IF tab_ab.Einkaufsw„hrungscode='JPY' THEN BEGIN
+                tab_kurse.RESET;
+                tab_kurse.SETFILTER(tab_kurse."Currency Code",'%1',tab_ab.Einkaufsw„hrungscode);
+                tab_kurse.SETFILTER(tab_kurse."Starting Date",'%1',tab_vkk."Order Date");
+                IF tab_kurse.FINDFIRST THEN BEGIN
+                  IF tab_ab.Einkaufsw„hrungsfaktor=tab_kurse."Exchange Rate Amount" THEN BEGIN
+                    EnterCell(RowNo,11,FORMAT(tab_ab.Einkaufsw„hrungsfaktor),'',FALSE,FALSE,FALSE,'##0.0000#',TempExcelBuffer."Cell Type"::Number);
+                  END ELSE BEGIN
+
+                     IF tab_ab."Blanket Order No."<>'' THEN BEGIN   // šberprfen ob im Rahmen derselbe Kurs benutzt wird.
+                      tab_vkz.RESET;
+                      tab_vkz.SETFILTER(tab_vkz."Document No.",'%1',tab_ab."Document No.");
+                      tab_vkz.SETFILTER(tab_vkz."Line No.",'%1',tab_ab."Line No.");
+                      IF tab_vkz.FINDFIRST THEN BEGIN
+                        IF tab_vkz.Einkaufsw„hrungsfaktor=tab_ab.Einkaufsw„hrungsfaktor THEN BEGIN
+                          EnterCell(RowNo,11,FORMAT(tab_ab.Einkaufsw„hrungsfaktor),'',FALSE,FALSE,FALSE,'##0.0000#',TempExcelBuffer."Cell Type"::Number);
+                        END ELSE BEGIN
+                          EnterCell(RowNo,11,FORMAT(tab_ab.Einkaufsw„hrungsfaktor),'',FALSE,FALSE,FALSE,'##0.0000#[red]',TempExcelBuffer."Cell Type"::Number);
+                          v_anz_RE12:=1;
+                        END;
+                      END;
+                    END;
+
+
+      //              EnterCell(RowNo,11,FORMAT(tab_ab.Einkaufsw„hrungsfaktor),'',FALSE,FALSE,FALSE,'##0.0000#[red]',TempExcelBuffer."Cell Type"::Number);
+      //              v_anz_RE12:=1;
+                  END;
+                END;
+              END;
+
+
+
+
+
+              EnterCell(RowNo,12,FORMAT(tab_ab."Unit Price"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+
+
+
+              IF tab_vkk."Currency Code"='' THEN BEGIN
+                EnterCell(RowNo,13,'EUR','',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              END ELSE BEGIN
+                EnterCell(RowNo,13,FORMAT(tab_vkk."Currency Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              END;
+              IF tab_vkk."Currency Code"='USD' THEN BEGIN
+                tab_kurse.RESET;
+                tab_kurse.SETFILTER(tab_kurse."Currency Code",'%1',tab_vkk."Currency Code");
+                tab_kurse.SETFILTER(tab_kurse."Starting Date",'%1',tab_vkk."Order Date");
+                IF tab_kurse.FINDFIRST THEN BEGIN
+                  IF tab_vkk."Currency Factor"=tab_kurse."Exchange Rate Amount" THEN BEGIN
+                    EnterCell(RowNo,14,FORMAT(tab_vkk."Currency Factor"),'',FALSE,FALSE,FALSE,'##0.0000#',TempExcelBuffer."Cell Type"::Number);
+                  END ELSE BEGIN
+                     IF tab_ab."Blanket Order No."<>'' THEN BEGIN   // šberprfen ob im Rahmen derselbe Kurs benutzt wird.
+                      tab_vkk1.RESET;
+                      tab_vkk1.SETFILTER(tab_vkk1."No.",'%1',tab_vkk."No.");
+                      IF tab_vkk1.FINDFIRST THEN BEGIN
+                        IF tab_vkk1."Currency Factor"=tab_vkk."Currency Factor" THEN BEGIN
+                          EnterCell(RowNo,14,FORMAT(tab_vkk1."Currency Factor"),'',FALSE,FALSE,FALSE,'##0.0000#',TempExcelBuffer."Cell Type"::Number);
+                        END ELSE BEGIN
+                          EnterCell(RowNo,14,FORMAT(tab_vkk1."Currency Factor"),'',FALSE,FALSE,FALSE,'##0.0000#[red]',TempExcelBuffer."Cell Type"::Number);
+                          v_anz_RE12:=1;
+                        END;
+                      END;
+                    END;
+      //              EnterCell(RowNo,14,FORMAT(tab_vkk."Currency Factor"),'',FALSE,FALSE,FALSE,'##0.0000#[red]',TempExcelBuffer."Cell Type"::Number);
+      //              v_anz_RE12:=1;
+                  END;
+                END;
+              END;
+              IF tab_vkk."Currency Code"='GBP' THEN BEGIN
+                tab_kurse.RESET;
+                tab_kurse.SETFILTER(tab_kurse."Currency Code",'%1',tab_vkk."Currency Code");
+                tab_kurse.SETFILTER(tab_kurse."Starting Date",'%1',tab_vkk."Order Date");
+                IF tab_kurse.FINDFIRST THEN BEGIN
+                  IF tab_vkk."Currency Factor"=tab_kurse."Exchange Rate Amount" THEN BEGIN
+                    EnterCell(RowNo,14,FORMAT(tab_vkk."Currency Factor"),'',FALSE,FALSE,FALSE,'##0.0000#',TempExcelBuffer."Cell Type"::Number);
+                  END ELSE BEGIN
+                    IF tab_ab."Blanket Order No."<>'' THEN BEGIN   // šberprfen ob im Rahmen derselbe Kurs benutzt wird.
+                      tab_vkk1.RESET;
+                      tab_vkk1.SETFILTER(tab_vkk1."No.",'%1',tab_vkk."No.");
+                      IF tab_vkk1.FINDFIRST THEN BEGIN
+                        IF tab_vkk1."Currency Factor"=tab_vkk."Currency Factor" THEN BEGIN
+                          EnterCell(RowNo,14,FORMAT(tab_vkk1."Currency Factor"),'',FALSE,FALSE,FALSE,'##0.0000#',TempExcelBuffer."Cell Type"::Number);
+                        END ELSE BEGIN
+                          EnterCell(RowNo,14,FORMAT(tab_vkk1."Currency Factor"),'',FALSE,FALSE,FALSE,'##0.0000#[red]',TempExcelBuffer."Cell Type"::Number);
+                          v_anz_RE12:=1;
+                        END;
+                      END;
+                    END;
+      //              EnterCell(RowNo,14,FORMAT(tab_vkk."Currency Factor"),'',FALSE,FALSE,FALSE,'##0.0000#[red]',TempExcelBuffer."Cell Type"::Number);
+      //              v_anz_RE12:=1;
+                  END;
+                END;
+              END;
+              IF tab_vkk."Currency Code"='JPY' THEN BEGIN
+                tab_kurse.RESET;
+                tab_kurse.SETFILTER(tab_kurse."Currency Code",'%1',tab_vkk."Currency Code");
+                tab_kurse.SETFILTER(tab_kurse."Starting Date",'%1',tab_vkk."Order Date");
+                IF tab_kurse.FINDFIRST THEN BEGIN
+                  IF tab_vkk."Currency Factor"=tab_kurse."Exchange Rate Amount" THEN BEGIN
+                    EnterCell(RowNo,14,FORMAT(tab_vkk."Currency Factor"),'',FALSE,FALSE,FALSE,'##0.0000#',TempExcelBuffer."Cell Type"::Number);
+                  END ELSE BEGIN
+                    IF tab_ab."Blanket Order No."<>'' THEN BEGIN   // šberprfen ob im Rahmen derselbe Kurs benutzt wird.
+                      tab_vkk1.RESET;
+                      tab_vkk1.SETFILTER(tab_vkk1."No.",'%1',tab_vkk."No.");
+                      IF tab_vkk1.FINDFIRST THEN BEGIN
+                        IF tab_vkk1."Currency Factor"=tab_vkk."Currency Factor" THEN BEGIN
+                          EnterCell(RowNo,14,FORMAT(tab_vkk1."Currency Factor"),'',FALSE,FALSE,FALSE,'##0.0000#',TempExcelBuffer."Cell Type"::Number);
+                        END ELSE BEGIN
+                          EnterCell(RowNo,14,FORMAT(tab_vkk1."Currency Factor"),'',FALSE,FALSE,FALSE,'##0.0000#[red]',TempExcelBuffer."Cell Type"::Number);
+                          v_anz_RE12:=1;
+                        END;
+                      END;
+                    END;
+
+
+      //              EnterCell(RowNo,14,FORMAT(tab_vkk."Currency Factor"),'',FALSE,FALSE,FALSE,'##0.0000#[red]',TempExcelBuffer."Cell Type"::Number);
+      //              v_anz_RE12:=1;
+                  END;
+                END;
+              END;
+
+
+
+              EnterCell(RowNo,15,FORMAT(tab_ab."Outstanding Quantity"),'',FALSE,FALSE,FALSE,'###,##0',TempExcelBuffer."Cell Type"::Number);
+        IF tab_vkk."Document Type"=tab_vkk."Document Type"::Order THEN BEGIN
+              IF tab_vkk."Currency Factor"=0 THEN BEGIN
+                EnterCell(RowNo,19,FORMAT(tab_ab."VK-Preis (MW)"*tab_ab."Outstanding Quantity"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+                v_sum_AE_Gesamt:=v_sum_AE_Gesamt+(tab_ab."VK-Preis (MW)"*tab_ab."Outstanding Quantity");
+                IF tab_ab."Gen. Prod. Posting Group"='SERVICE' THEN BEGIN  // Summierung aller Dienstleistungsums„tze
+                  EnterCell(RowNo,16,FORMAT(tab_ab."VK-Preis (MW)"*tab_ab."Outstanding Quantity"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+                  v_sum_AE_DL:=v_sum_AE_DL+(tab_ab."VK-Preis (MW)"*tab_ab."Outstanding Quantity");
+                END;
+                IF tab_ab."Gen. Prod. Posting Group"='STD_POOL' THEN BEGIN  // Summierung aller Dienstleistungsums„tze
+                  EnterCell(RowNo,16,FORMAT(tab_ab."VK-Preis (MW)"*tab_ab."Outstanding Quantity"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+                  v_sum_AE_DL:=v_sum_AE_DL+(tab_ab."VK-Preis (MW)"*tab_ab."Outstanding Quantity");
+                END;
+                IF tab_ab."Gen. Prod. Posting Group"='SCHULUNG' THEN BEGIN  // Summierung aller Dienstleistungsums„tze
+                  EnterCell(RowNo,16,FORMAT(tab_ab."VK-Preis (MW)"*tab_ab."Outstanding Quantity"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+                  v_sum_AE_DL:=v_sum_AE_DL+(tab_ab."VK-Preis (MW)"*tab_ab."Outstanding Quantity");
+                END;
+                IF tab_ab."Gen. Prod. Posting Group"='HANDEL' THEN BEGIN  // Summierung aller Handelsums„tze
+                  EnterCell(RowNo,17,FORMAT(tab_ab."VK-Preis (MW)"*tab_ab."Outstanding Quantity"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+                  v_sum_AE_HAN:=v_sum_AE_HAN+(tab_ab."VK-Preis (MW)"*tab_ab."Outstanding Quantity");
+                END;
+                IF tab_ab."Gen. Prod. Posting Group"='SYSTEM' THEN BEGIN  // Summierung aller 'Systemums„tze
+                  EnterCell(RowNo,18,FORMAT(tab_ab."VK-Preis (MW)"*tab_ab."Outstanding Quantity"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+                  v_sum_AE_SYS:=v_sum_AE_SYS+(tab_ab."VK-Preis (MW)"*tab_ab."Outstanding Quantity");
+                END;
+              END ELSE BEGIN
+                EnterCell(RowNo,19,FORMAT(tab_ab."Unit Price"*tab_ab."Outstanding Quantity"/tab_vkk."Currency Factor"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+                v_sum_AE_Gesamt:=v_sum_AE_Gesamt+(tab_ab."Unit Price"*tab_ab."Outstanding Quantity"/tab_vkk."Currency Factor");
+                IF tab_ab."Gen. Prod. Posting Group"='SERVICE' THEN BEGIN  // Summierung aller Dienstleistungsums„tze
+                  EnterCell(RowNo,16,FORMAT(tab_ab."Unit Price"*tab_ab."Outstanding Quantity"/tab_vkk."Currency Factor"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+                v_sum_AE_DL:=v_sum_AE_DL+(tab_ab."Unit Price"*tab_ab."Outstanding Quantity"/tab_vkk."Currency Factor");
+                END;
+                IF tab_ab."Gen. Prod. Posting Group"='STD_POOL' THEN BEGIN  // Summierung aller Dienstleistungsums„tze
+                  EnterCell(RowNo,16,FORMAT(tab_ab."Unit Price"*tab_ab."Outstanding Quantity"/tab_vkk."Currency Factor"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+                v_sum_AE_DL:=v_sum_AE_DL+(tab_ab."Unit Price"*tab_ab."Outstanding Quantity"/tab_vkk."Currency Factor");
+                END;
+                IF tab_ab."Gen. Prod. Posting Group"='SCHULUNG' THEN BEGIN  // Summierung aller Dienstleistungsums„tze
+                  EnterCell(RowNo,16,FORMAT(tab_ab."Unit Price"*tab_ab."Outstanding Quantity"/tab_vkk."Currency Factor"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+                v_sum_AE_DL:=v_sum_AE_DL+(tab_ab."Unit Price"*tab_ab."Outstanding Quantity"/tab_vkk."Currency Factor");
+                END;
+                IF tab_ab."Gen. Prod. Posting Group"='HANDEL' THEN BEGIN  // Summierung aller Handelsums„tze
+                  EnterCell(RowNo,17,FORMAT(tab_ab."Unit Price"*tab_ab."Outstanding Quantity"/tab_vkk."Currency Factor"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+                  v_sum_AE_HAN:=v_sum_AE_HAN+(tab_ab."Unit Price"*tab_ab."Outstanding Quantity"/tab_vkk."Currency Factor");
+                END;
+                IF tab_ab."Gen. Prod. Posting Group"='SYSTEM' THEN BEGIN  // Summierung aller Systemums„tze
+                  EnterCell(RowNo,18,FORMAT(tab_ab."Unit Price"*tab_ab."Outstanding Quantity"/tab_vkk."Currency Factor"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+                  v_sum_AE_SYS:=v_sum_AE_SYS+(tab_ab."Unit Price"*tab_ab."Outstanding Quantity"/tab_vkk."Currency Factor");
+                END;
+              END;
+      END;
+              EnterCell(RowNo,20,FORMAT(tab_ab."Gen. Prod. Posting Group"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+
+              tab_vkk1.RESET;    //  Anzeigen der Rahmendaten
+              tab_vkk1.SETFILTER(tab_vkk1."No.",'%1',tab_ab."Blanket Order No.");
+              IF tab_vkk1.FINDFIRST THEN BEGIN
+                tab_vkz.RESET;
+                tab_vkz.SETFILTER(tab_vkz."Document No.",'%1',tab_vkk1."No.");
+                tab_vkz.SETFILTER(tab_vkz."Line No.",'%1',tab_ab."Blanket Order Line No.");
+                IF tab_vkz.FINDFIRST THEN BEGIN
+                  EnterCell(RowNo,21,FORMAT(tab_vkz."Document No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                  EnterCell(RowNo,22,FORMAT(tab_vkz."Line No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                  EnterCell(RowNo,23,FORMAT(tab_vkk1."Currency Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                  EnterCell(RowNo,24,FORMAT(tab_vkk1."Currency Factor"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                  EnterCell(RowNo,25,FORMAT(tab_vkz.Einkaufsw„hrungscode),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                  EnterCell(RowNo,26,FORMAT(tab_vkz.Einkaufsw„hrungsfaktor),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                  EnterCell(RowNo,27,FORMAT(tab_vkz."VAT Prod. Posting Group"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+                  EnterCell(RowNo,28,FORMAT(tab_vkk1.USt13b2),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text)
+                END;
+              END;
+              EnterCell(RowNo,29,FORMAT(tab_ab."Profit %"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,30,FORMAT(tab_vkk."Betreuer Innendienst"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,31,FORMAT(tab_vkk."Salesperson Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,32,FORMAT(tab_ab."Manufacturer Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,33,FORMAT(tab_ab."Unit Cost (LCY)"*tab_ab."Outstanding Quantity"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+              IF tab_vkk."Currency Factor"=0 THEN BEGIN
+                EnterCell(RowNo,34,FORMAT(tab_ab."VK-Preis (MW)"*tab_ab."Outstanding Quantity"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+              END ELSE BEGIN
+                EnterCell(RowNo,34,FORMAT(tab_ab."Unit Price"*tab_ab."Outstanding Quantity"/tab_vkk."Currency Factor"),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+              END;
+              EnterCell(RowNo,35,FORMAT(tab_vkk."Sell-to Post Code"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,36,FORMAT(tab_vkk.Teams),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,37,FORMAT(tab_vkk.Endkunde),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,38,FORMAT(''),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,39,FORMAT(''),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,40,FORMAT(tab_ab."Promised Delivery Date"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,41,FORMAT(tab_ab."Requested Delivery Date"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,42,FORMAT(tab_vkk."Order Date"),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+              EnterCell(RowNo,43,FORMAT(''),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+            UNTIL tab_ab.NEXT=0;
+          END;
+        UNTIL tab_vkk.NEXT = 0;
+        RowNo := RowNo +2;
+        EnterCell(RowNo,1,FORMAT('Gesamt'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+        EnterCell(RowNo,16,FORMAT(v_sum_AE_DL),'',TRUE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+        EnterCell(RowNo,17,FORMAT(v_sum_AE_HAN),'',TRUE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+        EnterCell(RowNo,18,FORMAT(v_sum_AE_SYS),'',TRUE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+        EnterCell(RowNo,19,FORMAT(v_sum_AE_Gesamt),'',TRUE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
+      END;
+      RowNo := RowNo +2;
+      tab_vkk.RESET;
+      tab_vkk.SETFILTER(tab_vkk."Document Type",'%1',tab_vkk."Document Type"::Order);
+      tab_vkk.SETFILTER(tab_vkk."Order Date",'%1',AE_holen_Datum_1);
+      IF tab_vkk.FIND('-') THEN BEGIN
+        REPEAT
+          IF tab_vkk."Order Date"<>tab_vkk."Posting Date" THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Auftrags- und Buchungsdatum weichen bei '+tab_vkk."No."+' von einander ab. AU-Datum='+FORMAT(tab_vkk."Order Date")+';Buch-Datum='+FORMAT(tab_vkk."Posting Date")+'.'),'',TRUE,FALSE,FALSE,'[red]',
+            TempExcelBuffer."Cell Type"::Number);
+          END;
+          IF tab_vkk."Order Date"<>tab_vkk."Document Date" THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,('Auftrags- und Belegdatum weichen bei '+tab_vkk."No."+' von einander ab. AU-Datum='+FORMAT(tab_vkk."Order Date")+';Beleg-Datum='+FORMAT(tab_vkk."Document Date")+'.'),'',TRUE,FALSE,FALSE,'[red]',
+            TempExcelBuffer."Cell Type"::Number);
+          END;
+          IF tab_vkk."Posting Date"<>tab_vkk."Document Date" THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Buchungs- und Belegdatum weichen bei '+tab_vkk."No."+' von einander ab. Buch-Datum='+FORMAT(tab_vkk."Posting Date")+';Beleg-Datum='+FORMAT(tab_vkk."Document Date")+'.'),'',TRUE,FALSE,FALSE,'[red]',
+            TempExcelBuffer."Cell Type"::Number);
+          END;
+
+          IF tab_vkk."Salesperson Code"='' THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Es fehlt der Verk„ufercode: '+tab_vkk."No."+'.'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+          IF tab_vkk."Salesperson Code"='MULTI' THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Es fehlt der Verk„ufercode(MULTI): '+tab_vkk."No."+'.'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+          IF tab_vkk."Territory Code"='' THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Es fehlt der Gebietscode: '+tab_vkk."No."+'.'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+          IF tab_vkk."Betreuer Innendienst"='' THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Es fehlt der Betreuer Innen: '+tab_vkk."No."+'.'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+          IF tab_vkk."Betreuer Innendienst"='MULTI' THEN BEGIN
+            RowNo := RowNo +1;
+            EnterCell(RowNo,1,FORMAT('Es fehlt der Betreuer Innen(MULTI): '+tab_vkk."No."+'.'),'',TRUE,FALSE,FALSE,'[red]',TempExcelBuffer."Cell Type"::Number);
+          END;
+        UNTIL tab_vkk.NEXT = 0;
+      END;
+      RowNo := RowNo +1;
+      IF v_anz_RE12=1 THEN BEGIN
+        RowNo := RowNo +1;
+        EnterCell(RowNo,1,FORMAT('W„hrungskursdifferenz bei obigem Auftrag (rot gekennzeichnet)'),'',FALSE,FALSE,FALSE,'##0.0000#[red]',TempExcelBuffer."Cell Type"::Number);
+      END;
+
+      RowNo := RowNo +1;
+      EnterCell(RowNo,1,FORMAT('Kontrolliert:'),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+      //IF v_anz_RE12=1 THEN MESSAGE('Fehler gefunden! Nach Korrektur der Fehler, Liste erneut starten');
+
+      Pfad_tag :=FORMAT(DATE2DMY(AE_holen_Datum_1,1));
+      Pfad_monat := FORMAT(DATE2DMY(AE_holen_Datum_1,2));
+      Pfad_jahr := FORMAT(DATE2DMY(AE_holen_Datum_1,3));
+      Pfaddatum:='_' + Pfad_jahr + '_' + Pfad_monat + '_' + Pfad_tag;
+
+      CloseExcel('tgl_AE_Eingangsliste_'+Pfaddatum,'tgl_AE_Eingangsliste_'+Pfaddatum,'F:\Daten Neu\User\Joachim\AB-Differenzen\2018_2019');
+      }
+    END;
+
+    PROCEDURE Set_Parameter@1000000021(VAR AU_Nr@1000000000 : Code[20]);
+    BEGIN
+      var_AU_Nr := AU_Nr;
+      AE_nach_Excel_ausgeben;
+    END;
+
+    EVENT Sheet@1140161::SelectionChange@1543(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Sheet@1140161::BeforeDoubleClick@1537(Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Sheet@1140161::BeforeRightClick@1534(Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Sheet@1140161::Activate@304();
+    BEGIN
+    END;
+
+    EVENT Sheet@1140161::Deactivate@1530();
+    BEGIN
+    END;
+
+    EVENT Sheet@1140161::Calculate@279();
+    BEGIN
+    END;
+
+    EVENT Sheet@1140161::Change@1545(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Sheet@1140161::FollowHyperlink@1470(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00024431-0000-0000-C000-000000000046}:Unknown Automation Server.Hyperlink");
+    BEGIN
+    END;
+
+    EVENT Sheet@1140161::PivotTableUpdate@2156(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Sheet@1140161::PivotTableAfterValueChange@2886(TargetPivotTable@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";TargetRange@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Sheet@1140161::PivotTableBeforeAllocateChanges@2889(TargetPivotTable@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";ValueChangeStart@1140002 : Integer;ValueChangeEnd@1140001 : Integer;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Sheet@1140161::PivotTableBeforeCommitChanges@2892(TargetPivotTable@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";ValueChangeStart@1140002 : Integer;ValueChangeEnd@1140001 : Integer;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Sheet@1140161::PivotTableBeforeDiscardChanges@2893(TargetPivotTable@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";ValueChangeStart@1140001 : Integer;ValueChangeEnd@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Sheet@1140161::PivotTableChangeSync@2894(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1140163::Open@1923();
+    BEGIN
+    END;
+
+    EVENT Book@1140163::Activate@304();
+    BEGIN
+    END;
+
+    EVENT Book@1140163::Deactivate@1530();
+    BEGIN
+    END;
+
+    EVENT Book@1140163::BeforeClose@1546(VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140163::BeforeSave@1547(SaveAsUI@1140001 : Boolean;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140163::BeforePrint@1549(VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140163::NewSheet@1550(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1140163::AddinInstall@1552();
+    BEGIN
+    END;
+
+    EVENT Book@1140163::AddinUninstall@1553();
+    BEGIN
+    END;
+
+    EVENT Book@1140163::WindowResize@1554(Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:Unknown Automation Server.Window");
+    BEGIN
+    END;
+
+    EVENT Book@1140163::WindowActivate@1556(Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:Unknown Automation Server.Window");
+    BEGIN
+    END;
+
+    EVENT Book@1140163::WindowDeactivate@1557(Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:Unknown Automation Server.Window");
+    BEGIN
+    END;
+
+    EVENT Book@1140163::SheetSelectionChange@1558(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Book@1140163::SheetBeforeDoubleClick@1559(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140163::SheetBeforeRightClick@1560(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140163::SheetActivate@1561(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1140163::SheetDeactivate@1562(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1140163::SheetCalculate@1563(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Book@1140163::SheetChange@1564(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Book@1140163::SheetFollowHyperlink@1854(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00024431-0000-0000-C000-000000000046}:Unknown Automation Server.Hyperlink");
+    BEGIN
+    END;
+
+    EVENT Book@1140163::SheetPivotTableUpdate@2157(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1140163::PivotTableCloseConnection@2158(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1140163::PivotTableOpenConnection@2159(Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1140163::Sync@2266(SyncEventType@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Book@1140163::BeforeXmlImport@2283(Map@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";Url@1140002 : Text[1024];IsRefresh@1140001 : Boolean;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140163::AfterXmlImport@2285(Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";IsRefresh@1140001 : Boolean;Result@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Book@1140163::BeforeXmlExport@2287(Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";Url@1140001 : Text[1024];VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140163::AfterXmlExport@2288(Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";Url@1140001 : Text[1024];Result@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Book@1140163::RowsetComplete@2610(Description@1140002 : Text[1024];Sheet@1140001 : Text[1024];Success@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140163::SheetPivotTableAfterValueChange@2895(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";TargetRange@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Book@1140163::SheetPivotTableBeforeAllocateChanges@2896(Sh@1140004 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";ValueChangeStart@1140002 : Integer;ValueChangeEnd@1140001 : Integer;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140163::SheetPivotTableBeforeCommitChanges@2897(Sh@1140004 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";ValueChangeStart@1140002 : Integer;ValueChangeEnd@1140001 : Integer;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140163::SheetPivotTableBeforeDiscardChanges@2898(Sh@1140003 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";ValueChangeStart@1140001 : Integer;ValueChangeEnd@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Book@1140163::SheetPivotTableChangeSync@2899(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Book@1140163::AfterSave@2900(Success@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Book@1140163::NewChart@2901(Ch@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020821-0000-0000-C000-000000000046}:Unknown Automation Server.Chart");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::NewWorkbook@1565(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::SheetSelectionChange@1558(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::SheetBeforeDoubleClick@1559(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::SheetBeforeRightClick@1560(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::SheetActivate@1561(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::SheetDeactivate@1562(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::SheetCalculate@1563(Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::SheetChange@1564(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WorkbookOpen@1567(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WorkbookActivate@1568(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WorkbookDeactivate@1569(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WorkbookBeforeClose@1570(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WorkbookBeforeSave@1571(Wb@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";SaveAsUI@1140001 : Boolean;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WorkbookBeforePrint@1572(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WorkbookNewSheet@1573(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Sh@1140000 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WorkbookAddinInstall@1574(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WorkbookAddinUninstall@1575(Wb@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WindowResize@1554(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:Unknown Automation Server.Window");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WindowActivate@1556(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:Unknown Automation Server.Window");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WindowDeactivate@1557(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Wn@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020893-0000-0000-C000-000000000046}:Unknown Automation Server.Window");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::SheetFollowHyperlink@1854(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00024431-0000-0000-C000-000000000046}:Unknown Automation Server.Hyperlink");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::SheetPivotTableUpdate@2157(Sh@1140001 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WorkbookPivotTableCloseConnection@2160(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WorkbookPivotTableOpenConnection@2161(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Target@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WorkbookSync@2289(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";SyncEventType@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WorkbookBeforeXmlImport@2290(Wb@1140004 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Map@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";Url@1140002 : Text[1024];IsRefresh@1140001 : Boolean;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WorkbookAfterXmlImport@2291(Wb@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";IsRefresh@1140001 : Boolean;Result@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WorkbookBeforeXmlExport@2292(Wb@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";Url@1140001 : Text[1024];VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WorkbookAfterXmlExport@2293(Wb@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Map@1140002 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{0002447B-0000-0000-C000-000000000046}:Unknown Automation Server.XmlMap";Url@1140001 : Text[1024];Result@1140000 : Integer);
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WorkbookRowsetComplete@2611(Wb@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Description@1140002 : Text[1024];Sheet@1140001 : Text[1024];Success@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::AfterCalculate@2612();
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::SheetPivotTableAfterValueChange@2895(Sh@1140002 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";TargetRange@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020846-0000-0000-C000-000000000046}:Unknown Automation Server.Range");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::SheetPivotTableBeforeCommitChanges@2897(Sh@1140004 : Automation ":{00020400-0000-0000-C000-000000000046}:''.IDISPATCH";TargetPivotTable@1140003 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020872-0000-0000-C000-000000000046}:Unknown Automation Server.PivotTable";ValueChangeStart@1140002 : Integer;ValueChangeEnd@1140001 : Integer;VAR Cancel@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::ProtectedViewWindowOpen@2903(Pvw@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:Unknown Automation Server.ProtectedViewWindow");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::ProtectedViewWindowResize@2908(Pvw@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:Unknown Automation Server.ProtectedViewWindow");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::ProtectedViewWindowActivate@2909(Pvw@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:Unknown Automation Server.ProtectedViewWindow");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::ProtectedViewWindowDeactivate@2910(Pvw@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{000244CD-0000-0000-C000-000000000046}:Unknown Automation Server.ProtectedViewWindow");
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WorkbookAfterSave@2911(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Success@1140000 : Boolean);
+    BEGIN
+    END;
+
+    EVENT Excel@1140164::WorkbookNewChart@2912(Wb@1140001 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020819-0000-0000-C000-000000000046}:Unknown Automation Server.Workbook";Ch@1140000 : Automation "{00020813-0000-0000-C000-000000000046} 1.7:{00020821-0000-0000-C000-000000000046}:Unknown Automation Server.Chart");
+    BEGIN
+    END;
+
+    BEGIN
+    {
+      Lfd.Nr.  Version  Datum          User Beschreibung
+      =================================================================
+      1        TOP1.00  24.05.2019     UB   Auftragseingangskontrolle fr den Vertrieb
+    }
+    END.
+  }
+}
+
