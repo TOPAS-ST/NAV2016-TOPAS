@@ -2,8 +2,8 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
 {
   OBJECT-PROPERTIES
   {
-    Date=04.04.23;
-    Time=15:05:42;
+    Date=25.09.24;
+    Time=09:08:12;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -261,6 +261,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
       DialogFileName@1000000000 : Text;
       PL_Version@1000000037 : Text[30];
       PL_Version_Systeme@1000000036 : Text[30];
+      PL_Version_Text@1000000161 : Text;
       Artikelname@1000000035 : Text[120];
       ServiceArtikelname@1000000034 : Text[50];
       SUPArtikelname@1000000033 : Text[50];
@@ -318,6 +319,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
       PL_LTB@1000000137 : Date;
       nav_msrp@1000000111 : Decimal;
       excel_msrp@1000000032 : Decimal;
+      excel_msrp_convert@1000000160 : Decimal;
       excel_dc@1000000044 : Decimal;
       row_part@1000000061 : Integer;
       cell_part@1000000053 : Text[30];
@@ -380,6 +382,8 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
       preisliste_alt_version@1000000155 : Code[10];
       preisliste_alt_ltb@1000000157 : Date;
       preisliste_vorab@1000000153 : Boolean;
+      LiveSupport_Column_Normal_Add@1000000158 : Integer;
+      LiveSupport_Column_EOL_Add@1000000159 : Integer;
 
     LOCAL PROCEDURE Run_Import_Direct@1000000006();
     BEGIN
@@ -393,6 +397,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
       error_level := 0;
       service_item_counter := 0;
       step := 0;
+      LiveSupport_Column_exist := FALSE;
 
       auswahl := STRMENU(Text100,0);
       IF auswahl = 0 THEN
@@ -423,7 +428,12 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
           ERROR('Falsche Syntax in Liste');
         END;
 
-        PL_Version := TOPAS_API.replace_text(GetValueAtCell(8,7),',','.');
+        PL_Version_Text := TOPAS_API.replace_text(GetValueAtCell(8,7),',','.');
+        IF STRPOS(PL_Version_Text,'AKA') = 0 THEN BEGIN
+          PL_Version := PL_Version_Text;
+        END ELSE
+          PL_Version := COPYSTR(PL_Version_Text,STRPOS(PL_Version_Text,'AKA')+3,STRPOS(PL_Version_Text,')') -(STRPOS(PL_Version_Text,'AKA')+3));
+        PL_Version :=  DELCHR(PL_Version,'=',' ');
 
         IF GetValueAtCell(13,7) <> '' THEN
           prerelease_date := ConvertDateString(GetValueAtCell(13,7));
@@ -502,7 +512,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         IF PriceBookNormal.FINDLAST THEN
           EVALUATE(TotalRowsPriceBook,FORMAT(PriceBookNormal.xlRowID));
 
-        IF (auswahl = 2) AND (UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,10)) = 'LIVE SUPPORT') THEN
+        IF (auswahl = 2) AND (STRPOS(UPPERCASE(GetValueAtCellPriceBook(PriceBookNormal,1,10)),'LIVE SUPPORT') <> 0) THEN
           LiveSupport_Column_exist := TRUE
         ELSE
           LiveSupport_Column_exist := FALSE;
@@ -534,6 +544,11 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         PriceBookEOL.ReadSheet();
         IF PriceBookEOL.FINDLAST THEN
           EVALUATE(TotalRowsEOS,FORMAT(PriceBookEOL.xlRowID));
+
+        IF (auswahl = 2) AND (STRPOS(UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,10)),'LIVE SUPPORT') <> 0) THEN
+          LiveSupport_Column_exist := TRUE
+        ELSE
+          LiveSupport_Column_exist := FALSE;
 
         IF auswahl = 1 THEN BEGIN
           IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,10)) <> UPPERCASE(CHAMPS_ColText9x5) THEN ERROR(PriceBookErrMsg,10,CHAMPS_ColText9x5);
@@ -626,6 +641,8 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
           REPEAT
             ColumnNo_ServiceName := 0;
             ColumnNo_MSRP := 0;
+            LiveSupport_Column_Normal_Add := 0;
+            LiveSupport_Column_EOL_Add := 0;
             TotalRows := 0;
             SourceSheet := '';
             step += 1;
@@ -635,6 +652,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
             TroubleshootingSetupUnter.SETRANGE("No.",TroubleshootingSetup."No.");
             TroubleshootingSetupUnter.SETFILTER("Troubleshooting No.",'<>%1&<>%2',TroubleshootingSetup."Troubleshooting No.",'PAUSCHALE');
             IF TroubleshootingSetupUnter.FINDFIRST THEN BEGIN
+
               IF TroubleshootingSetupUnter."Troubleshooting No." = 'SUPP_9X5' THEN BEGIN
                 ColumnNo_ServiceName := 10;
                 ColumnNo_MSRP := 11;
@@ -686,12 +704,23 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                 Window.UPDATE(6,TotalRows);
 
                 //Mit Preisliste 7.8 kam bei ACTS Preislisten neue Spalte Live Support hinzu (Spalte J), alles dahinter verschiebt sich somit um 1 Spaltenr.
-                IF (UPPERCASE(GetValueAtCellPriceBook(PriceBookActual,1,10)) = 'LIVE SUPPORT') THEN BEGIN
-                  LiveSupport_Column_exist := TRUE;
-                  ColumnNo_ServiceName += 1;
-                  ColumnNo_MSRP += 1;
-                END ELSE
-                  LiveSupport_Column_exist := FALSE;
+                IF durchlauf = 1 THEN BEGIN
+                  IF STRPOS(UPPERCASE(GetValueAtCellPriceBook(PriceBookActual,1,10)),'LIVE SUPPORT') <> 0 THEN BEGIN
+                    LiveSupport_Column_Normal_Add := 1;
+                  END;
+                  ColumnNo_ServiceName += LiveSupport_Column_Normal_Add;
+                  ColumnNo_MSRP += LiveSupport_Column_Normal_Add;
+                END;
+
+                IF durchlauf = 2 THEN BEGIN
+                  IF LiveSupport_Column_Normal_Add = 0 THEN BEGIN
+                    IF STRPOS(UPPERCASE(GetValueAtCellPriceBook(PriceBookActual,1,10)),'LIVE SUPPORT') <> 0 THEN BEGIN
+                      LiveSupport_Column_EOL_Add := 1;
+                    END;
+                    ColumnNo_ServiceName += LiveSupport_Column_EOL_Add;
+                    ColumnNo_MSRP += LiveSupport_Column_EOL_Add;
+                  END;
+                END;
 
                 FOR i := 2 TO TotalRows DO BEGIN
 
@@ -717,9 +746,15 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                   OR (STRPOS(UPPERCASE(ServiceArtikelname),'DETAILS') <> 0)
                   OR (ServiceArtikelname = '0') OR (STRLEN(ServiceArtikelname) <= 2) OR (STRLEN(ServiceArtikelname) > 50) THEN
                     ServiceArtikelname := '';
-                  IF (GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_MSRP) <> '')
-                  AND (STRLEN(DELCHR(GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_MSRP),'=','ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')) =
-                      (STRLEN(GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_MSRP)))) THEN
+
+                  // MSRP Berechnung
+                  //IF (GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_MSRP) <> '')
+                  //AND (STRLEN(DELCHR(GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_MSRP),'=','ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')) =
+                  //    (STRLEN(GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_MSRP)))) THEN
+                  //  EVALUATE(excel_msrp,GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_MSRP));
+
+                  excel_msrp_convert := TOPAS_API.ConvertStrToDec(GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_MSRP));
+                  IF (GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_MSRP) <> '') AND (excel_msrp_convert <> 0) THEN
                     EVALUATE(excel_msrp,GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_MSRP));
 
                   //Korrektur da EOL Preislisten noch den falschen Umrechnungsfaktor von 1,15 haben
@@ -738,9 +773,12 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                       TroubleshootingSetupTest.SETRANGE("Troubleshooting No.",'PAUSCHALE');
                       TroubleshootingSetupTest.SETRANGE(TroubleshootingSetupTest."Troubleshooting No.",TroubleshootingSetupUnter."Troubleshooting No.");
                       IF TroubleshootingSetupTest.FINDFIRST THEN BEGIN
-                        IF (GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_HW_MSRP) <> '')
-                        AND (STRLEN(DELCHR(GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_HW_MSRP),'=','ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')) =
-                            (STRLEN(GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_HW_MSRP)))) THEN BEGIN
+                        //IF (GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_HW_MSRP) <> '')
+                        //AND (STRLEN(DELCHR(GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_HW_MSRP),'=','ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')) =
+                        //    (STRLEN(GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_HW_MSRP)))) THEN BEGIN
+                        //  EVALUATE(excel_msrp,GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_HW_MSRP));
+                        excel_msrp_convert := TOPAS_API.ConvertStrToDec(GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_HW_MSRP));
+                        IF (GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_HW_MSRP) <> '') AND (excel_msrp_convert <> 0) THEN BEGIN
                           EVALUATE(excel_msrp,GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_HW_MSRP));
                           ServiceArtikelname := Artikelname;
                         END;
@@ -915,7 +953,13 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         TempExcelBuffer.OpenBook(ServerUploadFile,'Cover');
         TempExcelBuffer.ReadSheet();
 
-        PL_Version_Systeme := TOPAS_API.replace_text(GetValueAtCell(8,7),',','.');
+        PL_Version_Text := TOPAS_API.replace_text(GetValueAtCell(8,7),',','.');
+        IF STRPOS(PL_Version_Text,'AKA') = 0 THEN BEGIN
+          PL_Version_Systeme := PL_Version_Text;
+        END ELSE
+          PL_Version_Systeme := COPYSTR(PL_Version_Text,STRPOS(PL_Version_Text,'AKA')+3,STRPOS(PL_Version_Text,')') -(STRPOS(PL_Version_Text,'AKA')+3));
+        PL_Version_Systeme :=  DELCHR(PL_Version_Systeme,'=',' ');
+
         EVALUATE(PL_W„h,UPPERCASE(GetValueAtCell(9,7)));
         IF STRPOS(PL_W„h,'EUR') <> 0 THEN
           PL_W„h := '';
@@ -1135,6 +1179,8 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
 
               IF testlauf = FALSE THEN BEGIN
                 Artikel."Update letzte Preisliste" := TRUE;
+                IF Artikel.Blocked = TRUE THEN
+                  Artikel.VALIDATE(Blocked,FALSE);
                 Artikel.MODIFY(TRUE);
               END;
 
@@ -1234,6 +1280,8 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         END;
 
         FileMgt.DeleteServerFile(ServerUploadFile);
+        CLEAR(XlWrkShtReader);
+        CLEAR(XlWrkBkWriter);
 
         IF testlauf = FALSE THEN BEGIN
           Artikel.RESET;
@@ -1450,7 +1498,12 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         IF TempExcelBuffer.FINDLAST THEN
           EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
 
-        EVALUATE(PL_Version,'-old_' + CONVERTSTR(FORMAT(GetValueAtCell(8,7)),'.','_'));
+        PL_Version_Text := TOPAS_API.replace_text(GetValueAtCell(8,7),',','.');
+        IF STRPOS(PL_Version_Text,'AKA') <> 0 THEN
+          PL_Version_Text := COPYSTR(PL_Version_Text,STRPOS(PL_Version_Text,'AKA')+3,STRPOS(PL_Version_Text,')') -(STRPOS(PL_Version_Text,'AKA')+3));
+        PL_Version_Text :=  DELCHR(PL_Version_Text,'=',' ');
+        EVALUATE(PL_Version,'-old_' + CONVERTSTR(FORMAT(PL_Version_Text),'.','_'));
+
         IF UPPERCASE(GetValueAtCell(10,7)) <> 'CHAMPS' THEN BEGIN
           ERROR('Dies ist keine AudioCodes CHAMPS Preisliste.');
         END;
@@ -1646,7 +1699,12 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         IF TempExcelBuffer.FINDLAST THEN
           EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
 
-        EVALUATE(PL_Version,'-old_' + CONVERTSTR(FORMAT(GetValueAtCell(8,7)),'.','_'));
+        PL_Version_Text := TOPAS_API.replace_text(GetValueAtCell(8,7),',','.');
+        IF STRPOS(PL_Version_Text,'AKA') <> 0 THEN
+          PL_Version_Text := COPYSTR(PL_Version_Text,STRPOS(PL_Version_Text,'AKA')+3,STRPOS(PL_Version_Text,')') -(STRPOS(PL_Version_Text,'AKA')+3));
+        PL_Version_Text :=  DELCHR(PL_Version_Text,'=',' ');
+        EVALUATE(PL_Version,'-old_' + CONVERTSTR(FORMAT(PL_Version_Text),'.','_'));
+
         IF UPPERCASE(GetValueAtCell(10,7)) <> 'ACTS' THEN BEGIN
           ERROR('Dies ist keine AudioCodes ACTS Preisliste.');
         END;
@@ -1841,7 +1899,13 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         IF TempExcelBuffer.FINDLAST THEN
           EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
 
-        PL_Version := TOPAS_API.replace_text(GetValueAtCell(8,7),',','.');
+        PL_Version_Text := TOPAS_API.replace_text(GetValueAtCell(8,7),',','.');
+        IF STRPOS(PL_Version_Text,'AKA') = 0 THEN BEGIN
+          PL_Version := PL_Version_Text;
+        END ELSE
+          PL_Version := COPYSTR(PL_Version_Text,STRPOS(PL_Version_Text,'AKA')+3,STRPOS(PL_Version_Text,')') -(STRPOS(PL_Version_Text,'AKA')+3));
+        PL_Version :=  DELCHR(PL_Version,'=',' ');
+
         IF UPPERCASE(GetValueAtCell(10,7)) <> 'CHAMPS' THEN BEGIN
           ERROR('Dies ist keine AudioCodes CHAMPS Preisliste.');
         END;
@@ -2040,7 +2104,13 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         IF TempExcelBuffer.FINDLAST THEN
           EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
 
-        PL_Version := TOPAS_API.replace_text(GetValueAtCell(8,7),',','.');
+        PL_Version_Text := TOPAS_API.replace_text(GetValueAtCell(8,7),',','.');
+        IF STRPOS(PL_Version_Text,'AKA') = 0 THEN BEGIN
+          PL_Version := PL_Version_Text;
+        END ELSE
+          PL_Version := COPYSTR(PL_Version_Text,STRPOS(PL_Version_Text,'AKA')+3,STRPOS(PL_Version_Text,')') -(STRPOS(PL_Version_Text,'AKA')+3));
+        PL_Version :=  DELCHR(PL_Version,'=',' ');
+
         IF UPPERCASE(GetValueAtCell(10,7)) <> 'ACTS' THEN BEGIN
           ERROR('Dies ist keine AudioCodes ACTS Preisliste.');
         END;
