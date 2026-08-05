@@ -2,8 +2,8 @@ OBJECT Page 50108 TOPAS POS Reports Hersteller
 {
   OBJECT-PROPERTIES
   {
-    Date=30.07.26;
-    Time=11:06:19;
+    Date=31.07.26;
+    Time=11:47:57;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -371,7 +371,7 @@ OBJECT Page 50108 TOPAS POS Reports Hersteller
       v_ACL_SP_C@1000000047 : Text[20];
       v_ACL_SP_D@1000000046 : Text[20];
       v_ACL_SP_E@1000000045 : Text[8];
-      v_ACL_SP_F@1000000044 : Text[20];
+      v_ACL_SP_F@1000000044 : Text[35];
       v_ACL_SP_G@1000000043 : Text[30];
       v_ACL_SP_H@1000000042 : Text[30];
       v_ACL_SP_I@1000000041 : Text[30];
@@ -499,8 +499,21 @@ OBJECT Page 50108 TOPAS POS Reports Hersteller
       v_l„nge@1000000190 : Integer;
       InvoiceRowID@1000000197 : Text;
       serial_datecode_text@1000000198 : Text;
+      ItemAppEntry@1000000201 : Record 339;
+      PurchShipHeader@1000000200 : Record 120;
+      SalesShipmentHeader@1000000199 : Record 110;
+      ItemLedgerEntryEK@1000000202 : Record 32;
+      PurchInvHeader@1000000204 : Record 122;
+      PurchInvLine@1000000205 : Record 123;
+      PurchRcptLine@1000000203 : Record 121;
 
     PROCEDURE ACS@1000000001();
+    VAR
+      OriginBET@1000000000 : Code[20];
+      PurchShipNo@1000000003 : Code[20];
+      PurchShipLineNo@1000000002 : Integer;
+      VendorInvoiceNo@1000000001 : Code[35];
+      InvoiceDate@1000000004 : Date;
     BEGIN
       v_Total_Sum := 0;
 
@@ -694,6 +707,12 @@ OBJECT Page 50108 TOPAS POS Reports Hersteller
           v_month:=0;
           v_year:=0;
 
+          OriginBET := '';
+          PurchShipNo := '';
+          PurchShipLineNo := 0;
+          VendorInvoiceNo := '';
+          InvoiceDate := 0D;
+
           vklz.RESET;
           vklz.SETFILTER("Document No.",'%1',Artikelposten."Document No.");
           //  **********************************************************************************************************************
@@ -719,12 +738,42 @@ OBJECT Page 50108 TOPAS POS Reports Hersteller
                 v_ACL_SP_C := PADSTR(vklk."Sell-to Customer No.",20);
                 EnterCell(RowNo,3,v_ACL_SP_C,FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
 
-                v_ACL_SP_D := PADSTR(vklk."No.",20);
+                IF Artikelposten."Entry Type" = Artikelposten."Entry Type"::Sale THEN BEGIN
+                  ItemAppEntry.SETRANGE("Outbound Item Entry No.",Artikelposten."Entry No.");
+                  IF ItemAppEntry.FINDFIRST THEN BEGIN
+                    ItemLedgerEntryEK.SETRANGE("Entry No.",ItemAppEntry."Inbound Item Entry No.");
+                    IF ItemLedgerEntryEK.FINDFIRST THEN BEGIN
+                      PurchShipHeader.RESET;
+                      PurchShipHeader.SETRANGE("No.",ItemLedgerEntryEK."Document No.");
+                      IF PurchShipHeader.FINDFIRST THEN
+                        OriginBET := PurchShipHeader."Order No.";
+                        PurchShipNo := PurchShipHeader."No.";
+                        PurchShipLineNo := ItemLedgerEntryEK."Document Line No.";
+                        PurchInvLine.RESET;
+                        PurchInvLine.SETFILTER(Quantity,'>%1',0);
+                        PurchInvLine.SETRANGE("Order No.",PurchShipHeader."Order No.");
+                        PurchInvLine.SETRANGE("Order Line No.",ItemLedgerEntryEK."Document Line No.");
+                        IF PurchInvLine.FINDLAST THEN BEGIN
+                          PurchInvHeader.RESET;
+                          PurchInvHeader.SETRANGE("No.",PurchInvLine."Document No.");
+                          IF PurchInvHeader.FINDLAST THEN BEGIN
+                            VendorInvoiceNo := PurchInvHeader."Vendor Invoice No.";
+                            InvoiceDate := PurchInvHeader."Posting Date";
+                          END;
+                        END;
+                    END;
+                  END;
+                END;
+
+                IF InvoiceDate = 0D THEN
+                  InvoiceDate := vklk."Posting Date";
+
+                v_ACL_SP_D := PADSTR(VendorInvoiceNo,20);
                 EnterCell(RowNo,4,v_ACL_SP_D,FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
 
-                v_day := DATE2DMY(vklk."Posting Date",1);
-                v_month := DATE2DMY(vklk."Posting Date",2);
-                v_year := DATE2DMY(vklk."Posting Date",3)-2000;
+                v_day := DATE2DMY(InvoiceDate,1);
+                v_month := DATE2DMY(InvoiceDate,2);
+                v_year := DATE2DMY(InvoiceDate,3)-2000;
 
                 IF v_day=1 THEN v_day1:='01';
                 IF v_day=2 THEN v_day1:='02';
@@ -799,7 +848,7 @@ OBJECT Page 50108 TOPAS POS Reports Hersteller
                 }
                 EnterCell(RowNo,5,FORMAT(v_ACL_SP_E),FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Date);
 
-                v_ACL_SP_F := PADSTR(vklk."External Document No.",20);
+                v_ACL_SP_F := OriginBET;
                 EnterCell(RowNo,6,v_ACL_SP_F,FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
 
                 v_ACL_SP_G :=PADSTR(vklk."Bill-to Name",30);
@@ -838,7 +887,10 @@ OBJECT Page 50108 TOPAS POS Reports Hersteller
                 v_ACL_SP_R := PADSTR(vklk."Ship-to Country/Region Code",2);
                 EnterCell(RowNo,18,v_ACL_SP_R,FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
 
-                v_ACL_SP_S := PADSTR(vklz.Endkunde,30);
+                IF vklz.Endkunde <> '' THEN
+                  v_ACL_SP_S := PADSTR(vklz.Endkunde,30)
+                ELSE
+                  v_ACL_SP_S := PADSTR(vklk."Ship-to Name",30);
                 EnterCell(RowNo,19,v_ACL_SP_S,FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
 
                 v_ACL_SP_T := PADSTR(vklk."Endkunde Adresse",30);
@@ -913,6 +965,7 @@ OBJECT Page 50108 TOPAS POS Reports Hersteller
 
               //   USD Preise   *****************************************************************************************************************
 
+              {
               //  **************************************  EK aus Preisliste  ******************************
               "Ek-Preise".RESET;
               "Ek-Preise".SETFILTER("Item No.",'%1',vklz."No.");
@@ -951,6 +1004,24 @@ OBJECT Page 50108 TOPAS POS Reports Hersteller
               END;
 
               //  USD Preise  ENDE *****************************************************************************************************************
+              }
+
+              // ********************************** EK aus Einkaufslieferung ********************************
+              PurchRcptLine.RESET;
+              PurchRcptLine.SETFILTER(Quantity,'>%1',0);
+              PurchRcptLine.SETRANGE("Document No.",PurchShipNo);
+              PurchRcptLine.SETRANGE("Line No.",PurchShipLineNo);
+              IF PurchRcptLine.FINDLAST THEN BEGIN
+                v_ACL_SP_AD := (PurchRcptLine."Direct Unit Cost" * ((Artikelposten.Quantity) * (-1)));
+                EnterCell(RowNo,30,FORMAT(v_ACL_SP_AD),FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
+              END;
+
+              // **********************************  EK aus Verkaufslieferung  ******************************
+              v_ACL_SP_AE := (vklz."DC-Preis (EKW)" * ((Artikelposten.Quantity) * (-1)));
+              EnterCell(RowNo,31,FORMAT(v_ACL_SP_AE),FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
+
+              v_ACL_SP_AF := v_ACL_SP_AD - v_ACL_SP_AE;
+              EnterCell(RowNo,32,FORMAT(v_ACL_SP_AF),FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
 
               quotedaten.RESET;
               quotedaten.SETFILTER("Quotenr.",'%1',vklz."Quotenr.");
@@ -1269,6 +1340,7 @@ OBJECT Page 50108 TOPAS POS Reports Hersteller
       END;
       // Ende Gutschriften
 
+
       //  Ab hier ACTS ****************************************************************************************
       // Anfang Ums„tze
       Artikelposten.RESET;
@@ -1318,9 +1390,14 @@ OBJECT Page 50108 TOPAS POS Reports Hersteller
           v_month:=0;
           v_year:=0;
 
-          v_day:=DATE2DMY(Artikelposten."Posting Date",1);
-          v_month:=DATE2DMY(Artikelposten."Posting Date",2);
-          v_year:=DATE2DMY(Artikelposten."Posting Date",3)-2000;
+          OriginBET := '';
+          PurchShipNo := '';
+          VendorInvoiceNo := '';
+          InvoiceDate := 0D;
+
+          //v_day:=DATE2DMY(Artikelposten."Posting Date",1);
+          //v_month:=DATE2DMY(Artikelposten."Posting Date",2);
+          //v_year:=DATE2DMY(Artikelposten."Posting Date",3)-2000;
 
           //tab6507.RESET;
           //tab6507.SETFILTER(tab6507."Item Entry No.",'%1',Artikelposten."Entry No.");
@@ -1350,8 +1427,67 @@ OBJECT Page 50108 TOPAS POS Reports Hersteller
                 v_ACL_SP_C := PADSTR(vklk."Sell-to Customer No.",20);
                 EnterCell(RowNo,3,v_ACL_SP_C,FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
 
-                v_ACL_SP_D := PADSTR(vklk."No.",20);
+                //Fr Services wie CHAMPS / ACTS, die wir vorher ausbuchen aber noch die eigentliche EK Pos eingebucht zu haben, wir arbeiten mit Lagerbest„nden
+                Service.RESET;
+                Service.SETRANGE("Nr.",Artikelposten."Document No.");
+                Service.SETRANGE("Belegzeilennr.",Artikelposten."Document Line No.");
+                IF Service.FINDFIRST THEN BEGIN
+                  OriginBET := Service."BET-Nr.";
+                  PurchShipHeader.RESET;
+                  PurchShipHeader.SETRANGE("Order No.",Service."BET-Nr.");
+                  IF PurchShipHeader.FINDLAST THEN
+                    PurchShipNo := PurchShipHeader."No.";
+                  PurchShipLineNo := Service."BET-Pos.";
+
+                  PurchInvLine.RESET;
+                  PurchInvLine.SETFILTER(Quantity,'>%1',0);
+                  PurchInvLine.SETRANGE("Order No.",OriginBET);
+                  PurchInvLine.SETRANGE("Order Line No.",PurchShipLineNo);
+                  IF PurchInvLine.FINDLAST THEN BEGIN
+                    PurchInvHeader.RESET;
+                    PurchInvHeader.SETRANGE("No.",PurchInvLine."Document No.");
+                    IF PurchInvHeader.FINDLAST THEN BEGIN
+                      VendorInvoiceNo := PurchInvHeader."Vendor Invoice No.";
+                      InvoiceDate := PurchInvHeader."Posting Date";
+                    END;
+                  END;
+                END ELSE BEGIN
+                  IF Artikelposten."Entry Type" = Artikelposten."Entry Type"::Sale THEN BEGIN
+                    ItemAppEntry.SETRANGE("Outbound Item Entry No.",Artikelposten."Entry No.");
+                    IF ItemAppEntry.FINDFIRST THEN BEGIN
+                      ItemLedgerEntryEK.SETRANGE("Entry No.",ItemAppEntry."Inbound Item Entry No.");
+                      IF ItemLedgerEntryEK.FINDFIRST THEN BEGIN
+                        PurchShipHeader.RESET;
+                        PurchShipHeader.SETRANGE("No.",ItemLedgerEntryEK."Document No.");
+                        IF PurchShipHeader.FINDFIRST THEN
+                          OriginBET := PurchShipHeader."Order No.";
+                          PurchShipNo := PurchShipHeader."No.";
+                          PurchShipLineNo := ItemLedgerEntryEK."Document Line No.";
+                          PurchInvLine.RESET;
+                          PurchInvLine.SETFILTER(Quantity,'>%1',0);
+                          PurchInvLine.SETRANGE("Order No.",PurchShipHeader."Order No.");
+                          PurchInvLine.SETRANGE("Order Line No.",ItemLedgerEntryEK."Document Line No.");
+                          IF PurchInvLine.FINDLAST THEN BEGIN
+                            PurchInvHeader.RESET;
+                            PurchInvHeader.SETRANGE("No.",PurchInvLine."Document No.");
+                            IF PurchInvHeader.FINDLAST THEN
+                              VendorInvoiceNo := PurchInvHeader."Vendor Invoice No.";
+                              InvoiceDate := PurchInvHeader."Posting Date";
+                          END;
+                      END;
+                    END;
+                  END;
+                END;
+
+                IF InvoiceDate = 0D THEN
+                  InvoiceDate := Artikelposten."Posting Date";
+
+                v_ACL_SP_D := PADSTR(VendorInvoiceNo,20);
                 EnterCell(RowNo,4,v_ACL_SP_D,FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+
+                v_day:=DATE2DMY(InvoiceDate,1);
+                v_month:=DATE2DMY(InvoiceDate,2);
+                v_year:=DATE2DMY(InvoiceDate,3)-2000;
 
                 IF v_day=1 THEN v_day1:='01';
                 IF v_day=2 THEN v_day1:='02';
@@ -1424,7 +1560,7 @@ OBJECT Page 50108 TOPAS POS Reports Hersteller
                 //Sheet.Range('E'+j).NumberFormat := 'TT/MM/JJ';
                 EnterCell(RowNo,5,v_ACL_SP_E,FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Date);
 
-                v_ACL_SP_F := PADSTR(vklk."External Document No.",20);
+                v_ACL_SP_F := PADSTR(OriginBET,20);
                 EnterCell(RowNo,6,v_ACL_SP_F,FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
 
                 v_ACL_SP_G :=PADSTR(vklk."Bill-to Name",30);
@@ -1498,6 +1634,7 @@ OBJECT Page 50108 TOPAS POS Reports Hersteller
                 EnterCell(RowNo,29,FORMAT(v_ACL_SP_AC),FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
               END;
 
+              {
               //  **************************************  EK aus Preisliste  ******************************
               "Ek-Preise".RESET;
               "Ek-Preise".SETFILTER("Item No.",'%1',vklz."No.");
@@ -1530,6 +1667,24 @@ OBJECT Page 50108 TOPAS POS Reports Hersteller
                 v_ACL_SP_AF := (("Ek-Preise"."Direct Unit Cost") * (Artikelposten.Quantity) * (-1)) - v_ACL_SP_AE;
                 EnterCell(RowNo,32,FORMAT(v_ACL_SP_AF),FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
               END;
+              }
+
+              // ********************************** EK aus Einkaufslieferung ********************************
+              PurchRcptLine.RESET;
+              PurchRcptLine.SETFILTER(Quantity,'>%1',0);
+              PurchRcptLine.SETRANGE("Document No.",PurchShipNo);
+              PurchRcptLine.SETRANGE("Line No.",PurchShipLineNo);
+              IF PurchRcptLine.FINDLAST THEN BEGIN
+                v_ACL_SP_AD := (PurchRcptLine."Direct Unit Cost" * ((Artikelposten.Quantity) * (-1)));
+                EnterCell(RowNo,30,FORMAT(v_ACL_SP_AD),FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
+              END;
+
+              // **********************************  EK aus Verkaufslieferung  ******************************
+              v_ACL_SP_AE := (vklz."DC-Preis (EKW)" * ((Artikelposten.Quantity) * (-1)));
+              EnterCell(RowNo,31,FORMAT(v_ACL_SP_AE),FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
+
+              v_ACL_SP_AF := v_ACL_SP_AD - v_ACL_SP_AE;
+              EnterCell(RowNo,32,FORMAT(v_ACL_SP_AF),FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
 
               quotedaten.RESET;
               quotedaten.SETFILTER("Quotenr.",'%1',vklz."Quotenr.");
@@ -1548,6 +1703,8 @@ OBJECT Page 50108 TOPAS POS Reports Hersteller
                   EnterCell(RowNo,35,v_ACL_SP_AI,FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
                 END;
               END;
+              //TEST
+              //EnterCell(RowNo,36,Artikelposten."Document No.",FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
 
               RowNo := RowNo + 1;
             UNTIL vklz.NEXT = 0;
