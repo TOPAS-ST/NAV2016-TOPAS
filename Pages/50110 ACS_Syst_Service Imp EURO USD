@@ -2,8 +2,8 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
 {
   OBJECT-PROPERTIES
   {
-    Date=08.01.26;
-    Time=09:22:34;
+    Date=13.03.26;
+    Time=13:40:06;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -353,9 +353,11 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
       ACTS_PriceBookName_EUR@1000000092 : TextConst 'DEU=ACTS_EUR_PRICEBOOK';
       ACTS_EOSName_USD@1000000088 : TextConst 'DEU=EOS Products Support Pricing';
       ACTS_EOSName_EUR@1000000091 : TextConst 'DEU=EOS Products Support Pricing';
+      StartRow@1000000163 : Integer;
       durchlauf@1000000107 : Integer;
       ColumnNo_MSRP@1000000097 : Integer;
       ColumnNo_HW_MSRP@1000000134 : Integer;
+      ColumnNo_PartName@1000000162 : Integer;
       ColumnNo_ServiceName@1000000098 : Integer;
       PriceBookErrMsg@1000000118 : TextConst 'DEU=Fehler in Spaltennr. %1. Die Bezeichnung msste %2 lauten.';
       CHAMPS_ColText9x5@1000000119 : TextConst 'DEU=CHAMPS 9X5 Part Number';
@@ -366,6 +368,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
       ACTS_ColTextAHR@1000000124 : TextConst 'DEU=AHR Part Number';
       ACTS_ColTextMS9x5@1000000125 : TextConst 'DEU=Managed Spares 9X5XND Part Number';
       ACTS_ColTextMS24x7@1000000126 : TextConst 'DEU=Managed Spares 24X7X4 Part Number';
+      ColumnNo_Discount@1000000164 : Integer;
       DiscountLevel@1000000129 : Text;
       error_level@1000000128 : Integer;
       service_item_counter@1000000130 : Integer;
@@ -386,6 +389,8 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
       LiveSupport_Column_EOL_Add@1000000159 : Integer;
 
     LOCAL PROCEDURE Run_Import_Direct@1000000006();
+    VAR
+      save@1000000000 : Text;
     BEGIN
       IF DialogFileName = '' THEN ERROR(Text200);
 
@@ -480,9 +485,9 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         XlWrkShtWriter := XlWrkBkWriter.GetWorksheetByName(SheetNamePriceBook);
 
         FOR i := 2 TO RowCount DO BEGIN
-          XlWrkShtWriter.SetCellValueText(i, 'E', '', XlWrkShtWriter.DefaultCellDecorator);
-          XlWrkShtWriter.SetCellValueText(i, 'G', '', XlWrkShtWriter.DefaultCellDecorator);
-          XlWrkShtWriter.SetCellValueText(i, 'I', '', XlWrkShtWriter.DefaultCellDecorator);
+          XlWrkShtWriter.SetCellValueText(i, 'E', '', XlWrkShtWriter.DefaultCellDecorator); //5
+          XlWrkShtWriter.SetCellValueText(i, 'G', '', XlWrkShtWriter.DefaultCellDecorator); //7
+          XlWrkShtWriter.SetCellValueText(i, 'I', '', XlWrkShtWriter.DefaultCellDecorator); //9
         END;
 
         XlWrkBkWriter.Close;
@@ -498,9 +503,11 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         XlWrkShtWriter := XlWrkBkWriter.GetWorksheetByName(SheetNameEOL);
 
         FOR i := 2 TO RowCount DO BEGIN
-          XlWrkShtWriter.SetCellValueText(i, 'E', '', XlWrkShtWriter.DefaultCellDecorator);
-          XlWrkShtWriter.SetCellValueText(i, 'G', '', XlWrkShtWriter.DefaultCellDecorator);
-          XlWrkShtWriter.SetCellValueText(i, 'I', '', XlWrkShtWriter.DefaultCellDecorator);
+          XlWrkShtWriter.SetCellValueText(i, 'E', '', XlWrkShtWriter.DefaultCellDecorator); //5
+          XlWrkShtWriter.SetCellValueText(i, 'F', '', XlWrkShtWriter.DefaultCellDecorator); //6
+          XlWrkShtWriter.SetCellValueText(i, 'I', '', XlWrkShtWriter.DefaultCellDecorator); //9
+          XlWrkShtWriter.SetCellValueText(i, 'K', '', XlWrkShtWriter.DefaultCellDecorator); //11
+          XlWrkShtWriter.SetCellValueText(i, 'N', '', XlWrkShtWriter.DefaultCellDecorator); //14
         END;
 
         XlWrkBkWriter.Close;
@@ -539,35 +546,39 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
           END;
         END;
 
+        //EOL Pre Checks
         PriceBookEOL.DELETEALL;
         PriceBookEOL.OpenBook(ServerUploadFile,SheetNameEOL);
         PriceBookEOL.ReadSheet();
         IF PriceBookEOL.FINDLAST THEN
           EVALUATE(TotalRowsEOS,FORMAT(PriceBookEOL.xlRowID));
 
-        IF (auswahl = 2) AND (STRPOS(UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,10)),'LIVE SUPPORT') <> 0) THEN
+        IF (auswahl = 2) AND (STRPOS(UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,14)),'LIVE SUPPORT') <> 0) THEN
           LiveSupport_Column_exist := TRUE
         ELSE
           LiveSupport_Column_exist := FALSE;
 
         IF auswahl = 1 THEN BEGIN
-          IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,10)) <> UPPERCASE(CHAMPS_ColText9x5) THEN ERROR(PriceBookErrMsg,10,CHAMPS_ColText9x5);
-          IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,12)) <> UPPERCASE(CHAMPS_ColText24x7) THEN ERROR(PriceBookErrMsg,12,CHAMPS_ColText24x7);
-          IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,14)) <> UPPERCASE(CHAMPS_ColTextAHR) THEN ERROR(PriceBookErrMsg,14,CHAMPS_ColTextAHR);
+          StartRow := 14;
+          IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,StartRow-1,19)) <> UPPERCASE(CHAMPS_ColText9x5) THEN ERROR(PriceBookErrMsg,19,CHAMPS_ColText9x5);
+          IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,StartRow-1,21)) <> UPPERCASE(CHAMPS_ColText24x7) THEN ERROR(PriceBookErrMsg,21,CHAMPS_ColText24x7);
+          IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,StartRow-1,23)) <> UPPERCASE(CHAMPS_ColTextAHR) THEN ERROR(PriceBookErrMsg,23,CHAMPS_ColTextAHR);
         END;
         IF auswahl = 2 THEN BEGIN
+          StartRow := 14;
           IF LiveSupport_Column_exist = FALSE THEN BEGIN
-            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,10)) <> UPPERCASE(ACTS_ColText9x5) THEN ERROR(PriceBookErrMsg,10,ACTS_ColText9x5);
-            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,12)) <> UPPERCASE(ACTS_ColText24x7) THEN ERROR(PriceBookErrMsg,12,ACTS_ColText24x7);
-            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,14)) <> UPPERCASE(ACTS_ColTextAHR) THEN ERROR(PriceBookErrMsg,14,ACTS_ColTextAHR);
-            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,16)) <> UPPERCASE(ACTS_ColTextMS24x7) THEN ERROR(PriceBookErrMsg,16,ACTS_ColTextMS24x7);
-            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,18)) <> UPPERCASE(ACTS_ColTextMS9x5) THEN ERROR(PriceBookErrMsg,18,ACTS_ColTextMS9x5);
+            save := GetValueAtCellPriceBook(PriceBookEOL,StartRow-1,15);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,StartRow-1,15)) <> UPPERCASE(ACTS_ColText9x5) THEN ERROR(PriceBookErrMsg,15,ACTS_ColText9x5);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,StartRow-1,17)) <> UPPERCASE(ACTS_ColText24x7) THEN ERROR(PriceBookErrMsg,17,ACTS_ColText24x7);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,StartRow-1,23)) <> UPPERCASE(ACTS_ColTextAHR) THEN ERROR(PriceBookErrMsg,23,ACTS_ColTextAHR);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,StartRow-1,25)) <> UPPERCASE(ACTS_ColTextMS24x7) THEN ERROR(PriceBookErrMsg,25,ACTS_ColTextMS24x7);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,StartRow-1,27)) <> UPPERCASE(ACTS_ColTextMS9x5) THEN ERROR(PriceBookErrMsg,27,ACTS_ColTextMS9x5);
           END ELSE BEGIN
-            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,11)) <> UPPERCASE(ACTS_ColText9x5) THEN ERROR(PriceBookErrMsg,11,ACTS_ColText9x5);
-            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,13)) <> UPPERCASE(ACTS_ColText24x7) THEN ERROR(PriceBookErrMsg,13,ACTS_ColText24x7);
-            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,15)) <> UPPERCASE(ACTS_ColTextAHR) THEN ERROR(PriceBookErrMsg,15,ACTS_ColTextAHR);
-            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,17)) <> UPPERCASE(ACTS_ColTextMS24x7) THEN ERROR(PriceBookErrMsg,17,ACTS_ColTextMS24x7);
-            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,1,19)) <> UPPERCASE(ACTS_ColTextMS9x5) THEN ERROR(PriceBookErrMsg,19,ACTS_ColTextMS9x5);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,StartRow-1,16)) <> UPPERCASE(ACTS_ColText9x5) THEN ERROR(PriceBookErrMsg,16,ACTS_ColText9x5);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,StartRow-1,18)) <> UPPERCASE(ACTS_ColText24x7) THEN ERROR(PriceBookErrMsg,18,ACTS_ColText24x7);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,StartRow-1,24)) <> UPPERCASE(ACTS_ColTextAHR) THEN ERROR(PriceBookErrMsg,24,ACTS_ColTextAHR);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,StartRow-1,26)) <> UPPERCASE(ACTS_ColTextMS24x7) THEN ERROR(PriceBookErrMsg,26,ACTS_ColTextMS24x7);
+            IF UPPERCASE(GetValueAtCellPriceBook(PriceBookEOL,StartRow-1,28)) <> UPPERCASE(ACTS_ColTextMS9x5) THEN ERROR(PriceBookErrMsg,28,ACTS_ColTextMS9x5);
           END;
         END;
 
@@ -639,6 +650,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         IF TroubleshootingSetup.FINDSET THEN BEGIN
           service_item_counter := TroubleshootingSetup.COUNT;
           REPEAT
+            ColumnNo_PartName := 0;
             ColumnNo_ServiceName := 0;
             ColumnNo_MSRP := 0;
             LiveSupport_Column_Normal_Add := 0;
@@ -647,61 +659,93 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
             SourceSheet := '';
             step += 1;
 
-            ColumnNo_HW_MSRP := 8;
             TroubleshootingSetupUnter.SETRANGE(Type,TroubleshootingSetup.Type::Item);
             TroubleshootingSetupUnter.SETRANGE("No.",TroubleshootingSetup."No.");
             TroubleshootingSetupUnter.SETFILTER("Troubleshooting No.",'<>%1&<>%2',TroubleshootingSetup."Troubleshooting No.",'PAUSCHALE');
             IF TroubleshootingSetupUnter.FINDFIRST THEN BEGIN
 
-              IF TroubleshootingSetupUnter."Troubleshooting No." = 'SUPP_9X5' THEN BEGIN
-                ColumnNo_ServiceName := 10;
-                ColumnNo_MSRP := 11;
-              END;
-              IF TroubleshootingSetupUnter."Troubleshooting No." = 'SUPP_24X7' THEN BEGIN
-                ColumnNo_ServiceName := 12;
-                ColumnNo_MSRP := 13;
-              END;
-              IF TroubleshootingSetupUnter."Troubleshooting No." = 'AHR' THEN BEGIN
-                ColumnNo_ServiceName := 14;
-                ColumnNo_MSRP := 15;
-              END;
-              IF TroubleshootingSetupUnter."Troubleshooting No." = 'MS_24X7' THEN BEGIN
-                ColumnNo_ServiceName := 16;
-                ColumnNo_MSRP := 17;
-              END;
-              IF TroubleshootingSetupUnter."Troubleshooting No." = 'MS_9X5' THEN BEGIN
-                ColumnNo_ServiceName := 18;
-                ColumnNo_MSRP := 19;
-              END;
             END;
 
-            IF (ColumnNo_ServiceName <> 0) AND (ColumnNo_MSRP <> 0) THEN BEGIN
+            Window.OPEN(
+              Text000 +
+              'fr #1#####################\ #2########\' +
+              '@3@@@@@@@@@@@@@@@@@@@@@\' +
+              'Artikel #4 von #5 Excel Zeilen: #6');
+            Window.UPDATE(1,TroubleshootingSetup."No.");
+            Window.UPDATE(4,step);
+            Window.UPDATE(5,service_item_counter);
+            FOR durchlauf := 1 TO 2 DO BEGIN
 
-              Window.OPEN(
-                Text000 +
-                'fr #1#####################\ #2########\' +
-                '@3@@@@@@@@@@@@@@@@@@@@@\' +
-                'Artikel #4 von #5 Excel Zeilen: #6');
-              Window.UPDATE(1,TroubleshootingSetup."No.");
-              Window.UPDATE(4,step);
-              Window.UPDATE(5,service_item_counter);
-              FOR durchlauf := 1 TO 2 DO BEGIN
+              CASE durchlauf OF
+                1 : BEGIN
+                      PriceBookActual.COPY(PriceBookNormal,TRUE);
+                      TotalRows := TotalRowsPriceBook;
+                      SourceSheet := 'Normal';
+                      Window.UPDATE(2,'Preisliste: ' + SourceSheet);
 
-                CASE durchlauf OF
-                  1 : BEGIN
-                        PriceBookActual.COPY(PriceBookNormal,TRUE);
-                        TotalRows := TotalRowsPriceBook;
-                        SourceSheet := 'Normal';
-                        Window.UPDATE(2,'Preisliste: ' + SourceSheet);
+                      //Sheet Normal
+                      StartRow := 2;
+                      ColumnNo_PartName := 6;
+                      ColumnNo_HW_MSRP := 8;
+                      IF TroubleshootingSetupUnter."Troubleshooting No." = 'SUPP_9X5' THEN BEGIN
+                        ColumnNo_ServiceName := 10;
+                        ColumnNo_MSRP := 11;
                       END;
-                  2 : BEGIN
-                        PriceBookActual.COPY(PriceBookEOL,TRUE);
-                        TotalRows := TotalRowsEOS;
-                        SourceSheet := 'EOL';
-                        Window.UPDATE(2,'Preisliste: ' + SourceSheet);
+                      IF TroubleshootingSetupUnter."Troubleshooting No." = 'SUPP_24X7' THEN BEGIN
+                        ColumnNo_ServiceName := 12;
+                        ColumnNo_MSRP := 13;
                       END;
-                END;
-                Window.UPDATE(6,TotalRows);
+                      IF TroubleshootingSetupUnter."Troubleshooting No." = 'AHR' THEN BEGIN
+                        ColumnNo_ServiceName := 14;
+                        ColumnNo_MSRP := 15;
+                      END;
+                      IF TroubleshootingSetupUnter."Troubleshooting No." = 'MS_24X7' THEN BEGIN
+                        ColumnNo_ServiceName := 16;
+                        ColumnNo_MSRP := 17;
+                      END;
+                      IF TroubleshootingSetupUnter."Troubleshooting No." = 'MS_9X5' THEN BEGIN
+                        ColumnNo_ServiceName := 18;
+                        ColumnNo_MSRP := 19;
+                      END;
+                    END;
+                2 : BEGIN
+                      PriceBookActual.COPY(PriceBookEOL,TRUE);
+                      TotalRows := TotalRowsEOS;
+                      SourceSheet := 'EOL';
+                      Window.UPDATE(2,'Preisliste: ' + SourceSheet);
+
+                      //Sheet EOS
+                      StartRow := 14;
+                      ColumnNo_PartName := 7;
+                      IF PL_W„h = 'USD' THEN
+                        ColumnNo_HW_MSRP := 12
+                      ELSE
+                        ColumnNo_HW_MSRP := 13;
+                      IF TroubleshootingSetupUnter."Troubleshooting No." = 'SUPP_9X5' THEN BEGIN
+                        ColumnNo_ServiceName := 15;
+                        ColumnNo_MSRP := 16;
+                      END;
+                      IF TroubleshootingSetupUnter."Troubleshooting No." = 'SUPP_24X7' THEN BEGIN
+                        ColumnNo_ServiceName := 17;
+                        ColumnNo_MSRP := 18;
+                      END;
+                      IF TroubleshootingSetupUnter."Troubleshooting No." = 'AHR' THEN BEGIN
+                        ColumnNo_ServiceName := 23;
+                        ColumnNo_MSRP := 24;
+                      END;
+                      IF TroubleshootingSetupUnter."Troubleshooting No." = 'MS_24X7' THEN BEGIN
+                        ColumnNo_ServiceName := 25;
+                        ColumnNo_MSRP := 26;
+                      END;
+                      IF TroubleshootingSetupUnter."Troubleshooting No." = 'MS_9X5' THEN BEGIN
+                        ColumnNo_ServiceName := 27;
+                        ColumnNo_MSRP := 28;
+                      END;
+                    END;
+              END;
+              Window.UPDATE(6,TotalRows);
+
+              IF (ColumnNo_ServiceName <> 0) AND (ColumnNo_MSRP <> 0) THEN BEGIN
 
                 //Mit Preisliste 7.8 kam bei ACTS Preislisten neue Spalte Live Support hinzu (Spalte J), alles dahinter verschiebt sich somit um 1 Spaltenr.
                 IF durchlauf = 1 THEN BEGIN
@@ -714,7 +758,7 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
 
                 IF durchlauf = 2 THEN BEGIN
                   IF LiveSupport_Column_Normal_Add = 0 THEN BEGIN
-                    IF STRPOS(UPPERCASE(GetValueAtCellPriceBook(PriceBookActual,1,10)),'LIVE SUPPORT') <> 0 THEN BEGIN
+                    IF STRPOS(UPPERCASE(GetValueAtCellPriceBook(PriceBookActual,1,14)),'LIVE SUPPORT') <> 0 THEN BEGIN
                       LiveSupport_Column_EOL_Add := 1;
                     END;
                     ColumnNo_ServiceName += LiveSupport_Column_EOL_Add;
@@ -722,14 +766,14 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                   END;
                 END;
 
-                FOR i := 2 TO TotalRows DO BEGIN
+                FOR i := StartRow TO TotalRows DO BEGIN
 
                   excel_msrp := 0;
                   nav_msrp := 0;
                   neuer_preis := FALSE;
                   neuer_service := FALSE;
 
-                  Artikelname := UPPERCASE(GetValueAtCellPriceBook(PriceBookActual,i,6));
+                  Artikelname := UPPERCASE(GetValueAtCellPriceBook(PriceBookActual,i,ColumnNo_PartName));
                   SUPArtikelname := TroubleshootingSetup."No.";
                   Opt_laufzeit.RESET;
                   Opt_laufzeit.SETRANGE("Tabellen ID",50024);
@@ -922,8 +966,8 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
                   Window.UPDATE(3,ROUND(i / TotalRows * 10000,1));
                 END;
               END;
-              Window.CLOSE;
             END;
+            Window.CLOSE;
           UNTIL TroubleshootingSetup.NEXT = 0;
         END;
 
@@ -1012,17 +1056,21 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         IF TempExcelBuffer.FINDLAST THEN
           EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
 
-        IF STRPOS(UPPERCASE(GetValueAtCell(1,4)),'CPN') = 0 THEN BEGIN
+        ColumnNo_PartName := 4;
+        ColumnNo_Discount := 5;
+        ColumnNo_MSRP := 7;
+
+        IF STRPOS(UPPERCASE(GetValueAtCell(1,ColumnNo_PartName)),'CPN') = 0 THEN BEGIN
           FileMgt.DeleteServerFile(ServerUploadFile);
-          ERROR(PriceBookErrMsg,4,'CPN');
+          ERROR(PriceBookErrMsg,ColumnNo_PartName,'CPN');
         END;
-        IF STRPOS(UPPERCASE(GetValueAtCell(1,5)),'DISCOUNT') = 0 THEN BEGIN
+        IF STRPOS(UPPERCASE(GetValueAtCell(1,ColumnNo_Discount)),'DISCOUNT') = 0 THEN BEGIN
           FileMgt.DeleteServerFile(ServerUploadFile);
-          ERROR(PriceBookErrMsg,5,'Discount');
+          ERROR(PriceBookErrMsg,ColumnNo_Discount,'Discount');
         END;
-        IF STRPOS(UPPERCASE(GetValueAtCell(1,7)),'MSRP') = 0 THEN BEGIN
+        IF STRPOS(UPPERCASE(GetValueAtCell(1,ColumnNo_MSRP)),'MSRP') = 0 THEN BEGIN
           FileMgt.DeleteServerFile(ServerUploadFile);
-          ERROR(PriceBookErrMsg,7,'MSRP');
+          ERROR(PriceBookErrMsg,ColumnNo_MSRP,'MSRP');
         END;
 
         //********************************************************************************************
@@ -1086,15 +1134,19 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
           EOL := FALSE;
           neuer_preis := FALSE;
 
-          Artikelname := UPPERCASE(GetValueAtCell(i,4));
-          IF (STRLEN(DELCHR(GetValueAtCell(i,7),'=','ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')) <> (STRLEN(GetValueAtCell(i,7)))) THEN
+          Artikelname := UPPERCASE(GetValueAtCell(i,ColumnNo_PartName));
+          IF (STRLEN(DELCHR(GetValueAtCell(i,ColumnNo_MSRP),'=','ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')) <> (STRLEN(GetValueAtCell(i,7)))) THEN
             Artikelname := '';
           IF (Artikelname = '') OR (STRLEN(Artikelname) > 40) THEN BEGIN
           END ELSE BEGIN
-            DiscountLevel := UPPERCASE(GetValueAtCell(i,5));
-            IF GetValueAtCell(i,7) <> 'EOL' THEN BEGIN
-              IF GetValueAtCell(i,7) <> '' THEN
-                EVALUATE(excel_msrp,GetValueAtCell(i,7));
+            DiscountLevel := UPPERCASE(GetValueAtCell(i,ColumnNo_Discount));
+            IF GetValueAtCell(i,ColumnNo_MSRP) <> 'EOL' THEN BEGIN
+              IF GetValueAtCell(i,ColumnNo_MSRP) <> '' THEN
+                excel_msrp_convert := TOPAS_API.ConvertStrToDec(GetValueAtCell(i,ColumnNo_MSRP));
+                IF (GetValueAtCell(i,ColumnNo_MSRP) <> '') AND (excel_msrp_convert <> 0) THEN
+                  excel_msrp := excel_msrp_convert
+                ELSE
+                  EVALUATE(excel_msrp,GetValueAtCell(i,ColumnNo_MSRP));
               excel_msrp := ROUND(excel_msrp,0.01);
               excel_dc   := ROUND(excel_msrp * (1-GetDiscountLevel(DiscountLevel)),0.01);
             END ELSE
@@ -1544,17 +1596,21 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         IF TempExcelBuffer.FINDLAST THEN
           EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
 
-       IF STRPOS(UPPERCASE(GetValueAtCell(1,4)),'CPN') = 0 THEN BEGIN
+        ColumnNo_PartName := 4;
+        ColumnNo_Discount := 5;
+        ColumnNo_MSRP := 7;
+
+        IF STRPOS(UPPERCASE(GetValueAtCell(1,ColumnNo_PartName)),'CPN') = 0 THEN BEGIN
           FileMgt.DeleteServerFile(ServerUploadFile);
-          ERROR(PriceBookErrMsg,4,'CPN');
+          ERROR(PriceBookErrMsg,ColumnNo_PartName,'CPN');
         END;
-        IF STRPOS(UPPERCASE(GetValueAtCell(1,5)),'DISCOUNT') = 0 THEN BEGIN
+        IF STRPOS(UPPERCASE(GetValueAtCell(1,ColumnNo_Discount)),'DISCOUNT') = 0 THEN BEGIN
           FileMgt.DeleteServerFile(ServerUploadFile);
-          ERROR(PriceBookErrMsg,5,'Discount');
+          ERROR(PriceBookErrMsg,ColumnNo_Discount,'Discount');
         END;
-        IF STRPOS(UPPERCASE(GetValueAtCell(1,7)),'MSRP') = 0 THEN BEGIN
+        IF STRPOS(UPPERCASE(GetValueAtCell(1,ColumnNo_MSRP)),'MSRP') = 0 THEN BEGIN
           FileMgt.DeleteServerFile(ServerUploadFile);
-          ERROR(PriceBookErrMsg,7,'MSRP');
+          ERROR(PriceBookErrMsg,ColumnNo_MSRP,'MSRP');
         END;
 
         Kreditor.GET(PL_Kreditor);
@@ -1616,9 +1672,9 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
             excel_msrp := 0;
             row_part := FindRowNew(Servicepreise."Service Artikelnr.",'Cell','A','Z');
             IF (row_part <> 0) THEN BEGIN
-              IF FORMAT(GetValueAtCell(row_part,7)) <> 'Quotation' THEN BEGIN
-                IF FORMAT(GetValueAtCell(row_part,7)) <> '' THEN
-                  EVALUATE(excel_msrp,GetValueAtCell(row_part,7));
+              IF FORMAT(GetValueAtCell(row_part,ColumnNo_MSRP)) <> 'Quotation' THEN BEGIN
+                IF FORMAT(GetValueAtCell(row_part,ColumnNo_MSRP)) <> '' THEN
+                  EVALUATE(excel_msrp,GetValueAtCell(row_part,ColumnNo_MSRP));
                 excel_msrp := ROUND(excel_msrp,0.01);
                 IF excel_msrp <> Servicepreise.MSRP THEN BEGIN
                   ColumnNo := 1;
@@ -1745,17 +1801,21 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         IF TempExcelBuffer.FINDLAST THEN
           EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
 
-       IF STRPOS(UPPERCASE(GetValueAtCell(1,4)),'CPN') = 0 THEN BEGIN
+        ColumnNo_PartName := 4;
+        ColumnNo_Discount := 5;
+        ColumnNo_MSRP := 7;
+
+        IF STRPOS(UPPERCASE(GetValueAtCell(1,ColumnNo_PartName)),'CPN') = 0 THEN BEGIN
           FileMgt.DeleteServerFile(ServerUploadFile);
-          ERROR(PriceBookErrMsg,4,'CPN');
+          ERROR(PriceBookErrMsg,ColumnNo_PartName,'CPN');
         END;
-        IF STRPOS(UPPERCASE(GetValueAtCell(1,5)),'DISCOUNT') = 0 THEN BEGIN
+        IF STRPOS(UPPERCASE(GetValueAtCell(1,ColumnNo_Discount)),'DISCOUNT') = 0 THEN BEGIN
           FileMgt.DeleteServerFile(ServerUploadFile);
-          ERROR(PriceBookErrMsg,5,'Discount');
+          ERROR(PriceBookErrMsg,ColumnNo_Discount,'Discount');
         END;
-        IF STRPOS(UPPERCASE(GetValueAtCell(1,7)),'MSRP') = 0 THEN BEGIN
+        IF STRPOS(UPPERCASE(GetValueAtCell(1,ColumnNo_MSRP)),'MSRP') = 0 THEN BEGIN
           FileMgt.DeleteServerFile(ServerUploadFile);
-          ERROR(PriceBookErrMsg,7,'MSRP');
+          ERROR(PriceBookErrMsg,ColumnNo_MSRP,'MSRP');
         END;
 
         Kreditor.GET(PL_Kreditor);
@@ -1817,9 +1877,9 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
             excel_msrp := 0;
             row_part := FindRowNew(Servicepreise."Service Artikelnr.",'Cell','A','Z');
             IF (row_part <> 0) THEN BEGIN
-              IF FORMAT(GetValueAtCell(row_part,7)) <> 'Quotation' THEN BEGIN
-                IF FORMAT(GetValueAtCell(row_part,7)) <> '' THEN
-                  EVALUATE(excel_msrp,GetValueAtCell(row_part,7));
+              IF FORMAT(GetValueAtCell(row_part,ColumnNo_MSRP)) <> 'Quotation' THEN BEGIN
+                IF FORMAT(GetValueAtCell(row_part,ColumnNo_MSRP)) <> '' THEN
+                  EVALUATE(excel_msrp,GetValueAtCell(row_part,ColumnNo_MSRP));
                 excel_msrp := ROUND(excel_msrp,0.01);
                 IF excel_msrp <> Servicepreise.MSRP THEN BEGIN
                   ColumnNo := 1;
@@ -1946,17 +2006,21 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         IF TempExcelBuffer.FINDLAST THEN
           EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
 
-       IF STRPOS(UPPERCASE(GetValueAtCell(1,4)),'CPN') = 0 THEN BEGIN
+        ColumnNo_PartName := 4;
+        ColumnNo_Discount := 5;
+        ColumnNo_MSRP := 7;
+
+        IF STRPOS(UPPERCASE(GetValueAtCell(1,ColumnNo_PartName)),'CPN') = 0 THEN BEGIN
           FileMgt.DeleteServerFile(ServerUploadFile);
-          ERROR(PriceBookErrMsg,4,'CPN');
+          ERROR(PriceBookErrMsg,ColumnNo_PartName,'CPN');
         END;
-        IF STRPOS(UPPERCASE(GetValueAtCell(1,5)),'DISCOUNT') = 0 THEN BEGIN
+        IF STRPOS(UPPERCASE(GetValueAtCell(1,ColumnNo_Discount)),'DISCOUNT') = 0 THEN BEGIN
           FileMgt.DeleteServerFile(ServerUploadFile);
-          ERROR(PriceBookErrMsg,5,'Discount');
+          ERROR(PriceBookErrMsg,ColumnNo_Discount,'Discount');
         END;
-        IF STRPOS(UPPERCASE(GetValueAtCell(1,7)),'MSRP') = 0 THEN BEGIN
+        IF STRPOS(UPPERCASE(GetValueAtCell(1,ColumnNo_MSRP)),'MSRP') = 0 THEN BEGIN
           FileMgt.DeleteServerFile(ServerUploadFile);
-          ERROR(PriceBookErrMsg,7,'MSRP');
+          ERROR(PriceBookErrMsg,ColumnNo_MSRP,'MSRP');
         END;
 
         Kreditor.GET(PL_Kreditor);
@@ -2020,9 +2084,9 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
             excel_msrp := 0;
             row_part := FindRowNew(Servicepreise."Service Artikelnr.",'Cell','A','Z');
             IF (row_part <> 0) THEN BEGIN
-              IF FORMAT(GetValueAtCell(row_part,7)) <> 'Quotation' THEN BEGIN
-                IF FORMAT(GetValueAtCell(row_part,7)) <> '' THEN
-                  EVALUATE(excel_msrp,GetValueAtCell(row_part,7));
+              IF FORMAT(GetValueAtCell(row_part,ColumnNo_MSRP)) <> 'Quotation' THEN BEGIN
+                IF FORMAT(GetValueAtCell(row_part,ColumnNo_MSRP)) <> '' THEN
+                  EVALUATE(excel_msrp,GetValueAtCell(row_part,ColumnNo_MSRP));
                 excel_msrp := ROUND(excel_msrp,0.01);
                 IF excel_msrp <> Servicepreise.MSRP THEN BEGIN
                   ColumnNo := 1;
@@ -2151,17 +2215,21 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
         IF TempExcelBuffer.FINDLAST THEN
           EVALUATE(TotalRows,FORMAT(TempExcelBuffer.xlRowID));
 
-       IF STRPOS(UPPERCASE(GetValueAtCell(1,4)),'CPN') = 0 THEN BEGIN
+        ColumnNo_PartName := 4;
+        ColumnNo_Discount := 5;
+        ColumnNo_MSRP := 7;
+
+       IF STRPOS(UPPERCASE(GetValueAtCell(1,ColumnNo_PartName)),'CPN') = 0 THEN BEGIN
           FileMgt.DeleteServerFile(ServerUploadFile);
-          ERROR(PriceBookErrMsg,4,'CPN');
+          ERROR(PriceBookErrMsg,ColumnNo_PartName,'CPN');
         END;
-        IF STRPOS(UPPERCASE(GetValueAtCell(1,5)),'DISCOUNT') = 0 THEN BEGIN
+        IF STRPOS(UPPERCASE(GetValueAtCell(1,ColumnNo_Discount)),'DISCOUNT') = 0 THEN BEGIN
           FileMgt.DeleteServerFile(ServerUploadFile);
-          ERROR(PriceBookErrMsg,5,'Discount');
+          ERROR(PriceBookErrMsg,ColumnNo_Discount,'Discount');
         END;
-        IF STRPOS(UPPERCASE(GetValueAtCell(1,7)),'MSRP') = 0 THEN BEGIN
+        IF STRPOS(UPPERCASE(GetValueAtCell(1,ColumnNo_MSRP)),'MSRP') = 0 THEN BEGIN
           FileMgt.DeleteServerFile(ServerUploadFile);
-          ERROR(PriceBookErrMsg,7,'MSRP');
+          ERROR(PriceBookErrMsg,ColumnNo_MSRP,'MSRP');
         END;
 
         Kreditor.GET(PL_Kreditor);
@@ -2225,9 +2293,9 @@ OBJECT Page 50110 ACS_Syst_Service Imp EURO USD
             excel_msrp := 0;
             row_part := FindRowNew(Servicepreise."Service Artikelnr.",'Cell','A','Z');
             IF (row_part <> 0) THEN BEGIN
-              IF FORMAT(GetValueAtCell(row_part,7)) <> 'Quotation' THEN BEGIN
-                IF FORMAT(GetValueAtCell(row_part,7)) <> '' THEN
-                  EVALUATE(excel_msrp,GetValueAtCell(row_part,7));
+              IF FORMAT(GetValueAtCell(row_part,ColumnNo_MSRP)) <> 'Quotation' THEN BEGIN
+                IF FORMAT(GetValueAtCell(row_part,ColumnNo_MSRP)) <> '' THEN
+                  EVALUATE(excel_msrp,GetValueAtCell(row_part,ColumnNo_MSRP));
                 excel_msrp := ROUND(excel_msrp,0.01);
                 IF excel_msrp <> Servicepreise.MSRP THEN BEGIN
                   ColumnNo := 1;
