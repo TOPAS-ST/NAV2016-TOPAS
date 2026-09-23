@@ -2,10 +2,10 @@ OBJECT Page 132 Posted Sales Invoice
 {
   OBJECT-PROPERTIES
   {
-    Date=19.03.18;
-    Time=17:32:35;
+    Date=18.07.25;
+    Time=12:00:00;
     Modified=Yes;
-    Version List=NAVW19.00.00.47042,TOP1.02;
+    Version List=NAVW19.00.00.51521,SNCX90.66.0.129,TOP1.03;
   }
   PROPERTIES
   {
@@ -32,11 +32,24 @@ OBJECT Page 132 Posted Sales Invoice
     OnAfterGetCurrRecord=VAR
                            IncomingDocument@1000 : Record 130;
                            CRMCouplingManagement@1001 : Codeunit 5331;
+                           "--- SNC XRechnung"@5163452 : Integer;
+                           SNCXXRechnungCustomer@5163453 : Record 5163457;
                          BEGIN
                            HasIncomingDocument := IncomingDocument.PostedDocExists("No.","Posting Date");
                            DocExchStatusStyle := GetDocExchStatusStyle;
                            CurrPage.IncomingDocAttachFactBox.PAGE.LoadDataFromRecord(Rec);
                            CRMIsCoupledToRecord := CRMIntegrationEnabled AND CRMCouplingManagement.IsRecordCoupledToCRM(RECORDID);
+
+                           // ------------------------- SNCX -------------------------------- Start 18.12.2024
+                           IF SNCXXRechnungHeaderGlobal.GET(SNCXXRechnungHeaderGlobal."Document Type"::"Sales Invoice", Rec."No.") THEN
+                             SNCXXRechnungCustomer.CheckCustomerForXRechnungForPostedDocument(
+                               Rec."Bill-to Customer No.",
+                               SNCXRechnungGroupVisibleGlobal,
+                               SNCXRechnungAddSuppDocPartVisibleGlobal,
+                               SNCXRechnungShowDocumentActionVisibleGlobal,
+                               SNCXRechnungActionSendEMailVisibleGlobal
+                             );
+                           // ------------------------- SNCX -------------------------------- Stop 18.12.2024
                          END;
 
     ActionList=ACTIONS
@@ -107,6 +120,40 @@ OBJECT Page 132 Posted Sales Invoice
                       PromotedIsBig=Yes;
                       Image=CreditCardLog;
                       PromotedCategory=Category5 }
+      { 5163452 ;2   ;Action    ;
+                      Name=Show XRechnung Document SNC;
+                      CaptionML=[DEU=E-Rechnung Beleg anzeigen;
+                                 ENU=Show E-Rechnung Document];
+                      ToolTipML=[DEU=Zeigt den gebuchten Beleg fr E-Rechnung.;
+                                 ENU=Shows the posted document for E-Rechnung.];
+                      Promoted=Yes;
+                      Visible=SNCXRechnungShowDocumentActionVisibleGlobal;
+                      PromotedIsBig=Yes;
+                      Image=Documents;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 // ------------------------- SNCX -------------------------------- Start 25.11.2021
+                                 Rec.ShowXRechnungDocumentSNC();
+                                 // ------------------------- SNCX -------------------------------- Stop 25.11.2021
+                               END;
+                                }
+      { 5163453 ;2   ;Action    ;
+                      Name=Send XRechnung Document SNC;
+                      CaptionML=[DEU=E-Rechnung Beleg senden;
+                                 ENU=Send E-Rechnung Document];
+                      ToolTipML=[DEU=Versendet die E-Rechnung per E-Mail.;
+                                 ENU=Sends the E-Rechnung by e-mail.];
+                      Promoted=Yes;
+                      Visible=SNCXRechnungActionSendEMailVisibleGlobal;
+                      PromotedIsBig=Yes;
+                      Image=Email;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 // ------------------------- SNCX -------------------------------- Start 25.11.2021
+                                 Rec.SendXRechnungEMailSNC(SNCXXRechnungHeaderGlobal);
+                                 // ------------------------- SNCX -------------------------------- Stop 25.11.2021
+                               END;
+                                }
       { 45      ;1   ;ActionGroup;
                       Name=ActionGroupCRM;
                       CaptionML=[DEU=Dynamics CRM;
@@ -182,7 +229,7 @@ OBJECT Page 132 Posted Sales Invoice
                                END;
                                 }
       { 59      ;1   ;Action    ;
-                      CaptionML=[DEU=&Navigate;
+                      CaptionML=[DEU=&Navigieren;
                                  ENU=&Navigate];
                       Promoted=Yes;
                       PromotedIsBig=Yes;
@@ -430,6 +477,34 @@ OBJECT Page 132 Posted Sales Invoice
                 SourceExpr=GetCreditcardNumber;
                 Editable=FALSE }
 
+    { 5163458;1;Group     ;
+                Name=SNC XRechnung;
+                CaptionML=[DEU=E-Rechnung;
+                           ENU=E-Rechnung];
+                Visible=SNCXRechnungGroupVisibleGlobal;
+                GroupType=Group }
+
+    { 5163456;2;Field     ;
+                ToolTipML=[DEU=Gibt an, ob der Rech. an Debitor fr E-Rechnung aktiviert ist.;
+                           ENU=Specifies whether the bill-to customer is activated for E-Rechnung.];
+                SourceExpr="XRechnung Active SNC";
+                Editable=false }
+
+    { 5163455;2;Field     ;
+                ToolTipML=[DEU=Gibt an, wie oft der E-Rechnung Beleg gesendet wurde.;
+                           ENU=Specifies how many times the E-Rechnung document has been sent.];
+                SourceExpr="XRechnung No. Sent SNC";
+                Editable=false;
+                OnDrillDown=VAR
+                              SNCXXRechnungEMailMgt@5163452 : Codeunit 5163459;
+                              DocumentType@5163453 : 'Sales Invoice,Sales Cr. Memo,Service Invoice,Service Cr. Memo,Purchase Cr. Memo';
+                            BEGIN
+                              // ------------------------- SNCX -------------------------------- Start 15.03.2021
+                              SNCXXRechnungEMailMgt.ShowEMailLog(DocumentType::"Sales Invoice", Rec."No.");
+                              // ------------------------- SNCX -------------------------------- Stop 15.03.2021
+                            END;
+                             }
+
     { 1906801201;1;Group  ;
                 CaptionML=[DEU=Lieferung;
                            ENU=Shipping] }
@@ -503,6 +578,7 @@ OBJECT Page 132 Posted Sales Invoice
     { 1000000015;1;Group  ;
                 CaptionML=[DEU=Endkunde;
                            ENU=End Customer];
+                Editable=FALSE;
                 GroupType=Group }
 
     { 1000000014;2;Field  ;
@@ -538,6 +614,7 @@ OBJECT Page 132 Posted Sales Invoice
     { 1000000004;1;Group  ;
                 CaptionML=[DEU=Kommunikation;
                            ENU=Communication];
+                Editable=FALSE;
                 GroupType=Group }
 
     { 1000000003;2;Field  ;
@@ -554,6 +631,17 @@ OBJECT Page 132 Posted Sales Invoice
 
     { 1900000007;0;Container;
                 ContainerType=FactBoxArea }
+
+    { 5163457;1;Part      ;
+                Name=XRechnungAddSuppDocFBSNC;
+                CaptionML=[DEU=E-Rechnung Rechnungsbegleitende Anlagen;
+                           ENU=E-Rechnung Additional Supporting Documents];
+                SubPageLink=Table ID=CONST(112),
+                            No.=FIELD(No.),
+                            Document Type=CONST(Invoice);
+                PagePartID=Page5163465;
+                Visible=SNCXRechnungAddSuppDocPartVisibleGlobal;
+                PartType=Page }
 
     { 11  ;1   ;Part      ;
                 Name=IncomingDocAttachFactBox;
@@ -580,14 +668,41 @@ OBJECT Page 132 Posted Sales Invoice
       DocExchStatusStyle@1003 : Text;
       CRMIntegrationEnabled@1004 : Boolean;
       CRMIsCoupledToRecord@1005 : Boolean;
+      "--- SNC XRechnung"@5163452 : Integer;
+      SNCXXRechnungHeaderGlobal@5163453 : Record 5163453;
+      SNCXRechnungActionSendEMailVisibleGlobal@5163454 : Boolean;
+      SNCXRechnungAddSuppDocPartVisibleGlobal@5163455 : Boolean;
+      SNCXRechnungGroupVisibleGlobal@5163456 : Boolean;
+      SNCXRechnungShowDocumentActionVisibleGlobal@5163457 : Boolean;
 
     BEGIN
     {
+      ---------------------------------------------------------------------------
+      Sievers-SNC GmbH & Co. KG
+      ---------------------------------------------------------------------------
+      Module:   SNC XRechnung    XRechnung specific modifications by Sievers-SNC
+      ---------------------------------------------------------------------------
+
+      Module Date         Change  Description
+      ---------------------------------------------------------------------------
+      SNCX   15.03.2021   SNCX    NEW Group "SNC XRechnung"
+                                  NEW Action: "Show XRechnung Document SNC", "Send XRechnung Document SNC"
+                                  OnAfterGetCurrRecord Trigger: Code added
+                                  Global Variables: Variable SNCXXRechnungHeaderGlobal, ShowXRechnungDocumentVisible,
+                                  SendXRechnungEMailEnabled added
+      SNCX   21.06.2021   SNCX    NEW Field: "XRechnung Active SNC"
+                                  NEW FactBoxPart: "XRechnungAddSuppDocFBSNC"
+      SNCX   25.11.2021   SNCX    CHANGE Global Variables, Actions: "Show XRechnung Document SNC", "Send XRechnung Document SNC"
+                                  CHANGE: Code in OnAfterGetCurrRecord Trigger
+      SNCX   18.12.2024   SNCX    CHANGE Global Variables, CHANGE: Code in OnAfterGetCurrRecord Trigger
+      SNCX   24.06.2025   SNCX    CHANGE Code in OnAfterGetCurrRecord Trigger
+
       Lfd.Nr. Version   Datum       User  Beschreibung
       ===========================================================================
       1       TOP1.00   18.05.17    ST    Reiter Endkunde und Kommunikation hinzugefgt
       2       TOP1.01   19.02.18    ST    SourceTableView ORDER auf ASCENDING gestellt, damit vor und zurck Navigation wieder wie vorgesehen funktionieren
       3       TOP1.02   19.03.18    ST    Feld "Lizenz EMail-Adresse" hinzugefgt
+      4       TOP1.03   04.07.24    ST    Reiter Endkunde und Kommunikation Felder nicht mehr editierbar
     }
     END.
   }
