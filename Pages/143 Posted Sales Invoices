@@ -2,10 +2,10 @@ OBJECT Page 143 Posted Sales Invoices
 {
   OBJECT-PROPERTIES
   {
-    Date=09.10.18;
-    Time=17:00:07;
+    Date=18.07.25;
+    Time=12:00:00;
     Modified=Yes;
-    Version List=NAVW19.00.00.47042,TOP1.02;
+    Version List=NAVW19.00.00.51521,SNCX90.66.0.129,TOP1.02;
   }
   PROPERTIES
   {
@@ -20,21 +20,26 @@ OBJECT Page 143 Posted Sales Invoices
                                 ENU=New,Process,Report,Invoice,Navigate];
     OnOpenPage=VAR
                  CRMIntegrationManagement@1000 : Codeunit 5330;
+                 "--- SNC XRechnung"@5163452 : Integer;
+                 SNCXXRechnungManagement@5163453 : Codeunit 5163452;
                BEGIN
                  SetSecurityFilterOnRespCenter;
                  CRMIntegrationEnabled := CRMIntegrationManagement.IsCRMIntegrationEnabled;
+                 // ------------------------- SNCX -------------------------------- Start 25.11.2021
+                 SNCXRechnungFieldsAndActionsVisibleGlobal := SNCXXRechnungManagement.TestXRechnungActive();
+                 // ------------------------- SNCX -------------------------------- Stop 25.11.2021
 
-                 //TOPAS 16.11.17 ST - Cursor an die 1. Stelle
+                 //TOPAS 16.11.17 ST - Cursor springt an die 1. Stelle +
                  IF FINDFIRST THEN ;
-                 //TOPAS Ende
+                 //TOPAS -
                END;
 
     OnAfterGetRecord=BEGIN
                        DocExchStatusStyle := GetDocExchStatusStyle;
 
-                       //TOPAS 15.08.17 ST - W„hrungscode wird eingef„rbt
+                       //TOPAS 15.08.17 ST - W„hrungscode wird eingef„rbt +
                        currency_style := TOPAS_Funktionen.SetCurrencyColor("Currency Code");
-                       //TOPAS Ende
+                       //TOPAS -
                      END;
 
     OnAfterGetCurrRecord=VAR
@@ -108,6 +113,43 @@ OBJECT Page 143 Posted Sales Invoices
                                  IncomingDocument@1000 : Record 130;
                                BEGIN
                                  IncomingDocument.ShowCard("No.","Posting Date");
+                               END;
+                                }
+      { 5163452 ;2   ;Action    ;
+                      Name=Show XRechnung Document SNC;
+                      CaptionML=[DEU=E-Rechnung Beleg anzeigen;
+                                 ENU=Show E-Rechnung Document];
+                      ToolTipML=[DEU=Zeigt den gebuchten Beleg fr E-Rechnung.;
+                                 ENU=Shows the posted document for E-Rechnung.];
+                      Promoted=Yes;
+                      Visible=SNCXRechnungFieldsAndActionsVisibleGlobal;
+                      PromotedIsBig=Yes;
+                      Image=Documents;
+                      PromotedCategory=Category4;
+                      OnAction=BEGIN
+                                 // ------------------------- SNCX -------------------------------- Start 25.11.2021
+                                 Rec.ShowXRechnungDocumentSNC();
+                                 // ------------------------- SNCX -------------------------------- Stop 25.11.2021
+                               END;
+                                }
+      { 5163453 ;2   ;Action    ;
+                      Name=Send XRechnung Document SNC;
+                      CaptionML=[DEU=E-Rechnung Beleg senden;
+                                 ENU=Send E-Rechnung Document];
+                      ToolTipML=[DEU=Versendet die E-Rechnung per E-Mail.;
+                                 ENU=Sends the E-Rechnung by e-mail.];
+                      Promoted=Yes;
+                      Visible=SNCXRechnungFieldsAndActionsVisibleGlobal;
+                      PromotedIsBig=Yes;
+                      Image=Email;
+                      PromotedCategory=Category4;
+                      OnAction=VAR
+                                 SalesInvoiceHeader@1108100000 : Record 112;
+                               BEGIN
+                                 // ------------------------- SNCX -------------------------------- Start 25.11.2021
+                                 CurrPage.SETSELECTIONFILTER(SalesInvoiceHeader);
+                                 Rec.SendMultipleXRechnungEmailSNC(SalesInvoiceHeader);
+                                 // ------------------------- SNCX -------------------------------- Stop 25.11.2021
                                END;
                                 }
       { 16      ;1   ;ActionGroup;
@@ -199,7 +241,7 @@ OBJECT Page 143 Posted Sales Invoices
                                END;
                                 }
       { 25      ;1   ;Action    ;
-                      CaptionML=[DEU=&Navigate;
+                      CaptionML=[DEU=&Navigieren;
                                  ENU=&Navigate];
                       Promoted=Yes;
                       PromotedIsBig=Yes;
@@ -392,6 +434,30 @@ OBJECT Page 143 Posted Sales Invoices
                 SourceExpr="Coupled to CRM";
                 Visible=CRMIntegrationEnabled }
 
+    { 5163455;2;Field     ;
+                ToolTipML=[DEU=Gibt an, ob der Rech. an Debitor fr E-Rechnung aktiviert ist.;
+                           ENU=Specifies whether the bill-to customer is activated for E-Rechnung.];
+                SourceExpr="XRechnung Active SNC";
+                Visible=SNCXRechnungFieldsAndActionsVisibleGlobal;
+                Editable=false }
+
+    { 5163454;2;Field     ;
+                ToolTipML=[DEU=Gibt an, wie oft der E-Rechnung Beleg gesendet wurde.;
+                           ENU=Specifies how many times the E-Rechnung document has been sent.];
+                SourceExpr="XRechnung No. Sent SNC";
+                Visible=SNCXRechnungFieldsAndActionsVisibleGlobal;
+                Editable=false;
+                OnDrillDown=VAR
+                              "--- SNC XRechnung"@1108100002 : Integer;
+                              SNCXXRechnungEMailMgt@1108100001 : Codeunit 5163459;
+                              DocumentType@1108100000 : 'Sales Invoice,Sales Cr. Memo,Service Invoice,Service Cr. Memo,Purchase Cr. Memo';
+                            BEGIN
+                              // ------------------------- SNCX -------------------------------- Start 15.03.2021
+                              SNCXXRechnungEMailMgt.ShowEMailLog(DocumentType::"Sales Invoice", Rec."No.");
+                              // ------------------------- SNCX -------------------------------- Stop 15.03.2021
+                            END;
+                             }
+
     { 1900000007;0;Container;
                 ContainerType=FactBoxArea }
 
@@ -418,12 +484,31 @@ OBJECT Page 143 Posted Sales Invoices
       DocExchStatusStyle@1111 : Text;
       CRMIntegrationEnabled@1222 : Boolean;
       CRMIsCoupledToRecord@1001 : Boolean;
+      "--- SNC XRechnung"@5163452 : Integer;
+      SNCXRechnungFieldsAndActionsVisibleGlobal@5163453 : Boolean;
       "***TOPAS_Var***"@1000000002 : Integer;
       TOPAS_Funktionen@1000000001 : Codeunit 50006;
       currency_style@1000000000 : Text;
 
     BEGIN
     {
+      ---------------------------------------------------------------------------
+      Sievers-SNC GmbH & Co. KG
+      ---------------------------------------------------------------------------
+      Module:   SNC XRechnung    XRechnung specific modifications by Sievers-SNC
+      ---------------------------------------------------------------------------
+
+      Module Date         Change  Description
+      ---------------------------------------------------------------------------
+      SNCX   15.03.2021   SNCX    NEW Field: "XRechnung No. Sent SNC"
+                                  NEW Actions: "Show XRechnung Document SNC", "Send XRechnung Document SNC"
+                                  OnOpenPage Trigger: Variable SNCXXRechnungManagement added,
+                                  Code added
+                                  Global Variables: Variable ShowXRechnungDocumentVisible added
+      SNCX   15.06.2021   SNCX    NEW Field: "XRechnung Active SNC"
+      SNCX   25.11.2021   SNCX    CHANGE Global Variables, Actions: "Show XRechnung Document SNC", "Send XRechnung Document SNC"
+                                  CHANGE: Code in OnOpenPage Trigger
+
       Lfd.Nr. Version   Datum       User  Beschreibung
       ===========================================================================
       1       TOP1.00   15.08.17    ST    weitere Felder "Betreuer Innendienst", Teams & "Territory Code" eingebaut, W„hrungscode wird jetzt eingef„rbt
