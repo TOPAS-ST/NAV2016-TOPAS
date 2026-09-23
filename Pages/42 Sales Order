@@ -5,7 +5,7 @@ OBJECT Page 42 Sales Order
     Date=02.03.26;
     Time=12:00:00;
     Modified=Yes;
-    Version List=NAVW19.00.00.50868,TOP1.25;
+    Version List=NAVW19.00.00.50868,SNCX90.66.0.129,TOP1.25;
   }
   PROPERTIES
   {
@@ -61,6 +61,8 @@ OBJECT Page 42 Sales Order
 
     OnAfterGetCurrRecord=VAR
                            CRMCouplingManagement@1000 : Codeunit 5331;
+                           "--- SNC XRechnung"@5163452 : Integer;
+                           SNCXXRechnungCustomer@5163453 : Record 5163457;
                          BEGIN
                            DynamicEditable := CurrPage.EDITABLE;
                            CurrPage.IncomingDocAttachFactBox.PAGE.LoadDataFromRecord(Rec);
@@ -198,6 +200,15 @@ OBJECT Page 42 Sales Order
                            END;
 
                            //TOPAS Ende
+                           // ------------------------- SNCX -------------------------------- Start 18.12.2024
+                           SNCXXRechnungCustomer.CheckCustomerForXRechnung(
+                             Rec."Bill-to Customer No.",
+                             SNCXRechnungActionTestVisibleGlobal,
+                             SNCXRechnungAddSuppDocPartVisibleGlobal,
+                             SNCXRechnungNoteVisibleGlobal,
+                             SNCXRechnungActionPostAndSendVisibleGlobal
+                           );
+                           // ------------------------- SNCX -------------------------------- Stop 18.12.2024
                          END;
 
     ActionList=ACTIONS
@@ -276,6 +287,27 @@ OBJECT Page 42 Sales Order
                                  AssembleToOrderLink@1000 : Record 904;
                                BEGIN
                                  AssembleToOrderLink.ShowAsmOrders(Rec);
+                               END;
+                                }
+      { 5163452 ;2   ;Action    ;
+                      Name=Test XRechnung SNC;
+                      CaptionML=[DEU=Test fr E-Rechnung;
+                                 ENU=Test for E-Rechnung];
+                      ToolTipML=[DEU=Testen Sie den Beleg fr E-Rechnung vor dem Buchen.;
+                                 ENU=Test the document for E-Rechnung before post.];
+                      Promoted=Yes;
+                      Visible=SNCXRechnungActionTestVisibleGlobal;
+                      PromotedIsBig=Yes;
+                      Image=TestFile;
+                      PromotedCategory=Category6;
+                      OnAction=VAR
+                                 SNCXSalesHeaderTestMgmt@5163452 : Codeunit 5163473;
+                                 TestOKMsg@5163453 : TextConst 'DEU=Der Test fr E-Rechnung war erfolgreich.;ENU=The test for E-Rechnung was successful.';
+                               BEGIN
+                                 // ------------------------- SNCX -------------------------------- Start 15.07.2025
+                                 IF SNCXSalesHeaderTestMgmt.TestSalesHeaderFromAction(Rec, FALSE) AND GUIALLOWED() THEN
+                                   MESSAGE(TestOKMsg);
+                                 // ------------------------- SNCX -------------------------------- Stop 15.07.2025
                                END;
                                 }
       { 79      ;1   ;ActionGroup;
@@ -823,6 +855,27 @@ OBJECT Page 42 Sales Order
                                  SalesPostPrint.PostAndEmail(Rec);
                                END;
                                 }
+      { 5163453 ;2   ;Action    ;
+                      Name=Post XRechnung SNC;
+                      CaptionML=[DEU=Buchen und E-Rechnung senden;
+                                 ENU=Post and Send E-Rechnung];
+                      ToolTipML=[DEU=Schlieát den Beleg ab und bereitet das Senden des E-Rechnungsbelegs per E-Mail vor.;
+                                 ENU=Finalize and prepare to send the document for E-Rechnung.];
+                      Promoted=Yes;
+                      Visible=SNCXRechnungActionPostAndSendVisibleGlobal;
+                      PromotedIsBig=Yes;
+                      Image=PostSendTo;
+                      PromotedCategory=Category6;
+                      OnAction=VAR
+                                 SNCXXRechnungSalesMgmt@5163452 : Codeunit 5163472;
+                                 PostingOption@5163453 : 'Post,Post and send';
+                               BEGIN
+                                 // ------------------------- SNCX -------------------------------- Start 15.07.2025
+                                 SNCXXRechnungSalesMgmt.TestCustomerForProcessingAndInsertSalesHeaderExtension(Rec, PostingOption::"Post and send");
+                                 Post(CODEUNIT::"Sales-Post (Yes/No)");
+                                 // ------------------------- SNCX -------------------------------- Stop 15.07.2025
+                               END;
+                                }
       { 74      ;2   ;Action    ;
                       Ellipsis=Yes;
                       CaptionML=[DEU=Testbericht;
@@ -923,6 +976,62 @@ OBJECT Page 42 Sales Order
                                    SalesPostYNPrepmt.PostPrepmtCrMemoYN(Rec,TRUE);
                                END;
                                 }
+      { 5163460 ;3   ;Action    ;
+                      Name=PostPrepaymentInvoiceXRechnung;
+                      CaptionML=[DEU=Vorauszahlungsrechnung buchen und E-Rechnung senden;
+                                 ENU=Post Prepayment Invoice and Send E-Rechnung];
+                      ToolTipML=[DEU=Erstellt und bucht eine Rechnung fr die angegebenen Vorauszahlungsinformationen. Schlieát den Beleg ab und bereitet das Senden des E-Rechnungsbelegs per E-Mail vor.;
+                                 ENU=Create and post an invoice for the specified prepayment information. Finalize and prepare to send the document for E-Rechnung.];
+                      Visible=SNCXRechnungActionPostAndSendVisibleGlobal;
+                      Image=PostSendTo;
+                      OnAction=VAR
+                                 ApprovalsMgmt@1108100000 : Codeunit 1535;
+                                 SalesPostPrepaymentYesNo@1108100001 : Codeunit 443;
+                                 SNCXXRechnungSalesMgmt@1108100002 : Codeunit 5163472;
+                                 PostingOption@1108100003 : 'Post,Post and send';
+                               BEGIN
+                                 // ------------------------- SNCX -------------------------------- Start 15.07.2025
+                                 IF ApprovalsMgmt.PrePostApprovalCheckSales(Rec) THEN BEGIN
+                                   SNCXXRechnungSalesMgmt.InsertXRechnungSalesHeaderExtension(
+                                     Rec,
+                                     PostingOption::"Post and send"
+                                   );
+                                   SalesPostPrepaymentYesNo.PostPrepmtInvoiceYN(
+                                     Rec,
+                                     FALSE
+                                   );
+                                 END;
+                                 // ------------------------- SNCX -------------------------------- Stop 15.07.2025
+                               END;
+                                }
+      { 5163461 ;3   ;Action    ;
+                      Name=PostPrepaymentCrMemoXRechnung;
+                      CaptionML=[DEU=Vorauszahlungsgutschrift buchen und E-Rechnung senden;
+                                 ENU=Post Prepayment Credit Memo and Send E-Rechnung];
+                      ToolTipML=[DEU=Erstellt und bucht eine Gutschrift fr die angegebenen Vorauszahlungsinformationen. Schlieát den Beleg ab und bereitet das Senden des E-Rechnungsbelegs per E-Mail vor.;
+                                 ENU=Create and post a credit memo for the specified prepayment information. Finalize and prepare to send the document for E-Rechnung.];
+                      Visible=SNCXRechnungActionPostAndSendVisibleGlobal;
+                      Image=PostSendTo;
+                      OnAction=VAR
+                                 ApprovalsMgmt@1108100003 : Codeunit 1535;
+                                 SalesPostPrepaymentYesNo@1108100002 : Codeunit 443;
+                                 SNCXXRechnungSalesMgmt@1108100001 : Codeunit 5163472;
+                                 PostingOption@1108100000 : 'Post,Post and send';
+                               BEGIN
+                                 // ------------------------- SNCX -------------------------------- Start 15.07.2025
+                                 IF ApprovalsMgmt.PrePostApprovalCheckSales(Rec) THEN BEGIN
+                                   SNCXXRechnungSalesMgmt.InsertXRechnungSalesHeaderExtension(
+                                     Rec,
+                                     PostingOption::"Post and send"
+                                   );
+                                   SalesPostPrepaymentYesNo.PostPrepmtCrMemoYN(
+                                     Rec,
+                                     FALSE
+                                   );
+                                 END;
+                                 // ------------------------- SNCX -------------------------------- Stop 15.07.2025
+                               END;
+                                }
       { 223     ;1   ;ActionGroup;
                       CaptionML=[DEU=&Drucken;
                                  ENU=&Print];
@@ -973,6 +1082,32 @@ OBJECT Page 42 Sales Order
                                  //TOPAS -
 
                                  DocPrint.PrintSalesOrder(Rec,Usage::"Order Confirmation");
+                               END;
+                                }
+      { 5163455 ;1   ;ActionGroup;
+                      Name=XRechnung;
+                      CaptionML=[DEU=E-Rechnung;
+                                 ENU=E-Rechnung] }
+      { 5163456 ;2   ;Action    ;
+                      Name=XRechnung Note SNC;
+                      CaptionML=[DEU=E-Rechnung Notiz;
+                                 ENU=E-Rechnung Note];
+                      ToolTipML=[DEU=™ffnet die Page um die Notiz fr E-Rechnung zu bearbeiten.;
+                                 ENU=Opens the page to edit the note for E-Rechnung.];
+                      Promoted=Yes;
+                      Visible=SNCXRechnungNoteVisibleGlobal;
+                      PromotedIsBig=Yes;
+                      Image=Note;
+                      PromotedCategory=Process;
+                      OnAction=VAR
+                                 SNCXRechnungNote@1108100000 : Page 5163468;
+                               BEGIN
+                                 // ------------------------- SNCX -------------------------------- Start 08.06.2022
+                                 IF SNCXRechnungNoteVisibleGlobal THEN BEGIN
+                                   SNCXRechnungNote.SetRec(Rec);
+                                   SNCXRechnungNote.RUNMODAL();
+                                 END;
+                                 // ------------------------- SNCX -------------------------------- Stop 08.06.2022
                                END;
                                 }
       { 1000000056;1 ;ActionGroup;
@@ -1852,6 +1987,17 @@ OBJECT Page 42 Sales Order
     { 1900000007;0;Container;
                 ContainerType=FactBoxArea }
 
+    { 5163454;1;Part      ;
+                Name=XRechnungAddSuppDocFBSNC;
+                CaptionML=[DEU=E-Rechnung Rechnungsbegleitende Anlagen;
+                           ENU=E-Rechnung Additional Supporting Documents];
+                SubPageLink=Table ID=CONST(36),
+                            No.=FIELD(No.),
+                            Document Type=FIELD(Document Type);
+                PagePartID=Page5163465;
+                Visible=SNCXRechnungAddSuppDocPartVisibleGlobal;
+                PartType=Page }
+
     { 35  ;1   ;Part      ;
                 SubPageLink=Table ID=CONST(36),
                             Document Type=FIELD(Document Type),
@@ -1979,6 +2125,11 @@ OBJECT Page 42 Sales Order
       CRMIntegrationEnabled@1000 : Boolean;
       CRMIsCoupledToRecord@1017 : Boolean;
       ShowWorkflowStatus@1018 : Boolean;
+      "--- SNC XRechnung"@5163452 : Integer;
+      SNCXRechnungActionPostAndSendVisibleGlobal@5163453 : Boolean;
+      SNCXRechnungActionTestVisibleGlobal@5163454 : Boolean;
+      SNCXRechnungAddSuppDocPartVisibleGlobal@5163455 : Boolean;
+      SNCXRechnungNoteVisibleGlobal@5163456 : Boolean;
       "***TOPAS_Var***"@1000000000 : Integer;
       SalesLine@1000000001 : Record 37;
       Text50005@1000000004 : TextConst 'DEU=&Hilfestellung zur Auftragsbearbeitung,Hilfe zur &Servicekalkulation';
@@ -2227,6 +2378,27 @@ OBJECT Page 42 Sales Order
 
     BEGIN
     {
+      ---------------------------------------------------------------------------
+      Sievers-SNC GmbH & Co. KG
+      ---------------------------------------------------------------------------
+      Module:   SNC XRechnung    XRechnung specific modifications by Sievers-SNC
+      ---------------------------------------------------------------------------
+
+      Module Date         Change  Description
+      ---------------------------------------------------------------------------
+      SNCX   15.03.2021   SNCX    NEW Actions: "Test XRechnung SNC", "Post XRechnung SNC"
+                                  OnAfterGetCurrRecord Trigger: Variable SNCXXRechnungManagement added,
+                                  Code added
+                                  Global Variables: Variable ShowXRechnungDocumentVisible added
+      SNCX   21.06.2021   SNCX    NEW FactBoxPart: "XRechnungAddSuppDocFBSNC"
+      SNCX   25.11.2021   SNCX    CHANGE Global Variables, Code in OnAfterGetCurrRecord Trigger
+      SNCX   08.06.2022   SNCX    NEW Action: "XRechnung Note SNC"
+      SNCX   18.12.2024   SNCX    CHANGE Global Variables: SNCXRechnungActionPostAndSendVisibleGlobal, SNCXRechnungActionTestVisibleGlobal
+                                                           SNCXRechnungAddSuppDocPartVisibleGlobal, SNCXRechnungNoteVisibleGlobal
+                                  CHANGE: OnAfterGetCurrRecord Trigger: Variable SNCXXRechnungCustomer, Code
+      SNCX   05.05.2025   SNCX    NEW: Actions "PostPrepaymentInvoiceXRechnung", "PostPrepaymentCrMemoXRechnung"
+      SNCX   15.07.2025   SNCX    CHANGE: Actions: "Test XRechnung SNC", "Post XRechnung SNC", "PostPrepaymentInvoiceXRechnung", "PostPrepaymentCrMemoXRechnung"
+
       Nr. Version   Datum       User  Beschreibung
       ===========================================================================
       1       TOP1.00   24.02.17    ST    Einbindung der Musterberwachung
