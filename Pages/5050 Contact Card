@@ -2,10 +2,10 @@ OBJECT Page 5050 Contact Card
 {
   OBJECT-PROPERTIES
   {
-    Date=29.11.22;
-    Time=12:37:28;
+    Date=18.07.25;
+    Time=12:00:00;
     Modified=Yes;
-    Version List=NAVW19.00.00.50221,TOP1.03;
+    Version List=NAVW19.00.00.50221,SNCX90.66.0.129,TOP1.03;
   }
   PROPERTIES
   {
@@ -31,7 +31,14 @@ OBJECT Page 5050 Contact Card
                    MapPointVisible := FALSE;
 
                  CRMIntegrationEnabled := CRMIntegrationManagement.IsCRMIntegrationEnabled;
+                 SetParentalConsentReceivedEnable;
                END;
+
+    OnAfterGetRecord=BEGIN
+                       // ------------------------- SNCX -------------------------------- Start 18.10.2024
+                       SetVisibilitiesForXRechnung();
+                       // ------------------------- SNCX -------------------------------- Stop 18.10.2024
+                     END;
 
     OnNewRecord=VAR
                   Contact@1001 : Record 5050;
@@ -1010,6 +1017,18 @@ OBJECT Page 5050 Contact Card
                             END;
                              }
 
+    { 5163452;1;Group     ;
+                Name=XRechnung;
+                CaptionML=[DEU=E-Rechnung;
+                           ENU=E-Rechnung];
+                Visible=XRechnungGroupVisibleGlobal;
+                GroupType=Group }
+
+    { 5163453;2;Field     ;
+                ToolTipML=[DEU=Gibt die E-Mail-Adresse fr E-Rechnung an.;
+                           ENU=Specifies the E-Mail address for E-Rechnung.];
+                SourceExpr="XRechnung E-Mail SNC" }
+
     { 1000000024;2;Field  ;
                 SourceExpr=Mailingvormerkung }
 
@@ -1045,6 +1064,8 @@ OBJECT Page 5050 Contact Card
       PersonGroupEnabled@1005 : Boolean;
       CRMIntegrationEnabled@1006 : Boolean;
       CRMIsCoupledToRecord@1007 : Boolean;
+      ParentalConsentReceivedEnable@1013 : Boolean;
+      XRechnungGroupVisibleGlobal@1108100000 : Boolean;
       "***TOPAS_Var***"@1000000000 : Integer;
       Belege@1000000009 : Record 50010;
       MemoCont@1000000008 : Record 50003;
@@ -1103,13 +1124,72 @@ OBJECT Page 5050 Contact Card
         IntegrationCustomerNo := '';
     END;
 
+    LOCAL PROCEDURE SetParentalConsentReceivedEnable@20();
+    BEGIN
+      IF Minor THEN
+        ParentalConsentReceivedEnable := TRUE
+      ELSE BEGIN
+        "Parental Consent Received" := FALSE;
+        ParentalConsentReceivedEnable := FALSE;
+      END;
+    END;
+
     LOCAL PROCEDURE TypeOnAfterValidate@19069045();
     BEGIN
       EnableFields;
     END;
 
+    LOCAL PROCEDURE "--- XRechnung"@5163452();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE SetVisibilitiesForXRechnung@5163453();
+    VAR
+      ContactBusinessRelation@1108100000 : Record 5054;
+      SNCXXRechnungCustomer@1108100001 : Record 5163457;
+      XRechnungActive@1108100002 : Boolean;
+    BEGIN
+      // ------------------------- SNCX -------------------------------- Start 18.10.2024
+      XRechnungGroupVisibleGlobal := FALSE;
+
+      IF Type = Type::Company THEN
+        EXIT;
+
+      IF "Company No." = '' THEN
+        EXIT;
+
+      XRechnungActive := FALSE;
+      ContactBusinessRelation.SETRANGE("Link to Table", ContactBusinessRelation."Link to Table"::Customer);
+      ContactBusinessRelation.SETRANGE("Contact No.", "Company No.");
+      IF ContactBusinessRelation.FINDSET() THEN
+        REPEAT
+          IF NOT SNCXXRechnungCustomer.GET(ContactBusinessRelation."No.") THEN
+            SNCXXRechnungCustomer.INIT();
+
+          IF SNCXXRechnungCustomer."XRechnung Active" THEN
+            XRechnungActive := TRUE;
+        UNTIL (ContactBusinessRelation.NEXT() = 0) OR XRechnungActive;
+
+      IF XRechnungActive THEN
+        XRechnungGroupVisibleGlobal := TRUE;
+      // ------------------------- SNCX -------------------------------- Stop 18.10.2024
+    END;
+
     BEGIN
     {
+      ---------------------------------------------------------------------------
+      Sievers-SNC GmbH & Co. KG
+      ---------------------------------------------------------------------------
+      Module:   SNC XRechnung    XRechnung specific modifications by Sievers-SNC
+      ---------------------------------------------------------------------------
+
+      Module Date         Change  Description
+      ---------------------------------------------------------------------------
+      SNCX   18.10.2024   SNCX    NEW Group: "XRechnung"
+                                  NEW Field: "XRechnung E-Mail SNC"
+                                  CHANGE: Trigger OnAfterGetRecord
+                                  NEW Function: SetVisibilitiesForXRechnung
+
       Lfd.Nr. Version   Datum       User  Beschreibung
       ===========================================================================
       1       TOP1.00   08.05.17    ST    TOPAS Felder "Unternehmen verlassen", Gesperrt, Abteilung, und errechnete Felder hinzugefgt
