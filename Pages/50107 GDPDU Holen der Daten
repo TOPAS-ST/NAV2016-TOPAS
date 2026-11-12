@@ -2,8 +2,8 @@ OBJECT Page 50107 GDPDU Holen der Daten
 {
   OBJECT-PROPERTIES
   {
-    Date=05.08.26;
-    Time=14:01:05;
+    Date=15.10.26;
+    Time=15:13:16;
     Modified=Yes;
     Version List=TOPAS;
   }
@@ -102,7 +102,7 @@ OBJECT Page 50107 GDPDU Holen der Daten
                                  IF v_USt_Abstimm_KJ=TRUE THEN Umsatzsteuerabstimmung_Kalenderjahr;
                                  IF v_sum_kred=TRUE THEN "Summenliste Kreditoren";
                                  IF v_posten_offen_13b2 = TRUE THEN Offene_Posten_13b2;
-                                 IF v_guv_alle_konten = TRUE THEN Daten_Nav_GuV;
+                                 IF v_guv_alle_konten = TRUE THEN Sachkonten_alle_Export;
 
                                  //  ENDE Aufruf der Funktionen
                                END;
@@ -561,6 +561,8 @@ OBJECT Page 50107 GDPDU Holen der Daten
       v_null_wert@1000000216 : Decimal;
       v_abgangkorrektur@1000000217 : Decimal;
       v_wert_gesamt@1000000218 : Decimal;
+      v_anschaff_nutzungsdauer@1000000305 : Decimal;
+      v_anschaff_datum@1000000306 : Date;
       v_sp4d@1000000219 : Decimal;
       v_sp5e@1000000220 : Decimal;
       v_sp6f@1000000221 : Decimal;
@@ -1866,7 +1868,7 @@ OBJECT Page 50107 GDPDU Holen der Daten
       END;
 
       }
-      CloseExcel('Support Kontingente','Support Kontingente','F:\Daten Neu\USER\UWE\Navision_2016\SUPP Kontingente');
+      CloseExcel('Support Kontingente','Support Kontingente','F:\Daten NEU\Gemeinsame Ordner\Navision\Auswertungen\Kontingente');
       MESSAGE(' Das Holen der Support Kontingente wurde ausgefhrt. ');
     END;
 
@@ -2185,12 +2187,7 @@ OBJECT Page 50107 GDPDU Holen der Daten
       END;
 
 
-
-
-
-
-
-      CloseExcel('RE und Gu von Tagess„tzen','RE und GU von Tagess„tzen','F:\Daten Neu\User\Uwe\Navision_2016\Supp Kontingente');
+      CloseExcel('RE und Gu von Tagess„tzen','RE und GU von Tagess„tzen','F:\Daten NEU\Gemeinsame Ordner\Navision\Auswertungen\Kontingente');
       MESSAGE(' Das Holen der RE und GU von Tages- und Stundens„tzen wurde ausgefhrt.');
     END;
 
@@ -2487,10 +2484,16 @@ OBJECT Page 50107 GDPDU Holen der Daten
       EnterCell(RowNo,7,'Zugang','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
       EnterCell(RowNo,8,'AfA-Wert','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
       EnterCell(RowNo,9,'Wert','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,10,'Abschreibungen','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);// \zgl. AFA auf Abg„nge \ Kumuliert bis
+      EnterCell(RowNo,11,'Anschaffungsdatum','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,12,'Nutzungsdauer','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
       RowNo := 5;
       EnterCell(RowNo,3,'Anschaffung','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
       EnterCell(RowNo,5,FORMAT(Datum_ab -1),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
       EnterCell(RowNo,9,FORMAT(Datum_bis),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      EnterCell(RowNo,10,'Kumuliert bis','',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
+      RowNo := 6;
+      EnterCell(RowNo,10,FORMAT(Datum_bis),'',TRUE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
       {
       Sheet.Range('A:A').ColumnWidth := 12;
       Sheet.Range('B:B').ColumnWidth := 40;
@@ -2521,6 +2524,9 @@ OBJECT Page 50107 GDPDU Holen der Daten
           v_abgangkorrektur:=0;
           v_wert_gesamt:=0;
           v_wert_gj:=0;
+          v_anschaff_datum := 0D;
+          v_anschaff_nutzungsdauer := 0;
+
           EnterCell(RowNo,1,FORMAT(Anlage."No."),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
           EnterCell(RowNo,2,FORMAT(Anlage.Description),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Text);
           Anlpost.RESET;
@@ -2652,11 +2658,6 @@ OBJECT Page 50107 GDPDU Holen der Daten
           END;
 
 
-
-
-
-
-
       {
 
       //  ab hier sicherung 28.06.2021
@@ -2752,9 +2753,27 @@ OBJECT Page 50107 GDPDU Holen der Daten
           END;
       }
 
+          //  hier einschr„nken bis lfd. Jahr  *************************************************************************
+          v_wert_afa := 0;
+          Anlpost1.RESET;
+          Anlpost1.SETFILTER(Anlpost1."FA No.",'%1',Anlage."No.");
+          Anlpost1.SETFILTER(Anlpost1."FA Posting Date",'..%1',Datum_bis);
+          Anlpost1.SETFILTER(Anlpost1."FA Posting Type",'%1',1);
+          IF Anlpost1.FIND('-') THEN BEGIN
+            REPEAT
+              v_wert_afa:=(v_wert_afa+Anlpost1.Amount);
+            UNTIL Anlpost1.NEXT=0;
+          END;
+          EnterCell(RowNo,10,FORMAT(v_wert_afa),'',FALSE,FALSE,FALSE,'###,##0.00',TempExcelBuffer."Cell Type"::Number);
 
+          Anlpost1.SETFILTER(Anlpost1."FA Posting Type",'%1',0);
+          IF Anlpost1.FINDFIRST THEN BEGIN
+            v_anschaff_datum := Anlpost1."Posting Date";
+            v_anschaff_nutzungsdauer := Anlpost1."No. of Depreciation Years";
+          END;
 
-
+          EnterCell(RowNo,11,FORMAT(v_anschaff_datum),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Date);
+          EnterCell(RowNo,12,FORMAT(ROUND(v_anschaff_nutzungsdauer,0.01)),'',FALSE,FALSE,FALSE,'',TempExcelBuffer."Cell Type"::Number);
 
           v_anlwert:=0;
           RowNo := RowNo + 1;
@@ -7838,7 +7857,7 @@ OBJECT Page 50107 GDPDU Holen der Daten
       TempExcelBuffer.GiveUserControl();
     END;
 
-    LOCAL PROCEDURE Daten_Nav_GuV@1000000015();
+    LOCAL PROCEDURE Sachkonten_alle_Export@1000000015();
     VAR
       var_balance@1000000004 : ARRAY [13] OF Decimal;
       var_balance_total@1000000002 : ARRAY [13] OF Decimal;
@@ -7930,7 +7949,7 @@ OBJECT Page 50107 GDPDU Holen der Daten
       EnterCell(RowNo,14,FORMAT(var_balance_total[11]),'',FALSE,FALSE,FALSE,'#,###,##0.00',TempExcelBuffer."Cell Type"::Number);
       EnterCell(RowNo,15,FORMAT(var_balance_total[12]),'',FALSE,FALSE,FALSE,'#,###,##0.00',TempExcelBuffer."Cell Type"::Number);
 
-      CloseExcel('Daten_Nav_GuV','Daten_Nav_GuV_alle_Konten','F:\Tausch\Nav\Daten');
+      CloseExcel('Sachkonten','Daten_Nav_GuV_alle_Konten','F:\Tausch\Nav\Daten');
       //MESSAGE(Text003);
     END;
 
